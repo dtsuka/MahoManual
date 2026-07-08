@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { fetchProjects, pasteImage, type ProjectInfo } from "./lib/api.js";
+import { fetchProjects, pasteImage, renameAnnotation, type ProjectInfo } from "./lib/api.js";
 import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
 
@@ -149,26 +149,97 @@ function ProjectHome() {
 
 function AnnotationLinks({ project }: { project: string }) {
   const [annotations, setAnnotations] = useState<string[]>([]);
+  const [draftIds, setDraftIds] = useState<Record<string, string>>({});
+  const [renameError, setRenameError] = useState<Record<string, string>>({});
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   useEffect(() => {
     void fetch(`/api/projects/${encodeURIComponent(project)}/manual`)
       .then((response) => response.json())
-      .then((payload: { annotations: string[] }) => setAnnotations(payload.annotations));
+      .then((payload: { annotations: string[] }) => {
+        setAnnotations(payload.annotations);
+        setDraftIds(Object.fromEntries(payload.annotations.map((id) => [id, id])));
+      });
   }, [project]);
+
+  const renameFromList = async (currentId: string) => {
+    const nextId = draftIds[currentId]?.trim() ?? "";
+    if (!nextId || nextId === currentId || renamingId) {
+      return;
+    }
+    setRenamingId(currentId);
+    setRenameError((current) => ({ ...current, [currentId]: "" }));
+    try {
+      const result = await renameAnnotation(project, currentId, nextId);
+      setAnnotations((current) => current.map((id) => id === currentId ? result.id : id));
+      setDraftIds((current) => {
+        const next = { ...current };
+        delete next[currentId];
+        next[result.id] = result.id;
+        return next;
+      });
+      setRenameError((current) => {
+        const next = { ...current };
+        delete next[currentId];
+        return next;
+      });
+    } catch (err) {
+      setRenameError((current) => ({
+        ...current,
+        [currentId]: err instanceof Error ? err.message : "ID変更に失敗しました",
+      }));
+    } finally {
+      setRenamingId(null);
+    }
+  };
 
   return (
     <div className="rounded border border-slate-200 bg-white p-4">
       <h2 className="mb-3 font-medium">注釈エディタ</h2>
       <ul className="space-y-2">
         {annotations.map((id) => (
-          <li key={id}>
-            <Link
-              to={`/projects/${project}/annotations/${id}`}
-              className="text-blue-600 hover:underline"
-              data-testid={`annotation-link-${id}`}
-            >
-              {id}
-            </Link>
+          <li key={id} className="rounded border border-slate-200 p-2">
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/projects/${project}/annotations/${encodeURIComponent(id)}`}
+                className="min-w-0 flex-1 truncate text-blue-600 hover:underline"
+                data-testid={`annotation-link-${id}`}
+              >
+                {id}
+              </Link>
+              <input
+                data-testid={`rename-list-input-${id}`}
+                aria-label={`${id}の新しいID`}
+                className="w-56 rounded border border-slate-300 px-2 py-1 text-sm"
+                value={draftIds[id] ?? id}
+                onChange={(event) =>
+                  setDraftIds((current) => ({ ...current, [id]: event.target.value }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void renameFromList(id);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                data-testid={`rename-list-button-${id}`}
+                className="rounded border border-slate-300 bg-slate-50 px-2 py-1 text-sm disabled:opacity-40"
+                disabled={
+                  renamingId !== null ||
+                  !(draftIds[id] ?? id).trim() ||
+                  (draftIds[id] ?? id).trim() === id
+                }
+                onClick={() => void renameFromList(id)}
+              >
+                {renamingId === id ? "変更中…" : "ID変更"}
+              </button>
+            </div>
+            {renameError[id] ? (
+              <p className="mt-1 text-sm text-red-600" role="alert">
+                {renameError[id]}
+              </p>
+            ) : null}
           </li>
         ))}
       </ul>
