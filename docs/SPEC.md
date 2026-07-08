@@ -59,6 +59,9 @@ projects/<name>/
 ```yaml
 title: アイケア様求人サイト 更新マニュアル
 baseUrl: https://example.com        # レシピの相対URLの基準(任意)
+annotation:                         # 注釈テーマの上書き(任意)
+  color: "#E91E8C"                  # 全注釈の既定色(--mm-color)
+  fontSize: 14                      # badge/text の既定フォントサイズpx(--mm-font-size)
 ```
 
 ## 4. データモデル(注釈JSON)
@@ -108,6 +111,7 @@ interface BadgeObj extends Base {   // 丸数字
   at: Point;                        // 中心点
   color?: string;                   // 既定 "#E91E8C"(全オブジェクト共通の既定色)
   size?: number;                    // 直径px、既定 22
+  fontSize?: number;                // 既定 14(テーマ設定に追従)
 }
 
 interface TextObj extends Base {
@@ -416,6 +420,6 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - 状態はすべてプレーンテキスト。DBなし。Git管理前提
 - 元画像は無加工保持、クロップ・注釈は常に非破壊(データで表現)
 - 座標は%、キャンバスとcropはpx(§4.1)
-- 既定色 `#E91E8C`、badge直径22px、strokeWidth 2px
+- 既定色 `#E91E8C`、badge直径22px、strokeWidth 2px。既定はテーマCSSのカスタムプロパティ(--mm-color / --mm-font-size)が持ち、project.yaml の `annotation:` で上書き可
 - 利用者は1人。認証・マルチユーザー機能は作らない(YAGNI)
 - coreが唯一のロジック置き場。cli/mcp/appに業務ロジックを書かない
