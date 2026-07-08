@@ -85,12 +85,13 @@ async function runStep(page: Page, step: RecipeStep): Promise<void> {
 async function resolveRegion(page: Page, recipe: CaptureRecipe): Promise<Region> {
   const target = recipe.screenshot.target;
   if (target === "fullPage") {
-    const size = page.locator("body").first();
-    const box = await size.boundingBox();
-    if (!box) {
-      throw new Error("unable to resolve fullPage region");
-    }
-    return { x: 0, y: 0, w: box.width, h: box.height };
+    // body の boundingBox は margin 分ズレるため、ドキュメント全体を基準にする
+    // (fullPage スクリーンショットが写す範囲と一致させる)
+    const size = await page.evaluate(() => ({
+      w: document.documentElement.scrollWidth,
+      h: document.documentElement.scrollHeight,
+    }));
+    return { x: 0, y: 0, w: size.w, h: size.h };
   }
   if (typeof target === "string") {
     const box = await page.locator(target).first().boundingBox();
@@ -100,6 +101,24 @@ async function resolveRegion(page: Page, recipe: CaptureRecipe): Promise<Region>
     return { x: box.x, y: box.y, w: box.width, h: box.height };
   }
   return { x: target.x, y: target.y, w: target.w, h: target.h };
+}
+
+// 撮影画像が region 領域そのものになるよう target 別に撮り分ける。
+// これにより crop {0,0,region*2} と注釈の%座標(region 基準)が常に画像と一致する
+async function takeScreenshot(page: Page, recipe: CaptureRecipe, path: string): Promise<void> {
+  const target = recipe.screenshot.target;
+  if (target === "fullPage") {
+    await page.screenshot({ path, fullPage: true });
+    return;
+  }
+  if (typeof target === "string") {
+    await page.locator(target).first().screenshot({ path });
+    return;
+  }
+  await page.screenshot({
+    path,
+    clip: { x: target.x, y: target.y, width: target.w, height: target.h },
+  });
 }
 
 function buildAnnotationObjects(
@@ -203,10 +222,7 @@ export async function runCapture(
     }
 
     const region = await resolveRegion(page, recipe);
-    await page.screenshot({
-      path: rawImagePath,
-      fullPage: recipe.screenshot.target === "fullPage",
-    });
+    await takeScreenshot(page, recipe, rawImagePath);
     copyFileSync(rawImagePath, displayImagePath);
 
     const annotateItems = recipe.annotate ?? [];
