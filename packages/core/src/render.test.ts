@@ -67,6 +67,37 @@ describe("renderFigure", () => {
     expect(lineMatch?.[0]).not.toContain("marker-end");
   });
 
+  it("tags polylines with data-mm-id so the GUI can select lines/arrows", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "l1",
+          type: "line",
+          source: "manual",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        },
+        {
+          id: "a1",
+          type: "arrow",
+          source: "manual",
+          points: [
+            { x: 10, y: 10 },
+            { x: 90, y: 90 },
+          ],
+        },
+      ],
+    });
+    const html = renderFigure(annotation, { naturalSizes: {} });
+
+    expect(html).toContain('data-mm-id="l1"');
+    expect(html).toContain('data-mm-id="a1"');
+  });
+
   it("applies fence options: mm-print-s, mm-border, figcaption", () => {
     const annotation = parseAnnotation(
       JSON.parse(readFileSync(join(fixturesDir, "valid-minimal.json"), "utf8")),
