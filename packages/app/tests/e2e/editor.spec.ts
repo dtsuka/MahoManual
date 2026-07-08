@@ -200,6 +200,23 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
   }
 });
 
+test("annotation editor: line can be selected by clicking near the stroke", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await expect(page.locator(".mm-editor-figure figure")).toBeVisible();
+
+  // a1 の縦セグメント(x=62.3%)から 6px 右にずらした位置をクリック。
+  // 実線(2px)の外だがヒット領域(18px)の内側なら選択できるはず
+  const figure = page.locator(".mm-editor-figure figure");
+  const box = await figure.boundingBox();
+  if (!box) {
+    throw new Error("figure has no bounding box");
+  }
+  await page.mouse.click(box.x + box.width * 0.623 + 6, box.y + box.height * 0.5);
+
+  await expect(page.getByTestId("object-item-a1")).toHaveClass(/border-blue-400/);
+});
+
 test("annotation editor: side panel numeric inputs update position", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
