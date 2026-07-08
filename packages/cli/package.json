@@ -1,0 +1,22 @@
+{
+  "name": "@mahomanual/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "manual": "./bin/manual.mjs"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "manual": "node ./bin/manual.mjs"
+  },
+  "dependencies": {
+    "@mahomanual/core": "workspace:*",
+    "commander": "^14.0.0",
+    "tsx": "^4.20.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,130 @@
+#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Command } from "commander";
+import { buildProject } from "@mahomanual/core/build";
+import { exportPdf } from "@mahomanual/core/pdf";
+import { renumberBadges } from "@mahomanual/core/project";
+import { parseAnnotation } from "@mahomanual/core/schema";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+export function resolveProjectPath(input: string): string {
+  const direct = resolve(input);
+  if (existsSync(join(direct, "manual.md"))) {
+    return direct;
+  }
+  const underProjects = join(repoRoot, "projects", input);
+  if (existsSync(join(underProjects, "manual.md"))) {
+    return underProjects;
+  }
+  throw new Error(`プロジェクトが見つかりません: ${input}`);
+}
+
+export function createManualProject(name: string): string {
+  const projectRoot = join(repoRoot, "projects", name);
+  if (existsSync(projectRoot)) {
+    throw new Error(`プロジェクトは既に存在します: ${name}`);
+  }
+
+  mkdirSync(join(projectRoot, "annotations"), { recursive: true });
+  mkdirSync(join(projectRoot, "img", "raw"), { recursive: true });
+  mkdirSync(join(projectRoot, "captures"), { recursive: true });
+
+  writeFileSync(
+    join(projectRoot, "project.yaml"),
+    `title: ${name}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    join(projectRoot, "manual.md"),
+    `# ${name}\n\n## 1 はじめに\n\n本文をここに書きます。\n`,
+    "utf8",
+  );
+
+  return projectRoot;
+}
+
+async function runBuild(projectInput: string, options: { output?: string; singleFile?: boolean }) {
+  const projectRoot = resolveProjectPath(projectInput);
+  const outputDir = options.output ? resolve(options.output) : join(projectRoot, "dist");
+  await buildProject(projectRoot, { outputDir, singleFile: options.singleFile });
+  console.log(`HTML: ${join(outputDir, "manual.html")}`);
+}
+
+async function runPdf(projectInput: string, options: { output?: string }) {
+  const projectRoot = resolveProjectPath(projectInput);
+  const outputPath = options.output ? resolve(options.output) : join(projectRoot, "dist", "manual.pdf");
+  const distDir = dirname(outputPath);
+  mkdirSync(distDir, { recursive: true });
+  await buildProject(projectRoot, { outputDir: distDir });
+  await exportPdf(distDir, { outputPath });
+  console.log(`PDF: ${outputPath}`);
+}
+
+function runRenumber(projectInput: string, annotationId: string) {
+  const projectRoot = resolveProjectPath(projectInput);
+  const annotationPath = join(projectRoot, "annotations", `${annotationId}.json`);
+  if (!existsSync(annotationPath)) {
+    throw new Error(`注釈ファイルが見つかりません: ${annotationId}`);
+  }
+  const annotation = parseAnnotation(JSON.parse(readFileSync(annotationPath, "utf8")));
+  const renumbered = renumberBadges(annotation);
+  writeFileSync(annotationPath, `${JSON.stringify(renumbered, null, 2)}\n`, "utf8");
+}
+
+export function createProgram(): Command {
+  const program = new Command();
+
+  program.name("manual").description("MahoManual CLI");
+
+  program
+    .command("new")
+    .argument("<name>", "project name")
+    .action((name: string) => {
+      const projectRoot = createManualProject(name);
+      console.log(`Created: ${projectRoot}`);
+    });
+
+  program
+    .command("build")
+    .argument("<project>", "project path or name")
+    .option("-o, --output <dir>", "output directory")
+    .option("--single-file", "inline images as base64")
+    .action(async (project: string, options: { output?: string; singleFile?: boolean }) => {
+      await runBuild(project, options);
+    });
+
+  program
+    .command("pdf")
+    .argument("<project>", "project path or name")
+    .option("-o, --output <file>", "output pdf path")
+    .action(async (project: string, options: { output?: string }) => {
+      await runPdf(project, options);
+    });
+
+  program
+    .command("renumber")
+    .argument("<project>", "project path or name")
+    .argument("<annotationId>", "annotation id")
+    .action((project: string, annotationId: string) => {
+      runRenumber(project, annotationId);
+    });
+
+  return program;
+}
+
+async function main() {
+  const program = createProgram();
+  await program.parseAsync(process.argv);
+}
+
+const entryPath = fileURLToPath(import.meta.url);
+if (process.argv[1] && resolve(process.argv[1]) === entryPath) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  });
+}
