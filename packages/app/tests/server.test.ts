@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
@@ -125,6 +125,84 @@ describe("Hono API", () => {
     const payload = (await response.json()) as { html: string };
     expect(payload.html).toContain('data-mm-annotation="test-1"');
     expect(payload.html).toContain("mm-badge");
+  });
+
+  it("POST /api/projects/:project/renumber renumbers all annotations and warns on mismatch", async () => {
+    writeFileSync(
+      join(testProjectRoot, "annotations/renum.json"),
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 100, height: 100 },
+        objects: [
+          { id: "b1", type: "badge", source: "manual", n: 5, at: { x: 10, y: 10 } },
+          { id: "b2", type: "badge", source: "manual", n: 8, at: { x: 20, y: 20 } },
+        ],
+      }),
+      "utf8",
+    );
+    const response = await app.request(`/api/projects/${testProject}/renumber`, { method: "POST" });
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { totalBadges: number; warning: string | null };
+    const saved = JSON.parse(readFileSync(join(testProjectRoot, "annotations/renum.json"), "utf8")) as {
+      objects: Array<{ n: number }>;
+    };
+    expect(saved.objects.map((obj) => obj.n)).toEqual([1, 2]);
+    expect(payload.totalBadges).toBeGreaterThanOrEqual(2);
+    // manual.md に丸数字が無いため必ず不一致警告になる
+    expect(payload.warning).toContain("一致しません");
+  });
+
+  it("rejects annotation ids containing path traversal", async () => {
+    const valid = { version: 1, canvas: { width: 10, height: 10 }, objects: [] };
+    const response = await app.request(
+      `/api/projects/${testProject}/annotations/${encodeURIComponent("../../pwn")}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(valid),
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(existsSync(join(testProjectRoot, "../pwn.json"))).toBe(false);
+  });
+
+  it("rejects pasted image ids containing path separators", async () => {
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const response = await app.request(`/api/projects/${testProject}/images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "../evil", data: `data:image/png;base64,${pngBase64}`, width: 1, height: 1 }),
+    });
+    expect(response.status).toBe(400);
+    expect(existsSync(join(testProjectRoot, "img/evil.png"))).toBe(false);
+  });
+
+  it("does not serve files outside the project root", async () => {
+    const response = await app.request(
+      `/api/projects/${testProject}/files/${encodeURIComponent("..")}/${encodeURIComponent("..")}/${encodeURIComponent("..")}/package.json`,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("does not allow cross-origin requests from arbitrary sites", async () => {
+    const response = await app.request("/api/projects", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example",
+        "Access-Control-Request-Method": "PUT",
+      },
+    });
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+
+    const allowed = await app.request("/api/projects", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:5173",
+        "Access-Control-Request-Method": "PUT",
+      },
+    });
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:5173");
   });
 
   it("GET /api/watch/:project emits change events", async () => {
