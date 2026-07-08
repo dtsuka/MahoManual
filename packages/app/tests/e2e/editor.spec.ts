@@ -116,6 +116,7 @@ test("annotation editor: frame can be selected from object list and resized via 
     await page.getByTestId("object-item-f-menu").click();
     const handle = page.getByTestId("frame-handle-se");
     await expect(handle).toBeVisible();
+    await handle.scrollIntoViewIfNeeded();
 
     const box = await handle.boundingBox();
     if (!box) {
@@ -163,6 +164,8 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
     await page.getByTestId("object-item-a1").click();
     const handle = page.getByTestId("point-handle-0");
     await expect(handle).toBeVisible();
+    // 点はキャンバス下部(y=92%)にあり viewport 外のため、生 mouse API の前にスクロールする
+    await handle.scrollIntoViewIfNeeded();
 
     const box = await handle.boundingBox();
     if (!box) {

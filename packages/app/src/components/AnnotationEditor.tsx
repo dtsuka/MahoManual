@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import Moveable from "react-moveable";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { renderFigure } from "@mahomanual/core/render";
 import { THEME_FIGURE_CSS } from "@mahomanual/core/theme";
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
@@ -11,6 +11,7 @@ import {
   saveAnnotation,
   subscribeProjectWatch,
 } from "../lib/api.js";
+import { resizeRect, type RectPct } from "../lib/geometry.js";
 
 interface AnnotationEditorProps {
   project: string;
@@ -18,18 +19,51 @@ interface AnnotationEditorProps {
   onBack?: () => void;
 }
 
-type MovableObject = Extract<
-  AnnotationObject,
-  { type: "badge" | "text" | "frame" }
->;
+type MovableObject = Extract<AnnotationObject, { type: "badge" | "text" | "frame" }>;
 
-function isMovable(obj: AnnotationObject): obj is MovableObject {
-  return obj.type === "badge" || obj.type === "text" || obj.type === "frame";
+interface Pt {
+  x: number;
+  y: number;
 }
 
 interface AnnotationPayload {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
+}
+
+// ドラッグ中の一時形状。figure DOM はドラッグ中 style を直接更新し、
+// state へのコミット(applyLocalChange)は pointerup 時にのみ行う
+interface DraftShape {
+  rect?: RectPct;
+  points?: Pt[];
+}
+
+const FRAME_HANDLES = [
+  { dir: "nw", fx: 0, fy: 0, cursor: "nwse-resize" },
+  { dir: "n", fx: 0.5, fy: 0, cursor: "ns-resize" },
+  { dir: "ne", fx: 1, fy: 0, cursor: "nesw-resize" },
+  { dir: "e", fx: 1, fy: 0.5, cursor: "ew-resize" },
+  { dir: "se", fx: 1, fy: 1, cursor: "nwse-resize" },
+  { dir: "s", fx: 0.5, fy: 1, cursor: "ns-resize" },
+  { dir: "sw", fx: 0, fy: 1, cursor: "nesw-resize" },
+  { dir: "w", fx: 0, fy: 0.5, cursor: "ew-resize" },
+] as const;
+
+function objectLabel(obj: AnnotationObject): string {
+  switch (obj.type) {
+    case "badge":
+      return `badge ${obj.n}`;
+    case "text":
+      return `text 「${obj.content.slice(0, 8)}${obj.content.length > 8 ? "…" : ""}」`;
+    case "image":
+      return `image ${obj.src.split("/").pop() ?? obj.src}`;
+    case "frame":
+      return "frame";
+    case "line":
+      return "line";
+    case "arrow":
+      return "arrow";
+  }
 }
 
 export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEditorProps) {
@@ -39,10 +73,11 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
+  const [draft, setDraft] = useState<DraftShape | null>(null);
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalPayload, setExternalPayload] = useState<AnnotationPayload | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const figureRef = useRef<HTMLDivElement>(null);
-  const targetRef = useRef<HTMLElement | null>(null);
   const annotationRef = useRef<AnnotationFile | null>(null);
   const dirtyRef = useRef(false);
 
@@ -123,6 +158,10 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   }, [project, annotationId]);
 
   useEffect(() => {
+    setDraft(null);
+  }, [selectedId]);
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== "Delete" && event.key !== "Backspace") {
         return;
@@ -145,6 +184,57 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     return () => window.removeEventListener("keydown", handler);
   }, [selectedId, annotation]);
 
+  // ポインタ座標 → figure 内の%座標
+  const pctFromClient = (clientX: number, clientY: number): Pt => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    if (!box) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: ((clientX - box.left) / box.width) * 100,
+      y: ((clientY - box.top) / box.height) * 100,
+    };
+  };
+
+  // ドラッグの共通処理: 3px 未満はクリック(moved=false)として扱う
+  const startPointerDrag = (
+    start: { clientX: number; clientY: number },
+    handlers: {
+      onMove: (pct: Pt) => void;
+      onEnd: (pct: Pt, moved: boolean) => void;
+    },
+  ) => {
+    const startClient = { x: start.clientX, y: start.clientY };
+    let moved = false;
+    const onPointerMove = (event: PointerEvent) => {
+      if (!moved && Math.hypot(event.clientX - startClient.x, event.clientY - startClient.y) < 3) {
+        return;
+      }
+      moved = true;
+      handlers.onMove(pctFromClient(event.clientX, event.clientY));
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      handlers.onEnd(pctFromClient(event.clientX, event.clientY), moved);
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  const setPolylinePoints = (element: Element, points: Pt[]) => {
+    const canvas = annotationRef.current?.canvas;
+    if (!canvas) {
+      return;
+    }
+    const value = points
+      .map((point) => `${(point.x / 100) * canvas.width},${(point.y / 100) * canvas.height}`)
+      .join(" ");
+    element.setAttribute("points", value);
+  };
+
+  // figure DOM(dangerouslySetInnerHTML)へのドラッグ配線。
+  // badge/text は中心移動、frame は矩形移動、line/arrow は全点の平行移動
   useEffect(() => {
     if (!figureRef.current || !annotation || !figureHtml) {
       return;
@@ -152,74 +242,108 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     const root = figureRef.current;
     const cleanups: Array<() => void> = [];
 
-    for (const element of root.querySelectorAll<HTMLElement>("[data-mm-id]")) {
-      const objectId = element.dataset.mmId;
+    for (const element of root.querySelectorAll<Element>("[data-mm-id]")) {
+      const objectId = element.getAttribute("data-mm-id");
       if (!objectId) {
         continue;
       }
       const obj = annotation.objects.find((item) => item.id === objectId);
-      if (!obj || (obj.type !== "badge" && obj.type !== "text")) {
+      if (!obj || obj.type === "image") {
         continue;
       }
 
-      const onPointerDown = (event: PointerEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
+      const onPointerDown = (event: Event) => {
+        const pointer = event as PointerEvent;
+        pointer.preventDefault();
+        pointer.stopPropagation();
         setSelectedId(objectId);
-        element.setPointerCapture(event.pointerId);
-        const figure = root.querySelector("figure");
-        if (!figure) {
+        const startPct = pctFromClient(pointer.clientX, pointer.clientY);
+
+        if (obj.type === "badge" || obj.type === "text") {
+          // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
+          const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
+          const el = element as HTMLElement;
+          startPointerDrag(pointer, {
+            onMove: (pct) => {
+              el.style.left = `${pct.x + grab.x}%`;
+              el.style.top = `${pct.y + grab.y}%`;
+            },
+            onEnd: (pct, moved) => {
+              if (!moved) {
+                return;
+              }
+              const at = { x: pct.x + grab.x, y: pct.y + grab.y };
+              applyLocalChange((current) => ({
+                ...current,
+                objects: current.objects.map((item) =>
+                  item.id === objectId && (item.type === "badge" || item.type === "text")
+                    ? { ...item, at }
+                    : item,
+                ),
+              }));
+            },
+          });
           return;
         }
 
-        // 掴んだ点と要素中心のズレを保持する(クリックしただけで中心が
-        // ポインタ位置へ吸い付いて座標が変わってしまうのを防ぐ)
-        const startBox = figure.getBoundingClientRect();
-        const grabOffset = {
-          x: obj.at.x - ((event.clientX - startBox.left) / startBox.width) * 100,
-          y: obj.at.y - ((event.clientY - startBox.top) / startBox.height) * 100,
-        };
-        const startClient = { x: event.clientX, y: event.clientY };
-        let moved = false;
+        if (obj.type === "frame") {
+          const rect0 = obj.rect;
+          const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
+          const el = element as HTMLElement;
+          const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
+          startPointerDrag(pointer, {
+            onMove: (pct) => {
+              const next = rectFor(pct);
+              el.style.left = `${next.x}%`;
+              el.style.top = `${next.y}%`;
+              setDraft({ rect: next });
+            },
+            onEnd: (pct, moved) => {
+              setDraft(null);
+              if (!moved) {
+                return;
+              }
+              const next = rectFor(pct);
+              applyLocalChange((current) => ({
+                ...current,
+                objects: current.objects.map((item) =>
+                  item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
+                ),
+              }));
+            },
+          });
+          return;
+        }
 
-        const positionFor = (clientX: number, clientY: number) => {
-          const figureBox = figure.getBoundingClientRect();
-          return {
-            x: ((clientX - figureBox.left) / figureBox.width) * 100 + grabOffset.x,
-            y: ((clientY - figureBox.top) / figureBox.height) * 100 + grabOffset.y,
-          };
-        };
-
-        const onPointerMove = (moveEvent: PointerEvent) => {
-          if (!moved && Math.hypot(moveEvent.clientX - startClient.x, moveEvent.clientY - startClient.y) < 3) {
-            return;
-          }
-          moved = true;
-          const point = positionFor(moveEvent.clientX, moveEvent.clientY);
-          element.style.left = `${point.x}%`;
-          element.style.top = `${point.y}%`;
-        };
-
-        const onPointerUp = (upEvent: PointerEvent) => {
-          element.releasePointerCapture(upEvent.pointerId);
-          window.removeEventListener("pointermove", onPointerMove);
-          window.removeEventListener("pointerup", onPointerUp);
-          if (!moved) {
-            return;
-          }
-          const point = positionFor(upEvent.clientX, upEvent.clientY);
-          applyLocalChange((current) => ({
-            ...current,
-            objects: current.objects.map((item) =>
-              item.id === objectId && (item.type === "badge" || item.type === "text")
-                ? { ...item, at: point }
-                : item,
-            ),
+        // line / arrow: 全点を平行移動
+        const points0 = obj.points;
+        const pointsFor = (pct: Pt): Pt[] =>
+          points0.map((point) => ({
+            x: point.x + pct.x - startPct.x,
+            y: point.y + pct.y - startPct.y,
           }));
-        };
-
-        window.addEventListener("pointermove", onPointerMove);
-        window.addEventListener("pointerup", onPointerUp);
+        startPointerDrag(pointer, {
+          onMove: (pct) => {
+            const next = pointsFor(pct);
+            setPolylinePoints(element, next);
+            setDraft({ points: next });
+          },
+          onEnd: (pct, moved) => {
+            setDraft(null);
+            if (!moved) {
+              return;
+            }
+            const next = pointsFor(pct);
+            applyLocalChange((current) => ({
+              ...current,
+              objects: current.objects.map((item) =>
+                item.id === objectId && (item.type === "line" || item.type === "arrow")
+                  ? { ...item, points: next }
+                  : item,
+              ),
+            }));
+          },
+        });
       };
 
       element.addEventListener("pointerdown", onPointerDown);
@@ -233,17 +357,12 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     if (!figureRef.current) {
       return;
     }
-    const nodes = figureRef.current.querySelectorAll<HTMLElement>("[data-mm-id]");
+    const nodes = figureRef.current.querySelectorAll("[data-mm-id]");
     nodes.forEach((node) => node.classList.remove("is-selected"));
     if (!selectedId) {
-      targetRef.current = null;
       return;
     }
-    const selectedNode = figureRef.current.querySelector<HTMLElement>(`[data-mm-id="${selectedId}"]`);
-    if (selectedNode) {
-      selectedNode.classList.add("is-selected");
-      targetRef.current = selectedNode;
-    }
+    figureRef.current.querySelector(`[data-mm-id="${selectedId}"]`)?.classList.add("is-selected");
   }, [selectedId, figureHtml]);
 
   if (error) {
@@ -317,18 +436,104 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     setSelectedId(id);
   };
 
-  const pctRectFromTarget = (target: HTMLElement | SVGElement) => {
-    if (!figureRef.current) {
-      return { x: 0, y: 0, w: 10, h: 10 };
+  const beginFrameResize = (event: ReactPointerEvent, dir: string) => {
+    if (!selected || selected.type !== "frame") {
+      return;
     }
-    const figureBox = figureRef.current.getBoundingClientRect();
-    const targetBox = target.getBoundingClientRect();
-    return {
-      x: ((targetBox.left - figureBox.left) / figureBox.width) * 100,
-      y: ((targetBox.top - figureBox.top) / figureBox.height) * 100,
-      w: (targetBox.width / figureBox.width) * 100,
-      h: (targetBox.height / figureBox.height) * 100,
-    };
+    event.preventDefault();
+    event.stopPropagation();
+    const objectId = selected.id;
+    const rect0 = selected.rect;
+    const startPct = pctFromClient(event.clientX, event.clientY);
+    const el = figureRef.current?.querySelector<HTMLElement>(`[data-mm-id="${objectId}"]`);
+    const rectFor = (pct: Pt): RectPct => resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y);
+    startPointerDrag(event, {
+      onMove: (pct) => {
+        const next = rectFor(pct);
+        if (el) {
+          el.style.left = `${next.x}%`;
+          el.style.top = `${next.y}%`;
+          el.style.width = `${next.w}%`;
+          el.style.height = `${next.h}%`;
+        }
+        setDraft({ rect: next });
+      },
+      onEnd: (pct, moved) => {
+        setDraft(null);
+        if (!moved) {
+          return;
+        }
+        const next = rectFor(pct);
+        applyLocalChange((current) => ({
+          ...current,
+          objects: current.objects.map((item) =>
+            item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
+          ),
+        }));
+      },
+    });
+  };
+
+  const beginPointDrag = (event: ReactPointerEvent, index: number) => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const objectId = selected.id;
+    const points0 = selected.points;
+    const el = figureRef.current?.querySelector(`[data-mm-id="${objectId}"]`);
+    const pointsFor = (pct: Pt): Pt[] => points0.map((point, i) => (i === index ? pct : point));
+    startPointerDrag(event, {
+      onMove: (pct) => {
+        const next = pointsFor(pct);
+        if (el) {
+          setPolylinePoints(el, next);
+        }
+        setDraft({ points: next });
+      },
+      onEnd: (pct, moved) => {
+        setDraft(null);
+        if (!moved) {
+          return;
+        }
+        const next = pointsFor(pct);
+        applyLocalChange((current) => ({
+          ...current,
+          objects: current.objects.map((item) =>
+            item.id === objectId && (item.type === "line" || item.type === "arrow")
+              ? { ...item, points: next }
+              : item,
+          ),
+        }));
+      },
+    });
+  };
+
+  const addPoint = () => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    const objectId = selected.id;
+    updateObject(objectId, (obj) => {
+      if (obj.type !== "line" && obj.type !== "arrow") {
+        return obj;
+      }
+      const last = obj.points[obj.points.length - 1] ?? { x: 50, y: 50 };
+      return { ...obj, points: [...obj.points, { x: Math.min(last.x + 8, 100), y: last.y }] };
+    });
+  };
+
+  const removePoint = (index: number) => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    updateObject(selected.id, (obj) => {
+      if ((obj.type !== "line" && obj.type !== "arrow") || obj.points.length <= 2) {
+        return obj;
+      }
+      return { ...obj, points: obj.points.filter((_, i) => i !== index) };
+    });
   };
 
   const handleSave = async () => {
@@ -345,6 +550,12 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       setError(err instanceof Error ? err.message : "保存に失敗しました");
     }
   };
+
+  const activeFrameRect = selected?.type === "frame" ? (draft?.rect ?? selected.rect) : null;
+  const activeLinePoints =
+    selected && (selected.type === "line" || selected.type === "arrow")
+      ? (draft?.points ?? selected.points)
+      : null;
 
   return (
     <div className="flex h-full min-h-screen flex-col" data-testid="annotation-editor">
@@ -416,59 +627,73 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       ) : null}
       <div className="flex flex-1 overflow-hidden">
         <div className="relative flex-1 overflow-auto p-6">
-          <div
-            ref={figureRef}
-            className="mm-editor-figure relative mx-auto"
-            style={{ maxWidth: annotation.canvas.width }}
-            dangerouslySetInnerHTML={{ __html: figureHtml }}
-            onClick={(event) => {
-              const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
-              setSelectedId(target?.dataset.mmId ?? null);
-            }}
-          />
-          {selected?.type === "frame" && targetRef.current && figureRef.current ? (
-            <Moveable
-              target={targetRef.current}
-              draggable
-              resizable
-              throttleDrag={0}
-              throttleResize={0}
-              onDrag={({ target, left, top }) => {
-                target.style.left = `${left}px`;
-                target.style.top = `${top}px`;
-              }}
-              onDragEnd={({ target }) => {
-                const rect = pctRectFromTarget(target as HTMLElement);
-                updateObject(selected.id, (obj) => {
-                  if (obj.type !== "frame") {
-                    return obj;
-                  }
-                  return { ...obj, rect };
-                });
-              }}
-              onResize={({ target, width, height, drag }) => {
-                target.style.width = `${width}px`;
-                target.style.height = `${height}px`;
-                target.style.left = `${drag.left}px`;
-                target.style.top = `${drag.top}px`;
-              }}
-              onResizeEnd={({ target }) => {
-                const rect = pctRectFromTarget(target as HTMLElement);
-                updateObject(selected.id, (obj) => {
-                  if (obj.type !== "frame") {
-                    return obj;
-                  }
-                  return { ...obj, rect };
-                });
+          <div ref={wrapRef} className="relative mx-auto" style={{ maxWidth: annotation.canvas.width }}>
+            <div
+              ref={figureRef}
+              className="mm-editor-figure"
+              dangerouslySetInnerHTML={{ __html: figureHtml }}
+              onClick={(event) => {
+                const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
+                setSelectedId(target?.dataset.mmId ?? null);
               }}
             />
-          ) : null}
+            {/* 編集ハンドルは figure と同じ%座標系のオーバーレイに描く */}
+            <div className="pointer-events-none absolute inset-0">
+              {activeFrameRect
+                ? FRAME_HANDLES.map((handle) => (
+                    <div
+                      key={handle.dir}
+                      data-testid={`frame-handle-${handle.dir}`}
+                      className="mm-editor-handle"
+                      style={{
+                        left: `${activeFrameRect.x + activeFrameRect.w * handle.fx}%`,
+                        top: `${activeFrameRect.y + activeFrameRect.h * handle.fy}%`,
+                        cursor: handle.cursor,
+                      }}
+                      onPointerDown={(event) => beginFrameResize(event, handle.dir)}
+                    />
+                  ))
+                : null}
+              {activeLinePoints
+                ? activeLinePoints.map((point, index) => (
+                    <div
+                      key={index}
+                      data-testid={`point-handle-${index}`}
+                      className="mm-editor-handle mm-editor-handle--point"
+                      style={{ left: `${point.x}%`, top: `${point.y}%`, cursor: "move" }}
+                      onPointerDown={(event) => beginPointDrag(event, index)}
+                    />
+                  ))
+                : null}
+            </div>
+          </div>
         </div>
         <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
+          <h2 className="mb-1 text-sm font-semibold text-slate-700">オブジェクト</h2>
+          <p className="mb-2 text-xs text-slate-400">前面 → 背面の順。クリックで選択できます。</p>
+          <ul className="mb-4 space-y-1">
+            {[...annotation.objects].reverse().map((obj) => (
+              <li key={obj.id}>
+                <button
+                  type="button"
+                  data-testid={`object-item-${obj.id}`}
+                  className={`w-full rounded border px-2 py-1 text-left text-sm ${
+                    obj.id === selectedId
+                      ? "border-blue-400 bg-blue-50 text-blue-800"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
+                  }`}
+                  onClick={() => setSelectedId(obj.id)}
+                >
+                  {objectLabel(obj)}
+                  <span className="ml-1 text-xs text-slate-400">{obj.id}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
           <h2 className="mb-3 text-sm font-semibold text-slate-700">プロパティ</h2>
           {!selected ? (
             <p className="text-sm text-slate-500">
-              キャンバス上のオブジェクトをクリックして選択してください。位置はドラッグ、枠はハンドルでリサイズできます。
+              オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
             </p>
           ) : null}
           {selected?.type === "text" ? (
@@ -487,9 +712,6 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   });
                 }}
               />
-              <span className="mt-1 block text-xs text-slate-500">
-                キャンバス上では直接入力できません。ここで編集して「保存」を押してください。
-              </span>
             </label>
           ) : null}
           {selected?.type === "badge" ? (
@@ -516,13 +738,39 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
             </label>
           ) : null}
           {selected?.type === "frame" ? (
-            <p className="text-sm text-slate-500">枠の位置・サイズはキャンバス上でドラッグ／リサイズしてください。</p>
+            <p className="text-sm text-slate-500">枠はドラッグで移動、周囲のハンドルでリサイズできます。</p>
           ) : null}
-          {selected?.type === "line" || selected?.type === "arrow" ? (
-            <p className="text-sm text-slate-500">
-              線・矢印は Delete キーで削除できます。点の編集は未対応のため、JSON を直接編集するか CLI / MCP
-              から変更してください。
-            </p>
+          {selected && (selected.type === "line" || selected.type === "arrow") ? (
+            <div className="text-sm">
+              <div className="mb-1 font-medium text-slate-700">点({selected.points.length})</div>
+              <ul className="mb-2 space-y-1">
+                {selected.points.map((point, index) => (
+                  <li key={index} className="flex items-center gap-2">
+                    <span className="text-slate-500">
+                      {index + 1}: ({point.x.toFixed(1)}, {point.y.toFixed(1)})
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-40"
+                      disabled={selected.points.length <= 2}
+                      onClick={() => removePoint(index)}
+                    >
+                      削除
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs"
+                onClick={addPoint}
+              >
+                + 点を追加
+              </button>
+              <p className="mt-2 text-xs text-slate-500">
+                キャンバス上の丸ハンドルをドラッグして点を移動、線自体のドラッグで全体を移動できます。
+              </p>
+            </div>
           ) : null}
         </aside>
       </div>

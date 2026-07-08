@@ -9,6 +9,16 @@ body {
 }
 
 /* 注釈エディタの操作用スタイル */
+.mm-editor-figure {
+  user-select: none;
+}
+
+/* スクショ画像がネイティブドラッグ・選択されてオブジェクト操作を妨げないようにする */
+.mm-editor-figure img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
 .mm-editor-figure .mm-lines {
   pointer-events: none;
 }
@@ -31,6 +41,25 @@ body {
 /* polyline には outline が効かないため選択表示は drop-shadow で行う */
 .mm-editor-figure polyline.is-selected {
   filter: drop-shadow(0 0 3px #2563eb);
+}
+
+/* リサイズ・点編集ハンドル(figure と同じ%座標系のオーバーレイに配置) */
+.mm-editor-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid #2563eb;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.mm-editor-handle--point {
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
 }
 
 /* md プレビューペイン: 納品 HTML の本文スタイル(core THEME_PAGE_CSS 相当)に寄せる */
