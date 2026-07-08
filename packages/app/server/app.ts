@@ -188,6 +188,10 @@ export function createApp() {
     if (!isSafeName(body.id)) {
       return c.json({ error: "不正な画像IDです" }, 400);
     }
+    // 既存の注釈を雛形で黙って上書きしない
+    if (existsSync(join(root, "annotations", `${body.id}.json`))) {
+      return c.json({ error: `注釈IDが既に存在します: ${body.id}` }, 409);
+    }
     const base64 = body.data.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64, "base64");
     let width = body.width;
