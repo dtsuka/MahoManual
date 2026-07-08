@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 const testProject = "example";
@@ -228,6 +228,37 @@ test("annotation editor: side panel numeric inputs update position", async ({ pa
     expect(after.objects.find((obj) => obj.id === "b1")?.at?.x).toBe(60);
   } finally {
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
+test("project home: importing an image creates annotation skeleton and opens the editor", async ({
+  page,
+}) => {
+  const projectRoot = join(process.cwd(), "../../projects/example");
+  const newId = `e2e-import-${Date.now()}`;
+  await page.goto(`/projects/${testProject}`);
+
+  try {
+    await page.getByTestId("import-id-input").fill(newId);
+    await page
+      .getByTestId("import-file-input")
+      .setInputFiles(join(projectRoot, "img/raw/1-1.png"));
+
+    // 取り込み後は注釈エディタへ直行する
+    await expect(page.getByTestId("annotation-editor")).toBeVisible();
+    await expect(page.locator(".mm-editor-figure figure")).toBeVisible();
+
+    expect(existsSync(join(projectRoot, `annotations/${newId}.json`))).toBe(true);
+    expect(existsSync(join(projectRoot, `img/raw/${newId}.png`))).toBe(true);
+    const annotation = JSON.parse(
+      readFileSync(join(projectRoot, `annotations/${newId}.json`), "utf8"),
+    ) as { objects: Array<{ type: string; src?: string }> };
+    expect(annotation.objects[0]?.type).toBe("image");
+    expect(annotation.objects[0]?.src).toBe(`img/raw/${newId}.png`);
+  } finally {
+    rmSync(join(projectRoot, `annotations/${newId}.json`), { force: true });
+    rmSync(join(projectRoot, `img/raw/${newId}.png`), { force: true });
+    rmSync(join(projectRoot, `img/${newId}.png`), { force: true });
   }
 });
 

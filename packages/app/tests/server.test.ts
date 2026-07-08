@@ -117,6 +117,25 @@ describe("Hono API", () => {
     expect(readFileSync(join(testProjectRoot, "img/raw/pasted-1.png")).byteLength).toBeGreaterThan(0);
   });
 
+  it("POST /api/projects/:project/images rejects an existing annotation id", async () => {
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const beforeJson = readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8");
+    const response = await app.request(`/api/projects/${testProject}/images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "test-1",
+        data: `data:image/png;base64,${pngBase64}`,
+        width: 10,
+        height: 10,
+      }),
+    });
+    expect(response.status).toBe(409);
+    // 既存の注釈 JSON が雛形で上書きされていないこと
+    expect(readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8")).toBe(beforeJson);
+  });
+
   it("POST /api/projects/:project/preview returns html", async () => {
     const response = await app.request(`/api/projects/${testProject}/preview`, {
       method: "POST",
