@@ -182,6 +182,30 @@ export function renumberBadgesFile(projectRoot: string, id: string): AnnotationF
   return next;
 }
 
+export interface RenumberAllResult {
+  totalBadges: number;
+  files: Array<{ id: string; badges: number }>;
+}
+
+// プロジェクト内の全注釈ファイルを一括 renumber する。
+// 本文の丸数字(①②…)との個数照合はマニュアル全体の合計で行うため、合計を返す
+export function renumberAllBadgesFiles(projectRoot: string): RenumberAllResult {
+  const annotationsDir = join(projectRoot, "annotations");
+  const ids = existsSync(annotationsDir)
+    ? readdirSync(annotationsDir)
+        .filter((name) => name.endsWith(".json"))
+        .map((name) => basename(name, ".json"))
+    : [];
+  const files = ids.map((id) => {
+    const next = renumberBadgesFile(projectRoot, id);
+    return { id, badges: countAnnotationBadges(next) };
+  });
+  return {
+    totalBadges: files.reduce((sum, file) => sum + file.badges, 0),
+    files,
+  };
+}
+
 export function loadRecipeFile(recipePath: string): CaptureRecipe {
   return parseRecipe(readFileSync(recipePath, "utf8"));
 }
