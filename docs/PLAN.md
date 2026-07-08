@@ -36,15 +36,15 @@
 
 ### 1-2. レンダラー(SPEC §6)
 
-- [ ] test: §4.3のJSON+naturalSizes({facility-add.png: 1280×1080})を入力し、出力HTMLに以下が含まれることをアサート:
+- [x] test: §4.3のJSON+naturalSizes({facility-add.png: 1280×1080})を入力し、出力HTMLに以下が含まれることをアサート:
   - figureの `aspect-ratio:1280/960` と `max-width:1000px`、`mm-print-l`
   - badgeの `left:17.3%`・`top:16%`・テキスト`1`
   - frameの `width:12.2%`
   - imgのクロップ計算 `height:112.5%`・`top:-12.5%`(§6.2の式)
   - svgの `viewBox="0 0 1280 960"` とpolyline点列 `377.6,883.2 …`(%→px変換)
   - arrowのみ `marker-end` があり、lineには無い
-- [ ] test: フェンスオプション(width:680→`mm-print-s`、border:true→`mm-border`、caption→figcaption)
-- [ ] 実装: `packages/core/src/render.ts`。**純関数**(`renderFigure(annotation, { naturalSizes, fence })`、ファイルI/O禁止)
+- [x] test: フェンスオプション(width:680→`mm-print-s`、border:true→`mm-border`、caption→figcaption)
+- [x] 実装: `packages/core/src/render.ts`。**純関数**(`renderFigure(annotation, { naturalSizes, fence })`、ファイルI/O禁止)
 
 ### 1-3. mdビルド(SPEC §5, §6.3, §7)
 
