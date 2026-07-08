@@ -100,6 +100,103 @@ test("manual editor: back from annotation editor restores the markdown editor", 
   await expect(page.locator(".cm-content")).toContainText("アイケア様");
 });
 
+test("annotation editor: frame can be selected from object list and resized via handles", async ({
+  page,
+  request,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; rect?: { x: number; y: number; w: number; h: number } }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    // オブジェクト一覧(ツリー)から背面の frame を選択できる
+    await page.getByTestId("object-item-f-menu").click();
+    const handle = page.getByTestId("frame-handle-se");
+    await expect(handle).toBeVisible();
+
+    const box = await handle.boundingBox();
+    if (!box) {
+      throw new Error("resize handle has no bounding box");
+    }
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 40, cy + 25, { steps: 4 });
+    await page.mouse.up();
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    const beforeRect = before.objects.find((obj) => obj.id === "f-menu")?.rect;
+    const afterRect = after.objects.find((obj) => obj.id === "f-menu")?.rect;
+    expect(beforeRect && afterRect).toBeTruthy();
+    expect(afterRect!.w).toBeGreaterThan(beforeRect!.w);
+    expect(afterRect!.h).toBeGreaterThan(beforeRect!.h);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
+test("annotation editor: arrow points can be edited by dragging point handles", async ({
+  page,
+  request,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; points?: Array<{ x: number; y: number }> }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-a1").click();
+    const handle = page.getByTestId("point-handle-0");
+    await expect(handle).toBeVisible();
+
+    const box = await handle.boundingBox();
+    if (!box) {
+      throw new Error("point handle has no bounding box");
+    }
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 30, cy - 20, { steps: 4 });
+    await page.mouse.up();
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    const beforePoints = before.objects.find((obj) => obj.id === "a1")?.points;
+    const afterPoints = after.objects.find((obj) => obj.id === "a1")?.points;
+    expect(beforePoints && afterPoints).toBeTruthy();
+    expect(afterPoints!.length).toBe(beforePoints!.length);
+    expect(Math.abs(afterPoints![0]!.x - beforePoints![0]!.x)).toBeGreaterThan(0.5);
+    // 他の点は動かない
+    expect(afterPoints![1]).toEqual(beforePoints![1]);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: external change while dirty shows banner instead of discarding edits", async ({
   page,
   request,
