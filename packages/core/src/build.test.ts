@@ -40,4 +40,17 @@ describe("buildProject", () => {
       rmSync(badProject, { recursive: true, force: true });
     }
   });
+
+  it("inlines images as base64 when singleFile is enabled", async () => {
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-single-"));
+    try {
+      const result = await buildProject(fixtureProject, { outputDir: outDir, singleFile: true });
+      const html = readFileSync(result.htmlPath, "utf8");
+
+      expect(html).not.toContain('src="img/');
+      expect(html).toContain("data:image/png;base64,");
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
 });
