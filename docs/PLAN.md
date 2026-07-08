@@ -18,11 +18,11 @@
 
 ## Phase 0 — リポジトリ初期化
 
-- [ ] `git init` し、既存ファイル(CLAUDE.md, docs/, sample/)を初回コミット
-- [ ] pnpm workspace構築: ルート `package.json`(private, `"type": "module"`, engines node>=20)、`pnpm-workspace.yaml`(packages/*)
-- [ ] `.gitignore`: `node_modules/`, `dist/`, `**/.auth/`, `.DS_Store`, `projects/*/dist/`
-- [ ] `packages/core` 雛形: TypeScript(strict)+ Vitest。ダミーテスト1本がパスすること
-- [ ] ルートに `pnpm -r test` スクリプト
+- [x] `git init` し、既存ファイル(CLAUDE.md, docs/, sample/)を初回コミット
+- [x] pnpm workspace構築: ルート `package.json`(private, `"type": "module"`, engines node>=20)、`pnpm-workspace.yaml`(packages/*)
+- [x] `.gitignore`: `node_modules/`, `dist/`, `**/.auth/`, `.DS_Store`, `projects/*/dist/`
+- [x] `packages/core` 雛形: TypeScript(strict)+ Vitest。ダミーテスト1本がパスすること
+- [x] ルートに `pnpm -r test` スクリプト
 
 **受け入れ基準**: `pnpm install && pnpm -r test` が成功する。
 
