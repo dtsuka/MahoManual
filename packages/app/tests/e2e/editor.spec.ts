@@ -279,6 +279,40 @@ test("project home: importing an image creates annotation skeleton and opens the
   }
 });
 
+test("annotation editor: object list can be reordered by drag and drop", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string }>;
+  };
+  const indexOf = (objects: Array<{ id: string }>, id: string) =>
+    objects.findIndex((obj) => obj.id === id);
+  // 前提: b1 は b2 より背面(配列で前)にある
+  expect(indexOf(before.objects, "b1")).toBeLessThan(indexOf(before.objects, "b2"));
+
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    // 表示リスト(前面→背面)で b1 を b2 の位置(より前面)へドラッグ
+    await page.dragAndDrop('[data-testid="object-item-b1"]', '[data-testid="object-item-b2"]');
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    // 配列順 = 描画順が入れ替わっている(b1 が b2 より前面=配列で後ろ)
+    expect(indexOf(after.objects, "b1")).toBeGreaterThan(indexOf(after.objects, "b2"));
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: badge color and font size can be edited from the side panel", async ({
   page,
   request,
