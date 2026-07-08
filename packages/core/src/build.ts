@@ -16,9 +16,10 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import { parse as parseYaml } from "yaml";
+import { readProjectTheme } from "./project.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
 import { parseAnnotation } from "./schema.js";
-import { THEME_CSS } from "./theme.js";
+import { annotationThemeCss, THEME_CSS } from "./theme.js";
 
 export interface BuildOptions {
   outputDir?: string;
@@ -241,13 +242,14 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
     finalBodyHtml = inlineImagesAsDataUri(bodyHtml, outputDir);
   }
 
+  const themeCss = annotationThemeCss(readProjectTheme(projectRoot));
   const html = `<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
-  <style>${THEME_CSS}</style>
+  <style>${THEME_CSS}${themeCss ? `\n${themeCss}` : ""}</style>
 </head>
 <body>
 ${finalBodyHtml}

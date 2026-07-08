@@ -9,6 +9,7 @@ import {
 import { basename, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
+import type { AnnotationTheme } from "./theme.js";
 import {
   annotationObjectSchema,
   parseAnnotation,
@@ -44,12 +45,31 @@ function annotationPath(projectRoot: string, id: string): string {
   return join(projectRoot, "annotations", `${id}.json`);
 }
 
-export function readProjectYaml(projectRoot: string): Record<string, string> {
+export function readProjectYaml(projectRoot: string): Record<string, unknown> {
   const path = join(projectRoot, "project.yaml");
   if (!existsSync(path)) {
     return {};
   }
-  return (parseYaml(readFileSync(path, "utf8")) as Record<string, string>) ?? {};
+  return (parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>) ?? {};
+}
+
+// project.yaml の annotation セクション(テーマ設定)を読む。
+// 不正な値は黙って無視する(既定のテーマ CSS 変数が使われる)
+export function readProjectTheme(projectRoot: string): AnnotationTheme {
+  const yaml = readProjectYaml(projectRoot);
+  const annotation = yaml.annotation;
+  if (!annotation || typeof annotation !== "object") {
+    return {};
+  }
+  const { color, fontSize } = annotation as { color?: unknown; fontSize?: unknown };
+  const theme: AnnotationTheme = {};
+  if (typeof color === "string" && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color)) {
+    theme.color = color;
+  }
+  if (typeof fontSize === "number" && fontSize > 0) {
+    theme.fontSize = fontSize;
+  }
+  return theme;
 }
 
 export function listManuals(projectsDir: string): ProjectInfo[] {
@@ -64,6 +84,7 @@ export function listManuals(projectsDir: string): ProjectInfo[] {
         return null;
       }
       const yaml = readProjectYaml(projectRoot);
+      const title = typeof yaml.title === "string" ? yaml.title : entry.name;
       const annotationsDir = join(projectRoot, "annotations");
       const imageCount = existsSync(annotationsDir)
         ? readdirSync(annotationsDir).filter((name) => name.endsWith(".json")).length
@@ -72,7 +93,7 @@ export function listManuals(projectsDir: string): ProjectInfo[] {
       const pageCount = (body.match(/^##\s+/gm) ?? []).length;
       return {
         name: entry.name,
-        title: yaml.title ?? entry.name,
+        title,
         pageCount,
         imageCount,
       };

@@ -79,6 +79,7 @@ const badgeObjectSchema = baseSchema.extend({
   at: pointSchema,
   color: colorSchema.optional(),
   size: z.number().gt(0).optional(),
+  fontSize: z.number().gt(0).optional(),
 });
 
 const textObjectSchema = baseSchema.extend({

@@ -1,8 +1,7 @@
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 
-const DEFAULT_COLOR = "#E91E8C";
-const DEFAULT_BADGE_SIZE = 22;
-const DEFAULT_FONT_SIZE = 14;
+// 既定の色・サイズはテーマ CSS(CSS カスタムプロパティ)が持つ。
+// レンダラーはオブジェクトに明示指定があるときだけ inline style を出力する
 const DEFAULT_STROKE_WIDTH = 2;
 
 export interface RenderFenceOptions {
@@ -33,10 +32,6 @@ export function escapeHtml(text: string): string {
     .replaceAll('"', "&quot;");
 }
 
-function resolveColor(color: string | undefined): string {
-  return color ?? DEFAULT_COLOR;
-}
-
 function renderImageObject(
   obj: Extract<AnnotationObject, { type: "image" }>,
   naturalSizes: Record<string, { w: number; h: number }>,
@@ -61,12 +56,14 @@ function renderBadgeObject(obj: Extract<AnnotationObject, { type: "badge" }>): s
     `left:${pct(obj.at.x)}`,
     `top:${pct(obj.at.y)}`,
   ];
-  const color = resolveColor(obj.color);
-  if (color !== DEFAULT_COLOR) {
-    styles.push(`background:${color}`);
+  if (obj.color) {
+    styles.push(`background:${obj.color}`);
   }
-  if (obj.size !== undefined && obj.size !== DEFAULT_BADGE_SIZE) {
+  if (obj.size !== undefined) {
     styles.push(`width:${obj.size}px`, `height:${obj.size}px`);
+  }
+  if (obj.fontSize !== undefined) {
+    styles.push(`font-size:${obj.fontSize}px`);
   }
   return `<span class="mm-obj mm-badge" style="${styles.join("; ")};">${obj.n}</span>`;
 }
@@ -76,7 +73,7 @@ function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): str
     `left:${pct(obj.at.x)}`,
     `top:${pct(obj.at.y)}`,
   ];
-  if (obj.fontSize !== undefined && obj.fontSize !== DEFAULT_FONT_SIZE) {
+  if (obj.fontSize !== undefined) {
     styles.push(`font-size:${obj.fontSize}px`);
   }
   if (obj.color) {
@@ -89,15 +86,18 @@ function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): str
 }
 
 function renderFrameObject(obj: Extract<AnnotationObject, { type: "frame" }>): string {
-  const strokeWidth = obj.strokeWidth ?? DEFAULT_STROKE_WIDTH;
-  const color = resolveColor(obj.color);
   const styles = [
     `left:${pct(obj.rect.x)}`,
     `top:${pct(obj.rect.y)}`,
     `width:${pct(obj.rect.w)}`,
     `height:${pct(obj.rect.h)}`,
-    `border:${strokeWidth}px solid ${color}`,
   ];
+  if (obj.color || obj.strokeWidth !== undefined) {
+    // 色が未指定なら var(--mm-color) でテーマ色に追従させる
+    styles.push(
+      `border:${obj.strokeWidth ?? DEFAULT_STROKE_WIDTH}px solid ${obj.color ?? "var(--mm-color)"}`,
+    );
+  }
   if (obj.radius !== undefined && obj.radius > 0) {
     styles.push(`border-radius:${obj.radius}px`);
   }
@@ -116,23 +116,33 @@ function renderLinesSvg(
   const polylines: string[] = [];
 
   for (const obj of lineObjects) {
-    const color = resolveColor(obj.color);
-    const strokeWidth = obj.strokeWidth ?? DEFAULT_STROKE_WIDTH;
     const points = obj.points
       .map((point) => `${pctToPx(point.x, canvas.width)},${pctToPx(point.y, canvas.height)}`)
       .join(" ");
 
+    // 指定時のみ style 属性で出力する(属性ではなく style にするのは、
+    // テーマ CSS の var(--mm-color) 既定より優先させるため)
+    const styleParts: string[] = [];
+    if (obj.color) {
+      styleParts.push(`stroke:${obj.color}`);
+    }
+    if (obj.strokeWidth !== undefined) {
+      styleParts.push(`stroke-width:${obj.strokeWidth}`);
+    }
+    const styleAttr = styleParts.length > 0 ? ` style="${styleParts.join("; ")}"` : "";
+
     let markerAttr = "";
     if (obj.type === "arrow") {
       const markerId = `mm-arrow-${obj.id}`;
+      const markerFill = obj.color ? ` style="fill:${obj.color}"` : "";
       defs.push(
-        `<marker id="${markerId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="${color}"/></marker>`,
+        `<marker id="${markerId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
       );
       markerAttr = ` marker-end="url(#${markerId})"`;
     }
 
     polylines.push(
-      `<polyline points="${points}" data-mm-id="${escapeHtml(obj.id)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${markerAttr}/>`,
+      `<polyline points="${points}" data-mm-id="${escapeHtml(obj.id)}"${styleAttr}${markerAttr}/>`,
     );
   }
 
