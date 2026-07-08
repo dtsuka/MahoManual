@@ -116,6 +116,16 @@ describe("parseAnnotation", () => {
     ).toThrow(/type/i);
   });
 
+  it("accepts badge fontSize", () => {
+    const parsed = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [{ id: "b1", type: "badge", source: "manual", n: 1, at: { x: 1, y: 1 }, fontSize: 18 }],
+    });
+    const badge = parsed.objects[0];
+    expect(badge?.type === "badge" ? badge.fontSize : undefined).toBe(18);
+  });
+
   it("rejects recipe-sourced object without recipeRef", () => {
     // recipeRef の無い recipe オブジェクトは再撮影マージで置換も削除もされない
     // ゾンビになるため、スキーマで拒否する

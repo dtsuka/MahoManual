@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readAnnotationFile, renumberAllBadgesFiles, renumberBadges } from "./project.js";
+import {
+  readAnnotationFile,
+  readProjectTheme,
+  renumberAllBadgesFiles,
+  renumberBadges,
+} from "./project.js";
 
 describe("renumberBadges", () => {
   it("renumbers badges in array order starting from 1", () => {
@@ -19,6 +24,38 @@ describe("renumberBadges", () => {
 
     const badges = result.objects.filter((obj) => obj.type === "badge");
     expect(badges.map((obj) => obj.n)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("readProjectTheme", () => {
+  it("reads annotation color and fontSize from project.yaml", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        "title: t\nannotation:\n  color: \"#112233\"\n  fontSize: 16\n",
+        "utf8",
+      );
+      expect(readProjectTheme(root)).toEqual({ color: "#112233", fontSize: 16 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores invalid values and missing sections", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-bad-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        "title: t\nannotation:\n  color: pink\n  fontSize: -1\n",
+        "utf8",
+      );
+      expect(readProjectTheme(root)).toEqual({});
+      rmSync(join(root, "project.yaml"));
+      expect(readProjectTheme(root)).toEqual({});
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

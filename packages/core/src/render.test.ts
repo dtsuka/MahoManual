@@ -98,6 +98,69 @@ describe("renderFigure", () => {
     expect(html).toContain('data-mm-id="a1"');
   });
 
+  it("relies on theme CSS variables for default colors (no inline defaults)", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        { id: "f1", type: "frame", source: "manual", rect: { x: 10, y: 10, w: 20, h: 10 } },
+        {
+          id: "l1",
+          type: "line",
+          source: "manual",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        },
+        { id: "a1", type: "arrow", source: "manual", points: [{ x: 0, y: 0 }, { x: 50, y: 50 }] },
+      ],
+    });
+    const html = renderFigure(annotation, { naturalSizes: {} });
+
+    // 未指定時は inline を出さず、テーマ CSS(var(--mm-color) 等)に任せる
+    const frame = html.match(/<span class="mm-obj mm-frame"[^>]*>/)?.[0] ?? "";
+    expect(frame).not.toContain("border");
+    expect(html).not.toContain('stroke="');
+    expect(html).not.toContain('fill="#');
+  });
+
+  it("emits inline styles only for explicitly specified colors and widths", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "f1",
+          type: "frame",
+          source: "manual",
+          rect: { x: 10, y: 10, w: 20, h: 10 },
+          color: "#FF0000",
+        },
+        {
+          id: "l1",
+          type: "line",
+          source: "manual",
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 100 },
+          ],
+          color: "#00FF00",
+          strokeWidth: 4,
+        },
+        { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 5, y: 5 }, fontSize: 18 },
+      ],
+    });
+    const html = renderFigure(annotation, { naturalSizes: {} });
+
+    // color のみ指定の frame: 線幅は既定 2px、色はインラインで上書き
+    expect(html).toContain("border:2px solid #FF0000");
+    // line の指定色・太さは style 属性で(CSS の var 既定に勝つように)
+    expect(html).toMatch(/<polyline[^>]*style="stroke:#00FF00; stroke-width:4"/);
+    // badge の fontSize
+    expect(html).toContain("font-size:18px");
+  });
+
   it("applies fence options: mm-print-s, mm-border, figcaption", () => {
     const annotation = parseAnnotation(
       JSON.parse(readFileSync(join(fixturesDir, "valid-minimal.json"), "utf8")),

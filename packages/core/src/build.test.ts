@@ -134,6 +134,27 @@ describe("buildProject", () => {
     }
   });
 
+  it("embeds annotation theme overrides from project.yaml", async () => {
+    const root = createTempProject(
+      ["# テーマ", "", "```annotated-image", "src: demo", "```", ""].join("\n"),
+    );
+    writeFileSync(
+      join(root, "project.yaml"),
+      "title: theme test\nannotation:\n  color: \"#112233\"\n  fontSize: 16\n",
+      "utf8",
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-themed-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      expect(html).toContain("--mm-color: #112233");
+      expect(html).toContain("--mm-font-size: 16px");
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("derives title from first real heading (not code blocks) and escapes it", async () => {
     const root = createTempProject(
       [
