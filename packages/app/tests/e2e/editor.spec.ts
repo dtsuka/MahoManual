@@ -392,3 +392,60 @@ test("annotation editor: external change while dirty shows banner instead of dis
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
   }
 });
+
+test("annotation editor: keyboard move, copy/paste, multi-select and crop editing", async ({
+  page,
+  request,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{
+      id: string;
+      type: string;
+      at?: { x: number; y: number };
+      crop?: { x: number; y: number; w: number; h: number };
+    }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-b1").click();
+    await page.getByTestId("object-item-b2").click({ modifiers: ["Meta"] });
+    await expect(page.getByTestId("selection-count")).toHaveText("2個選択");
+
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Meta+c");
+    await page.keyboard.press("Meta+v");
+    await expect(page.getByTestId("selection-count")).toHaveText("2個選択");
+
+    await page.getByTestId("object-item-img-main").click();
+    await page.getByTestId("crop-x").fill("10");
+    await page.getByTestId("crop-y").fill("20");
+    await page.getByTestId("crop-w").fill("800");
+    await page.getByTestId("crop-h").fill("600");
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    expect(after.objects).toHaveLength(before.objects.length + 2);
+    expect(after.objects.find((obj) => obj.id === "b1")?.at).toEqual({ x: 8.6, y: 23 });
+    expect(after.objects.find((obj) => obj.id === "b2")?.at).toEqual({ x: 8.6, y: 27.5 });
+    expect(after.objects.find((obj) => obj.id === "img-main")?.crop).toEqual({
+      x: 10,
+      y: 20,
+      w: 800,
+      h: 600,
+    });
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
