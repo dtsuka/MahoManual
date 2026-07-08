@@ -327,54 +327,116 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         </div>
       </header>
       {status ? <div className="bg-green-50 px-4 py-2 text-green-700">{status}</div> : null}
-      <div className="relative flex-1 overflow-auto p-6">
-        <div
-          ref={figureRef}
-          className="mm-editor-figure relative mx-auto"
-          style={{ maxWidth: annotation.canvas.width }}
-          dangerouslySetInnerHTML={{ __html: figureHtml }}
-          onClick={(event) => {
-            const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
-            setSelectedId(target?.dataset.mmId ?? null);
-          }}
-        />
-        {selected?.type === "frame" && targetRef.current && figureRef.current ? (
-          <Moveable
-            target={targetRef.current}
-            draggable
-            resizable
-            throttleDrag={0}
-            throttleResize={0}
-            onDrag={({ target, left, top }) => {
-              target.style.left = `${left}px`;
-              target.style.top = `${top}px`;
-            }}
-            onDragEnd={({ target }) => {
-              const rect = pctRectFromTarget(target as HTMLElement);
-              updateObject(selected.id, (obj) => {
-                if (obj.type !== "frame") {
-                  return obj;
-                }
-                return { ...obj, rect };
-              });
-            }}
-            onResize={({ target, width, height, drag }) => {
-              target.style.width = `${width}px`;
-              target.style.height = `${height}px`;
-              target.style.left = `${drag.left}px`;
-              target.style.top = `${drag.top}px`;
-            }}
-            onResizeEnd={({ target }) => {
-              const rect = pctRectFromTarget(target as HTMLElement);
-              updateObject(selected.id, (obj) => {
-                if (obj.type !== "frame") {
-                  return obj;
-                }
-                return { ...obj, rect };
-              });
+      <div className="flex flex-1 overflow-hidden">
+        <div className="relative flex-1 overflow-auto p-6">
+          <div
+            ref={figureRef}
+            className="mm-editor-figure relative mx-auto"
+            style={{ maxWidth: annotation.canvas.width }}
+            dangerouslySetInnerHTML={{ __html: figureHtml }}
+            onClick={(event) => {
+              const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
+              setSelectedId(target?.dataset.mmId ?? null);
             }}
           />
-        ) : null}
+          {selected?.type === "frame" && targetRef.current && figureRef.current ? (
+            <Moveable
+              target={targetRef.current}
+              draggable
+              resizable
+              throttleDrag={0}
+              throttleResize={0}
+              onDrag={({ target, left, top }) => {
+                target.style.left = `${left}px`;
+                target.style.top = `${top}px`;
+              }}
+              onDragEnd={({ target }) => {
+                const rect = pctRectFromTarget(target as HTMLElement);
+                updateObject(selected.id, (obj) => {
+                  if (obj.type !== "frame") {
+                    return obj;
+                  }
+                  return { ...obj, rect };
+                });
+              }}
+              onResize={({ target, width, height, drag }) => {
+                target.style.width = `${width}px`;
+                target.style.height = `${height}px`;
+                target.style.left = `${drag.left}px`;
+                target.style.top = `${drag.top}px`;
+              }}
+              onResizeEnd={({ target }) => {
+                const rect = pctRectFromTarget(target as HTMLElement);
+                updateObject(selected.id, (obj) => {
+                  if (obj.type !== "frame") {
+                    return obj;
+                  }
+                  return { ...obj, rect };
+                });
+              }}
+            />
+          ) : null}
+        </div>
+        <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">プロパティ</h2>
+          {!selected ? (
+            <p className="text-sm text-slate-500">
+              キャンバス上のオブジェクトをクリックして選択してください。位置はドラッグ、枠はハンドルでリサイズできます。
+            </p>
+          ) : null}
+          {selected?.type === "text" ? (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">テキスト内容</span>
+              <textarea
+                className="min-h-24 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+                value={selected.content}
+                onChange={(event) => {
+                  const content = event.target.value;
+                  updateObject(selected.id, (obj) => {
+                    if (obj.type !== "text") {
+                      return obj;
+                    }
+                    return { ...obj, content };
+                  });
+                }}
+              />
+              <span className="mt-1 block text-xs text-slate-500">
+                キャンバス上では直接入力できません。ここで編集して「保存」を押してください。
+              </span>
+            </label>
+          ) : null}
+          {selected?.type === "badge" ? (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-slate-700">番号 (n)</span>
+              <input
+                type="number"
+                min={1}
+                className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                value={selected.n}
+                onChange={(event) => {
+                  const n = Number.parseInt(event.target.value, 10);
+                  if (Number.isNaN(n) || n < 1) {
+                    return;
+                  }
+                  updateObject(selected.id, (obj) => {
+                    if (obj.type !== "badge") {
+                      return obj;
+                    }
+                    return { ...obj, n };
+                  });
+                }}
+              />
+            </label>
+          ) : null}
+          {selected?.type === "frame" ? (
+            <p className="text-sm text-slate-500">枠の位置・サイズはキャンバス上でドラッグ／リサイズしてください。</p>
+          ) : null}
+          {selected?.type === "line" || selected?.type === "arrow" ? (
+            <p className="text-sm text-slate-500">
+              線・矢印は現在、GUI 上での点編集には未対応です。JSON を直接編集するか CLI / MCP から変更してください。
+            </p>
+          ) : null}
+        </aside>
       </div>
     </div>
   );
