@@ -39,7 +39,8 @@ describe("mergeAnnotations", () => {
     const merged = mergeAnnotations(existing, captured, "1-1");
     expect(merged.objects.find((o) => o.id === "manual-1")).toEqual(existing.objects[2]);
     expect(merged.objects.find((o) => o.recipeRef === "1-1#1")).toBeUndefined();
-    expect(merged.objects.find((o) => o.recipeRef === "1-1#0")?.at).toEqual({ x: 11, y: 11 });
+    const replaced = merged.objects.find((o) => o.recipeRef === "1-1#0");
+    expect(replaced?.type === "badge" ? replaced.at : undefined).toEqual({ x: 11, y: 11 });
     expect(merged.canvas).toEqual(captured.canvas);
   });
 
