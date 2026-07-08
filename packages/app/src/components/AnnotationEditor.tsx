@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { renderFigure } from "@mahomanual/core/render";
-import { THEME_FIGURE_CSS } from "@mahomanual/core/theme";
+import {
+  annotationThemeCss,
+  DEFAULT_ANNOTATION_COLOR,
+  DEFAULT_ANNOTATION_FONT_SIZE,
+  THEME_FIGURE_CSS,
+  type AnnotationTheme,
+} from "@mahomanual/core/theme";
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
 import {
   createObjectId,
@@ -41,6 +47,7 @@ interface Pt {
 interface AnnotationPayload {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
+  theme?: AnnotationTheme;
 }
 
 // ドラッグ中の一時形状。figure DOM はドラッグ中 style を直接更新し、
@@ -117,6 +124,7 @@ function objectLabel(obj: AnnotationObject): string {
 export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEditorProps) {
   const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
+  const [theme, setTheme] = useState<AnnotationTheme>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -159,6 +167,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     annotationRef.current = payload.annotation;
     setAnnotation(payload.annotation);
     setNaturalSizes(payload.naturalSizes);
+    setTheme(payload.theme ?? {});
     dirtyRef.current = false;
     setDirty(false);
     setExternalPayload(null);
@@ -688,6 +697,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   return (
     <div className="flex h-full min-h-screen flex-col" data-testid="annotation-editor">
       <style>{THEME_FIGURE_CSS}</style>
+      {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         {onBack ? (
           <button type="button" className="rounded border px-3 py-1" onClick={onBack}>
@@ -878,6 +888,52 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <input
+                    type="color"
+                    data-testid="prop-color"
+                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                    onChange={(event) => {
+                      const color = event.target.value;
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "badge" ? { ...obj, color } : obj,
+                      );
+                    }}
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">直径 (px)</span>
+                  <NumberField
+                    label=""
+                    value={selected.size ?? 22}
+                    step={1}
+                    min={8}
+                    onChange={(v) =>
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "badge" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-700">フォントサイズ (px)</span>
+                <NumberField
+                  label=""
+                  value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
+                  step={1}
+                  min={6}
+                  testId="prop-font-size"
+                  onChange={(v) =>
+                    updateObject(selected.id, (obj) =>
+                      obj.type === "badge" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
+                    )
+                  }
+                />
+              </div>
             </div>
           ) : null}
           {selected?.type === "text" ? (
@@ -905,21 +961,38 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
                 </div>
               </div>
-              <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">文字色</span>
-                <input
-                  type="color"
-                  data-testid="prop-color"
-                  className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
-                  value={selected.color ?? "#222222"}
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    updateObject(selected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, color } : obj,
-                    );
-                  }}
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">文字色</span>
+                  <input
+                    type="color"
+                    data-testid="prop-color"
+                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                    onChange={(event) => {
+                      const color = event.target.value;
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "text" ? { ...obj, color } : obj,
+                      );
+                    }}
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">フォントサイズ (px)</span>
+                  <NumberField
+                    label=""
+                    value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
+                    step={1}
+                    min={6}
+                    testId="prop-font-size"
+                    onChange={(v) =>
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "text" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
+                      )
+                    }
+                  />
+                </div>
+              </div>
             </div>
           ) : null}
           {selected?.type === "frame" ? (
@@ -931,6 +1004,40 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
                   <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
                   <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">線色</span>
+                  <input
+                    type="color"
+                    data-testid="prop-color"
+                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                    onChange={(event) => {
+                      const color = event.target.value;
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "frame" ? { ...obj, color } : obj,
+                      );
+                    }}
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">線幅 (px)</span>
+                  <NumberField
+                    label=""
+                    value={selected.strokeWidth ?? 2}
+                    step={1}
+                    min={1}
+                    testId="prop-stroke-width"
+                    onChange={(v) =>
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "frame"
+                          ? { ...obj, strokeWidth: Math.max(1, Math.round(v)) }
+                          : obj,
+                      )
+                    }
+                  />
                 </div>
               </div>
               <p className="text-xs text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
@@ -959,7 +1066,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                     type="color"
                     data-testid="prop-color"
                     className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
-                    value={selected.color ?? "#E91E8C"}
+                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => updateLineStyle({ color: event.target.value })}
                   />
                 </label>

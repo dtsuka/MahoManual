@@ -4,7 +4,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { THEME_FIGURE_CSS } from "@mahomanual/core/theme";
+import { annotationThemeCss, THEME_FIGURE_CSS, type AnnotationTheme } from "@mahomanual/core/theme";
 import {
   fetchManual,
   fetchPreview,
@@ -20,6 +20,7 @@ interface ManualEditorProps {
 export function ManualEditor({ project }: ManualEditorProps) {
   const [markdownText, setMarkdownText] = useState<string | null>(null);
   const [previewHtml, setPreviewHtml] = useState("");
+  const [previewTheme, setPreviewTheme] = useState<AnnotationTheme>({});
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -56,6 +57,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
             return;
           }
           setPreviewHtml(result.html);
+          setPreviewTheme(result.theme ?? {});
           setPreviewError(null);
         })
         .catch((error: unknown) => {
@@ -237,6 +239,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
         <div ref={editorHostRef} className="h-full overflow-auto" data-testid="md-editor" />
         <div className="preview-pane h-full overflow-auto bg-white p-4" data-testid="preview-pane">
           <style>{THEME_FIGURE_CSS}</style>
+          {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
           <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
       </div>

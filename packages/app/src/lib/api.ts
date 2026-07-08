@@ -1,4 +1,5 @@
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
+import type { AnnotationTheme } from "@mahomanual/core/theme";
 
 export interface ProjectInfo {
   name: string;
@@ -16,6 +17,7 @@ export interface ManualContents {
 export interface AnnotationResponse {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
+  theme?: AnnotationTheme;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -73,7 +75,10 @@ export function renumberAllAnnotations(project: string): Promise<RenumberAllResp
   });
 }
 
-export function fetchPreview(project: string, markdown: string): Promise<{ html: string }> {
+export function fetchPreview(
+  project: string,
+  markdown: string,
+): Promise<{ html: string; theme?: AnnotationTheme }> {
   return request(`/api/projects/${encodeURIComponent(project)}/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -12,6 +12,7 @@ import {
   listManuals,
   readAnnotationFile,
   readManual,
+  readProjectTheme,
   renumberAllBadgesFiles,
   savePastedImage,
   writeAnnotationFile,
@@ -101,7 +102,8 @@ export function createApp() {
       const annotation = readAnnotationFile(root, id);
       const imageSources = collectImageSources(annotation);
       const naturalSizes = getNaturalSizes(root, imageSources);
-      return c.json({ annotation, naturalSizes });
+      const theme = readProjectTheme(root);
+      return c.json({ annotation, naturalSizes, theme });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "not found" }, 404);
     }
@@ -227,7 +229,7 @@ export function createApp() {
       const html = await buildPreviewHtml(root, body.markdown, {
         rewriteImageSrc: (src) => projectFileUrl(project, src),
       });
-      return c.json({ html });
+      return c.json({ html, theme: readProjectTheme(root) });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "preview failed" }, 400);
     }
