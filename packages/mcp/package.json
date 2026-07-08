@@ -1,0 +1,25 @@
+{
+  "name": "@mahomanual/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mahomanual-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:@modelcontextprotocol/sdk --external:playwright --external:playwright-core",
+    "test": "vitest run",
+    "start": "node ./dist/index.js"
+  },
+  "dependencies": {
+    "@mahomanual/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
