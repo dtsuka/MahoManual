@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "canvas": { "width": 1280, "height": 960 },
+  "objects": [
+    {
+      "id": "img-main",
+      "type": "image",
+      "source": "manual",
+      "src": "img/raw/facility-add.png",
+      "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
+      "crop": { "x": 0, "y": 120, "w": 1280, "h": 960 }
+    },
+    { "id": "b1", "type": "badge", "source": "manual", "n": 1, "at": { "x": 17.3, "y": 16.0 } },
+    { "id": "b2", "type": "badge", "source": "manual", "n": 2, "at": { "x": 17.3, "y": 27.1 } },
+    { "id": "f1", "type": "frame", "source": "manual", "rect": { "x": 0.3, "y": 18.4, "w": 12.2, "h": 3.0 } },
+    {
+      "id": "a1",
+      "type": "arrow",
+      "source": "manual",
+      "points": [
+        { "x": 29.5, "y": 92.0 },
+        { "x": 62.0, "y": 92.0 },
+        { "x": 62.0, "y": 2.0 },
+        { "x": 82.5, "y": 2.0 },
+        { "x": 82.5, "y": 6.5 }
+      ]
+    }
+  ]
+}
