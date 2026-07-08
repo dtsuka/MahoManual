@@ -16,6 +16,7 @@ import {
   rewriteFigureHtml,
   saveAnnotation,
   replaceAnnotationImage,
+  renameAnnotation,
   subscribeProjectWatch,
 } from "../lib/api.js";
 import { moveItem } from "../lib/collection.js";
@@ -42,6 +43,7 @@ interface AnnotationEditorProps {
   project: string;
   annotationId: string;
   onBack?: () => void;
+  onRenamed?: (id: string) => void;
 }
 
 type MovableObject = Extract<AnnotationObject, { type: "badge" | "text" | "frame" }>;
@@ -147,12 +149,13 @@ function objectLabel(obj: AnnotationObject): string {
   }
 }
 
-export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEditorProps) {
+export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: AnnotationEditorProps) {
   const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("");
+  const [nextAnnotationId, setNextAnnotationId] = useState(annotationId);
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState<DraftShape | null>(null);
@@ -220,6 +223,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   };
 
   useEffect(() => {
+    setNextAnnotationId(annotationId);
     void fetchPayload()
       .then(applyPayload)
       .catch((err: Error) => setError(err.message));
@@ -784,6 +788,21 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
   };
 
+  const handleRename = async () => {
+    const nextId = nextAnnotationId.trim();
+    if (!nextId || nextId === annotationId || dirty) {
+      return;
+    }
+    try {
+      const result = await renameAnnotation(project, annotationId, nextId);
+      annotationRef.current = result.annotation;
+      setStatus("画像IDを変更しました");
+      onRenamed?.(result.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "画像IDの変更に失敗しました");
+    }
+  };
+
   // 一覧は前面→背面(配列の逆順)で表示するため、表示 index を実配列に変換して並べ替える
   const reorderByDisplayIndex = (from: number, to: number) => {
     if (from === to) {
@@ -828,6 +847,25 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         <h1 className="text-lg font-semibold">
           {project} / {annotationId}
         </h1>
+        <div className="flex items-center gap-1">
+          <input
+            data-testid="rename-id-input"
+            className="w-48 rounded border border-slate-300 px-2 py-1 text-sm"
+            value={nextAnnotationId}
+            aria-label="画像ID"
+            onChange={(event) => setNextAnnotationId(event.target.value)}
+          />
+          <button
+            type="button"
+            data-testid="rename-id-button"
+            className="rounded border border-slate-300 bg-white px-2 py-1 text-sm disabled:opacity-40"
+            disabled={dirty || !nextAnnotationId.trim() || nextAnnotationId.trim() === annotationId}
+            title={dirty ? "先に変更を保存してください" : "画像IDを変更"}
+            onClick={() => void handleRename()}
+          >
+            ID変更
+          </button>
+        </div>
         {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
         <div className="ml-auto flex gap-2">
           <button

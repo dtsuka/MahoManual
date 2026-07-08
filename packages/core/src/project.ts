@@ -2,11 +2,13 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  renameSync,
   readdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
@@ -127,6 +129,78 @@ export function writeAnnotationFile(projectRoot: string, id: string, annotation:
   const parsed = parseAnnotation(annotation);
   mkdirSync(join(projectRoot, "annotations"), { recursive: true });
   writeFileSync(annotationPath(projectRoot, id), `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+}
+
+export function renameAnnotationId(
+  projectRoot: string,
+  currentId: string,
+  nextId: string,
+): AnnotationFile {
+  if (currentId === nextId) {
+    return readAnnotationFile(projectRoot, currentId);
+  }
+  const currentPath = annotationPath(projectRoot, currentId);
+  const nextPath = annotationPath(projectRoot, nextId);
+  if (!existsSync(currentPath)) {
+    throw new Error(`注釈ファイルが見つかりません: ${currentId}`);
+  }
+  if (existsSync(nextPath)) {
+    throw new Error(`注釈IDが既に存在します: ${nextId}`);
+  }
+
+  const annotation = readAnnotationFile(projectRoot, currentId);
+  const imageRenames = new Map<string, string>();
+  for (const obj of annotation.objects) {
+    if (obj.type !== "image" || basename(obj.src, extname(obj.src)) !== currentId) {
+      continue;
+    }
+    imageRenames.set(obj.src, join(dirname(obj.src), `${nextId}${extname(obj.src)}`));
+  }
+  for (const directory of ["img/raw", "img"]) {
+    const absoluteDirectory = join(projectRoot, directory);
+    if (!existsSync(absoluteDirectory)) {
+      continue;
+    }
+    for (const name of readdirSync(absoluteDirectory)) {
+      if (basename(name, extname(name)) === currentId) {
+        imageRenames.set(join(directory, name), join(directory, `${nextId}${extname(name)}`));
+      }
+    }
+  }
+  for (const destination of imageRenames.values()) {
+    if (existsSync(join(projectRoot, destination))) {
+      throw new Error(`画像ファイルが既に存在します: ${destination}`);
+    }
+  }
+
+  const updated: AnnotationFile = {
+    ...annotation,
+    objects: annotation.objects.map((obj) =>
+      obj.type === "image" && imageRenames.has(obj.src)
+        ? { ...obj, src: imageRenames.get(obj.src)! }
+        : obj,
+    ),
+  };
+  writeAnnotationFile(projectRoot, nextId, updated);
+  for (const [source, destination] of imageRenames) {
+    renameSync(join(projectRoot, source), join(projectRoot, destination));
+  }
+
+  const manualPath = join(projectRoot, "manual.md");
+  const manual = readFileSync(manualPath, "utf8");
+  const escapedId = currentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const nextManual = manual.replace(
+    /```annotated-image[^\n]*\n[\s\S]*?```/g,
+    (block) => block.replace(
+      new RegExp(`^(\\s*src:\\s*)([\"']?)${escapedId}\\2(\\s*)$`, "gm"),
+      `$1$2${nextId}$2$3`,
+    ),
+  );
+  if (nextManual !== manual) {
+    writeFileSync(manualPath, nextManual, "utf8");
+  }
+  unlinkSync(currentPath);
+  return updated;
 }
 
 export function addAnnotationObject(

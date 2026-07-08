@@ -182,7 +182,16 @@ function AnnotationRoute() {
   if (!project || !id) {
     return null;
   }
-  return <AnnotationEditor project={project} annotationId={id} onBack={() => navigate(-1)} />;
+  return (
+    <AnnotationEditor
+      project={project}
+      annotationId={id}
+      onBack={() => navigate(-1)}
+      onRenamed={(nextId) =>
+        navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`, { replace: true })
+      }
+    />
+  );
 }
 
 function ManualRoute() {

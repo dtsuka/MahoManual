@@ -57,6 +57,21 @@ export function saveAnnotation(project: string, id: string, annotation: Annotati
   });
 }
 
+export function renameAnnotation(
+  project: string,
+  currentId: string,
+  nextId: string,
+): Promise<{ id: string; annotation: AnnotationFile }> {
+  return request(
+    `/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(currentId)}/id`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: nextId }),
+    },
+  );
+}
+
 export function renumberAnnotation(project: string, id: string): Promise<{ annotation: AnnotationFile; warning: string | null }> {
   return request(`/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(id)}/renumber`, {
     method: "POST",

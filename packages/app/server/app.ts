@@ -13,6 +13,7 @@ import {
   readAnnotationFile,
   readManual,
   readProjectTheme,
+  renameAnnotationId,
   renumberAllBadgesFiles,
   savePastedImage,
   writeAnnotationFile,
@@ -126,6 +127,30 @@ export function createApp() {
       return c.json({ annotation });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "validation failed" }, 400);
+    }
+  });
+
+  app.patch("/api/projects/:project/annotations/:id/id", async (c) => {
+    const project = c.req.param("project");
+    const currentId = c.req.param("id");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    const body = await c.req.json<{ id?: string }>();
+    const nextId = body.id?.trim() ?? "";
+    if (!isSafeName(currentId) || !isSafeName(nextId)) {
+      return c.json({ error: "不正な画像IDです" }, 400);
+    }
+    if (existsSync(join(root, "annotations", `${nextId}.json`)) && nextId !== currentId) {
+      return c.json({ error: `注釈IDが既に存在します: ${nextId}` }, 409);
+    }
+    try {
+      const annotation = renameAnnotationId(root, currentId, nextId);
+      return c.json({ id: nextId, annotation });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "rename failed";
+      return c.json({ error: message }, message.includes("既に存在") ? 409 : 400);
     }
   });
 
