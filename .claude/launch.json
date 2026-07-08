@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@mahomanual/app", "dev"],
+      "port": 5173,
+      "autoPort": true
+    }
+  ]
+}
