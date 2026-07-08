@@ -16,9 +16,14 @@ export function mergeAnnotations(
   const kept = existing.objects.filter((obj) => !belongsToRecipe(obj, recipeId));
   const incoming = captured.objects.filter((obj) => belongsToRecipe(obj, recipeId));
 
+  // 配列順 = 描画順(後が上)のため、撮影由来の image は必ず先頭(最下層)に置く。
+  // 単純に kept の後ろへ連結すると、全面 image が manual 注釈を覆い隠してしまう
+  const incomingImages = incoming.filter((obj) => obj.type === "image");
+  const incomingOverlays = incoming.filter((obj) => obj.type !== "image");
+
   return {
     version: 1,
     canvas: captured.canvas,
-    objects: [...kept, ...incoming],
+    objects: [...incomingImages, ...kept, ...incomingOverlays],
   };
 }
