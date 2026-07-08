@@ -86,3 +86,56 @@ test("manual editor: preview and figure click opens annotation editor", async ({
   await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 });
+
+test("manual editor: back from annotation editor restores the markdown editor", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await expect(page.locator(".cm-content")).toContainText("アイケア様");
+
+  await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  await page.getByRole("button", { name: "戻る" }).click();
+  await expect(page.getByTestId("md-editor")).toBeVisible();
+  // 戻った後も CodeMirror が本文を保持して再表示されること(空白にならない)
+  await expect(page.locator(".cm-content")).toContainText("アイケア様");
+});
+
+test("annotation editor: external change while dirty shows banner instead of discarding edits", async ({
+  page,
+  request,
+}) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const before = JSON.parse(
+    readFileSync(join(process.cwd(), "../../projects/example/annotations/1-1.json"), "utf8"),
+  ) as { objects: Array<{ id: string }> };
+
+  try {
+    // ローカル編集(未保存 = dirty)
+    await page.getByTestId("add-badge").click();
+    await expect(page.locator("text=未保存")).toBeVisible();
+
+    // 外部から別内容を書き込む
+    const external = {
+      ...before,
+      objects: [
+        ...before.objects,
+        { id: "ext-badge", type: "badge", source: "manual", n: 99, at: { x: 5, y: 5 } },
+      ],
+    };
+    const putResponse = await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, {
+      data: external,
+    });
+    expect(putResponse.ok()).toBeTruthy();
+
+    // 編集は破棄されず、確認バナーが出る
+    await expect(page.getByTestId("external-change-banner")).toBeVisible();
+
+    // 「外部の内容を読み込む」で反映される
+    await page.getByTestId("apply-external").click();
+    await expect(page.locator('[data-mm-id="ext-badge"]')).toBeVisible();
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});

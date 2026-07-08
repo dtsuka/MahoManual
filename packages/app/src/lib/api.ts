@@ -61,6 +61,18 @@ export function renumberAnnotation(project: string, id: string): Promise<{ annot
   });
 }
 
+export interface RenumberAllResponse {
+  totalBadges: number;
+  files: Array<{ id: string; badges: number }>;
+  warning: string | null;
+}
+
+export function renumberAllAnnotations(project: string): Promise<RenumberAllResponse> {
+  return request(`/api/projects/${encodeURIComponent(project)}/renumber`, {
+    method: "POST",
+  });
+}
+
 export function fetchPreview(project: string, markdown: string): Promise<{ html: string }> {
   return request(`/api/projects/${encodeURIComponent(project)}/preview`, {
     method: "POST",

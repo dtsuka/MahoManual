@@ -27,14 +27,24 @@ function isMovable(obj: AnnotationObject): obj is MovableObject {
   return obj.type === "badge" || obj.type === "text" || obj.type === "frame";
 }
 
+interface AnnotationPayload {
+  annotation: AnnotationFile;
+  naturalSizes: Record<string, { w: number; h: number }>;
+}
+
 export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEditorProps) {
   const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [dirty, setDirty] = useState(false);
+  // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
+  const [externalPayload, setExternalPayload] = useState<AnnotationPayload | null>(null);
   const figureRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLElement | null>(null);
+  const annotationRef = useRef<AnnotationFile | null>(null);
+  const dirtyRef = useRef(false);
 
   const figureHtml = useMemo(() => {
     if (!annotation) {
@@ -52,30 +62,63 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     );
   }, [annotation, naturalSizes, project]);
 
-  const load = async () => {
+  const fetchPayload = async (): Promise<AnnotationPayload> => {
     const response = await fetch(
       `/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(annotationId)}`,
     );
     if (!response.ok) {
       throw new Error("注釈の読み込みに失敗しました");
     }
-    const payload = (await response.json()) as {
-      annotation: AnnotationFile;
-      naturalSizes: Record<string, { w: number; h: number }>;
-    };
+    return (await response.json()) as AnnotationPayload;
+  };
+
+  const applyPayload = (payload: AnnotationPayload) => {
+    annotationRef.current = payload.annotation;
     setAnnotation(payload.annotation);
     setNaturalSizes(payload.naturalSizes);
+    dirtyRef.current = false;
+    setDirty(false);
+    setExternalPayload(null);
+  };
+
+  // GUI 上の編集はすべてここを通し、annotationRef(最新値)と dirty を同期する
+  const applyLocalChange = (updater: (current: AnnotationFile) => AnnotationFile) => {
+    setAnnotation((current) => {
+      if (!current) {
+        return current;
+      }
+      const next = updater(current);
+      annotationRef.current = next;
+      return next;
+    });
+    dirtyRef.current = true;
+    setDirty(true);
   };
 
   useEffect(() => {
-    void load().catch((err: Error) => setError(err.message));
+    void fetchPayload()
+      .then(applyPayload)
+      .catch((err: Error) => setError(err.message));
   }, [project, annotationId]);
 
   useEffect(() => {
     return subscribeProjectWatch(project, (event) => {
-      if (event.path === `annotations/${annotationId}.json`) {
-        void load().catch((err: Error) => setError(err.message));
+      if (event.path !== `annotations/${annotationId}.json`) {
+        return;
       }
+      void fetchPayload()
+        .then((payload) => {
+          // 自分の保存によるエコーは無視する
+          if (JSON.stringify(payload.annotation) === JSON.stringify(annotationRef.current)) {
+            return;
+          }
+          if (dirtyRef.current) {
+            setExternalPayload(payload);
+            return;
+          }
+          applyPayload(payload);
+        })
+        .catch((err: Error) => setError(err.message));
     });
   }, [project, annotationId]);
 
@@ -92,10 +135,10 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         return;
       }
       event.preventDefault();
-      setAnnotation({
-        ...annotation,
-        objects: annotation.objects.filter((obj) => obj.id !== selectedId),
-      });
+      applyLocalChange((current) => ({
+        ...current,
+        objects: current.objects.filter((obj) => obj.id !== selectedId),
+      }));
       setSelectedId(null);
     };
     window.addEventListener("keydown", handler);
@@ -147,19 +190,14 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
           window.removeEventListener("pointermove", onPointerMove);
           window.removeEventListener("pointerup", onPointerUp);
           const point = updatePosition(upEvent.clientX, upEvent.clientY);
-          setAnnotation((current) => {
-            if (!current) {
-              return current;
-            }
-            return {
-              ...current,
-              objects: current.objects.map((item) =>
-                item.id === objectId && (item.type === "badge" || item.type === "text")
-                  ? { ...item, at: point }
-                  : item,
-              ),
-            };
-          });
+          applyLocalChange((current) => ({
+            ...current,
+            objects: current.objects.map((item) =>
+              item.id === objectId && (item.type === "badge" || item.type === "text")
+                ? { ...item, at: point }
+                : item,
+            ),
+          }));
         };
 
         window.addEventListener("pointermove", onPointerMove);
@@ -200,10 +238,10 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const selected = annotation.objects.find((obj) => obj.id === selectedId) ?? null;
 
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
-    setAnnotation({
-      ...annotation,
-      objects: annotation.objects.map((obj) => (obj.id === objectId ? updater(obj) : obj)),
-    });
+    applyLocalChange((current) => ({
+      ...current,
+      objects: current.objects.map((obj) => (obj.id === objectId ? updater(obj) : obj)),
+    }));
   };
 
   const addObject = (type: MovableObject["type"]) => {
@@ -241,7 +279,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         return _exhaustive;
       }
     }
-    setAnnotation({ ...annotation, objects: [...annotation.objects, newObject] });
+    applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
     setSelectedId(id);
   };
 
@@ -257,7 +295,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         { x: 50, y: 20 },
       ],
     };
-    setAnnotation({ ...annotation, objects: [...annotation.objects, newObject] });
+    applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
     setSelectedId(id);
   };
 
@@ -277,7 +315,12 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
 
   const handleSave = async () => {
     try {
-      await saveAnnotation(project, annotationId, annotation);
+      const saved = await saveAnnotation(project, annotationId, annotationRef.current ?? annotation);
+      // サーバーで zod 正規化された内容を保持し、保存エコーの同一判定を確実にする
+      annotationRef.current = saved.annotation;
+      setAnnotation(saved.annotation);
+      dirtyRef.current = false;
+      setDirty(false);
       setStatus("保存しました");
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
@@ -297,6 +340,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         <h1 className="text-lg font-semibold">
           {project} / {annotationId}
         </h1>
+        {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
         <div className="ml-auto flex gap-2">
           <button
             type="button"
@@ -329,6 +373,29 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         </div>
       </header>
       {status ? <div className="bg-green-50 px-4 py-2 text-green-700">{status}</div> : null}
+      {externalPayload ? (
+        <div
+          className="flex items-center gap-3 bg-amber-50 px-4 py-2 text-amber-800"
+          data-testid="external-change-banner"
+        >
+          <span>外部で注釈が変更されました。読み込むと未保存の編集は失われます。</span>
+          <button
+            type="button"
+            className="rounded border border-amber-400 px-2 py-0.5"
+            data-testid="apply-external"
+            onClick={() => applyPayload(externalPayload)}
+          >
+            外部の内容を読み込む
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 px-2 py-0.5"
+            onClick={() => setExternalPayload(null)}
+          >
+            無視する
+          </button>
+        </div>
+      ) : null}
       <div className="flex flex-1 overflow-hidden">
         <div className="relative flex-1 overflow-auto p-6">
           <div

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Route, Routes, useParams } from "react-router-dom";
+import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { fetchProjects, type ProjectInfo } from "./lib/api.js";
 import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
@@ -61,10 +61,11 @@ function AnnotationLinks({ project }: { project: string }) {
 
 function AnnotationRoute() {
   const { project, id } = useParams<{ project: string; id: string }>();
+  const navigate = useNavigate();
   if (!project || !id) {
     return null;
   }
-  return <AnnotationEditor project={project} annotationId={id} />;
+  return <AnnotationEditor project={project} annotationId={id} onBack={() => navigate(-1)} />;
 }
 
 function ManualRoute() {
