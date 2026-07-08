@@ -33,7 +33,7 @@ body {
    vector-effect で表示上の太さを一定に保ち、細い線でも掴みやすくする */
 .mm-editor-figure .mm-lines polyline.mm-editor-hit {
   stroke: transparent;
-  stroke-width: 14;
+  stroke-width: 18;
   vector-effect: non-scaling-stroke;
   fill: none;
   cursor: move;

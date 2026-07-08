@@ -282,160 +282,153 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       .forEach((element) => element.setAttribute("points", value));
   };
 
-  // figure DOM(dangerouslySetInnerHTML)へのドラッグ配線。
-  // badge/text は中心移動、frame は矩形移動、line/arrow は全点の平行移動
+  // line/arrow は stroke 上でしか反応せず掴みにくいため、
+  // 透明の太いヒット用 polyline(画面上 18px 固定)を SVG 最前面に注入する
   useEffect(() => {
-    if (!figureRef.current || !annotation || !figureHtml) {
+    const root = figureRef.current;
+    if (!root || !figureHtml) {
       return;
     }
-    const root = figureRef.current;
-    const cleanups: Array<() => void> = [];
-
-    // line/arrow は stroke 上でしか反応せず掴みにくいため、
-    // 透明の太いヒット用 polyline(画面上 14px 固定)を SVG 最前面に注入する
     const linesSvg = root.querySelector("svg.mm-lines");
-    if (linesSvg && !linesSvg.querySelector(".mm-editor-hit")) {
-      for (const polyline of [...linesSvg.querySelectorAll("polyline[data-mm-id]")]) {
-        const hit = polyline.cloneNode(false) as SVGPolylineElement;
-        hit.classList.add("mm-editor-hit");
-        hit.removeAttribute("marker-end");
-        hit.removeAttribute("stroke");
-        hit.removeAttribute("stroke-width");
-        linesSvg.appendChild(hit);
-      }
+    if (!linesSvg || linesSvg.querySelector(".mm-editor-hit")) {
+      return;
     }
+    for (const polyline of [...linesSvg.querySelectorAll("polyline[data-mm-id]")]) {
+      const hit = polyline.cloneNode(false) as SVGPolylineElement;
+      hit.classList.add("mm-editor-hit");
+      hit.removeAttribute("marker-end");
+      hit.removeAttribute("stroke");
+      hit.removeAttribute("stroke-width");
+      hit.removeAttribute("style");
+      linesSvg.appendChild(hit);
+    }
+  }, [figureHtml]);
 
-    for (const element of root.querySelectorAll<Element>("[data-mm-id]")) {
-      const objectId = element.getAttribute("data-mm-id");
-      if (!objectId) {
-        continue;
-      }
-      const obj = annotation.objects.find((item) => item.id === objectId);
-      if (!obj || obj.type === "image") {
-        continue;
-      }
+  // figure 上のドラッグはイベント委任で受ける。
+  // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
+  // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
+  const handleFigurePointerDown = (event: ReactPointerEvent) => {
+    const target = (event.target as Element).closest("[data-mm-id]");
+    const current = annotationRef.current;
+    if (!target || !current) {
+      return;
+    }
+    const objectId = target.getAttribute("data-mm-id");
+    if (!objectId) {
+      return;
+    }
+    const obj = current.objects.find((item) => item.id === objectId);
+    if (!obj || obj.type === "image") {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedId(objectId);
+    const startPct = pctFromClient(event.clientX, event.clientY);
 
-      const onPointerDown = (event: Event) => {
-        const pointer = event as PointerEvent;
-        pointer.preventDefault();
-        pointer.stopPropagation();
-        setSelectedId(objectId);
-        const startPct = pctFromClient(pointer.clientX, pointer.clientY);
-
-        if (obj.type === "badge" || obj.type === "text") {
-          // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
-          const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
-          const el = element as HTMLElement;
-          startPointerDrag(pointer, {
-            onMove: (pct) => {
-              el.style.left = `${pct.x + grab.x}%`;
-              el.style.top = `${pct.y + grab.y}%`;
-            },
-            onEnd: (pct, moved) => {
-              if (!moved) {
-                return;
-              }
-              const at = { x: pct.x + grab.x, y: pct.y + grab.y };
-              applyLocalChange((current) => ({
-                ...current,
-                objects: current.objects.map((item) =>
-                  item.id === objectId && (item.type === "badge" || item.type === "text")
-                    ? { ...item, at }
-                    : item,
-                ),
-              }));
-            },
-          });
-          return;
-        }
-
-        if (obj.type === "frame") {
-          const rect0 = obj.rect;
-          const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
-          const el = element as HTMLElement;
-          const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
-          startPointerDrag(pointer, {
-            onMove: (pct) => {
-              const next = rectFor(pct);
-              el.style.left = `${next.x}%`;
-              el.style.top = `${next.y}%`;
-              setDraft({ rect: next });
-            },
-            onEnd: (pct, moved) => {
-              setDraft(null);
-              if (!moved) {
-                return;
-              }
-              const next = rectFor(pct);
-              applyLocalChange((current) => ({
-                ...current,
-                objects: current.objects.map((item) =>
-                  item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
-                ),
-              }));
-            },
-          });
-          return;
-        }
-
-        // line / arrow: Option+クリックで最も近い線分に点を挿入
-        if (pointer.altKey) {
-          const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
-          applyLocalChange((current) => ({
-            ...current,
-            objects: current.objects.map((item) =>
-              item.id === objectId && (item.type === "line" || item.type === "arrow")
-                ? {
-                    ...item,
-                    points: [
-                      ...item.points.slice(0, insertAt),
-                      startPct,
-                      ...item.points.slice(insertAt),
-                    ],
-                  }
+    if (obj.type === "badge" || obj.type === "text") {
+      // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
+      const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
+      const el = target as HTMLElement;
+      startPointerDrag(event, {
+        onMove: (pct) => {
+          el.style.left = `${pct.x + grab.x}%`;
+          el.style.top = `${pct.y + grab.y}%`;
+        },
+        onEnd: (pct, moved) => {
+          if (!moved) {
+            return;
+          }
+          const at = { x: pct.x + grab.x, y: pct.y + grab.y };
+          applyLocalChange((latest) => ({
+            ...latest,
+            objects: latest.objects.map((item) =>
+              item.id === objectId && (item.type === "badge" || item.type === "text")
+                ? { ...item, at }
                 : item,
             ),
           }));
-          return;
-        }
-
-        // line / arrow: 全点を平行移動
-        const points0 = obj.points;
-        const pointsFor = (pct: Pt): Pt[] =>
-          points0.map((point) => ({
-            x: point.x + pct.x - startPct.x,
-            y: point.y + pct.y - startPct.y,
-          }));
-        startPointerDrag(pointer, {
-          onMove: (pct) => {
-            const next = pointsFor(pct);
-            setPolylinePoints(objectId, next);
-            setDraft({ points: next });
-          },
-          onEnd: (pct, moved) => {
-            setDraft(null);
-            if (!moved) {
-              return;
-            }
-            const next = pointsFor(pct);
-            applyLocalChange((current) => ({
-              ...current,
-              objects: current.objects.map((item) =>
-                item.id === objectId && (item.type === "line" || item.type === "arrow")
-                  ? { ...item, points: next }
-                  : item,
-              ),
-            }));
-          },
-        });
-      };
-
-      element.addEventListener("pointerdown", onPointerDown);
-      cleanups.push(() => element.removeEventListener("pointerdown", onPointerDown));
+        },
+      });
+      return;
     }
 
-    return () => cleanups.forEach((cleanup) => cleanup());
-  }, [annotation, figureHtml]);
+    if (obj.type === "frame") {
+      const rect0 = obj.rect;
+      const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
+      const el = target as HTMLElement;
+      const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
+      startPointerDrag(event, {
+        onMove: (pct) => {
+          const next = rectFor(pct);
+          el.style.left = `${next.x}%`;
+          el.style.top = `${next.y}%`;
+          setDraft({ rect: next });
+        },
+        onEnd: (pct, moved) => {
+          setDraft(null);
+          if (!moved) {
+            return;
+          }
+          const next = rectFor(pct);
+          applyLocalChange((latest) => ({
+            ...latest,
+            objects: latest.objects.map((item) =>
+              item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
+            ),
+          }));
+        },
+      });
+      return;
+    }
+
+    // line / arrow: Option+クリックで最も近い線分に点を挿入
+    if (event.altKey) {
+      const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
+      applyLocalChange((latest) => ({
+        ...latest,
+        objects: latest.objects.map((item) =>
+          item.id === objectId && (item.type === "line" || item.type === "arrow")
+            ? {
+                ...item,
+                points: [...item.points.slice(0, insertAt), startPct, ...item.points.slice(insertAt)],
+              }
+            : item,
+        ),
+      }));
+      return;
+    }
+
+    // line / arrow: 全点を平行移動
+    const points0 = obj.points;
+    const pointsFor = (pct: Pt): Pt[] =>
+      points0.map((point) => ({
+        x: point.x + pct.x - startPct.x,
+        y: point.y + pct.y - startPct.y,
+      }));
+    startPointerDrag(event, {
+      onMove: (pct) => {
+        const next = pointsFor(pct);
+        setPolylinePoints(objectId, next);
+        setDraft({ points: next });
+      },
+      onEnd: (pct, moved) => {
+        setDraft(null);
+        if (!moved) {
+          return;
+        }
+        const next = pointsFor(pct);
+        applyLocalChange((latest) => ({
+          ...latest,
+          objects: latest.objects.map((item) =>
+            item.id === objectId && (item.type === "line" || item.type === "arrow")
+              ? { ...item, points: next }
+              : item,
+          ),
+        }));
+      },
+    });
+  };
 
   useEffect(() => {
     if (!figureRef.current) {
@@ -768,6 +761,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
               ref={figureRef}
               className="mm-editor-figure"
               dangerouslySetInnerHTML={{ __html: figureHtml }}
+              onPointerDown={handleFigurePointerDown}
               onClick={(event) => {
                 const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
                 setSelectedId(target?.dataset.mmId ?? null);
