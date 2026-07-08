@@ -80,60 +80,60 @@
 
 ### 2-1. レシピスキーマ
 
-- [ ] test: §9.1のYAML例がparse成功 / 不正(url欠落、未知step、targetが不正)がエラー
-- [ ] 実装: schema.tsに追加(YAMLパースは `yaml` パッケージ)
+- [x] test: §9.1のYAML例がparse成功 / 不正(url欠落、未知step、targetが不正)がエラー
+- [x] 実装: schema.tsに追加(YAMLパースは `yaml` パッケージ)
 
 ### 2-2. 座標変換(純関数)
 
-- [ ] test: boundingBox {x:100,y:200,w:50,h:30}、領域 {x:0,y:0,w:1280,h:960} → badge(左中央-16px)at {x:6.5625, y:22.3958…} / frame(padding4)rect {x:7.5, y:20.416…, w:4.53125, h:3.958…} 相当の変換を小数点以下まで検証(値はテスト内で式から算出してよい)
-- [ ] 実装: `packages/core/src/capture-math.ts`(Playwright非依存の純関数)
+- [x] test: boundingBox {x:100,y:200,w:50,h:30}、領域 {x:0,y:0,w:1280,h:960} → badge(左中央-16px)at {x:6.5625, y:22.3958…} / frame(padding4)rect {x:7.5, y:20.416…, w:4.53125, h:3.958…} 相当の変換を小数点以下まで検証(値はテスト内で式から算出してよい)
+- [x] 実装: `packages/core/src/capture-math.ts`(Playwright非依存の純関数)
 
 ### 2-3. 撮影エンジンe2e
 
-- [ ] test: テスト用フィクスチャHTML(疑似CMS管理画面: フォーム+サイドメニュー、`tests/fixtures/fake-cms/index.html`)をnode:httpで配信し、レシピ(waitFor+fill+fullPage+badge2つ+frame1つ)を実行 → `img/raw/`と`img/`にPNG生成 / annotations JSONにsource:"recipe"・recipeRef・連番nのオブジェクト / canvasがviewport CSS px / cropが実ピクセル(2倍)
-- [ ] 実装: `packages/core/src/capture.ts`(deviceScaleFactor:2、storageState対応、§9.2のフロー)
+- [x] test: テスト用フィクスチャHTML(疑似CMS管理画面: フォーム+サイドメニュー、`tests/fixtures/fake-cms/index.html`)をnode:httpで配信し、レシピ(waitFor+fill+fullPage+badge2つ+frame1つ)を実行 → `img/raw/`と`img/`にPNG生成 / annotations JSONにsource:"recipe"・recipeRef・連番nのオブジェクト / canvasがviewport CSS px / cropが実ピクセル(2倍)
+- [x] 実装: `packages/core/src/capture.ts`(deviceScaleFactor:2、storageState対応、§9.2のフロー)
 
 ### 2-4. マージ規則(SPEC §9.4)
 
-- [ ] test(純関数): 既存JSON(recipe由来2件+manual1件)+新撮影結果(recipe由来は位置変更・1件減)→ recipe由来が置換され、消えたindexが削除され、manualが保持される
-- [ ] 実装: `mergeAnnotations(existing, captured, recipeId)`
+- [x] test(純関数): 既存JSON(recipe由来2件+manual1件)+新撮影結果(recipe由来は位置変更・1件減)→ recipe由来が置換され、消えたindexが削除され、manualが保持される
+- [x] 実装: `mergeAnnotations(existing, captured, recipeId)`
 
 ### 2-5. CLIコマンド
 
-- [ ] test: `manual capture <project> <recipeId>` がフィクスチャCMSで成功 / `--all` で複数レシピ実行
-- [ ] 実装: `manual login`(headed起動→ブラウザクローズでstorageState保存。自動テスト不要、動作手順をコマンドのヘルプに記載)と `manual capture`
+- [x] test: `manual capture <project> <recipeId>` がフィクスチャCMSで成功 / `--all` で複数レシピ実行
+- [x] 実装: `manual login`(headed起動→ブラウザクローズでstorageState保存。自動テスト不要、動作手順をコマンドのヘルプに記載)と `manual capture`
 
 **受け入れ基準**: 疑似CMSに対する撮影→注釈自動生成→build→PDF の一連が全てテストで通る。
 
 ## Phase 3 — MCPサーバー(SPEC §10)
 
-- [ ] test: InMemoryトランスポートでSDKクライアントを接続し、全ツールを実行 — list_manuals / read_manual / read_annotation / add_annotation(不正オブジェクトはエラーメッセージにissue含む)/ update_annotation / remove_annotation / set_crop / renumber_badges / build_html / export_pdf / run_capture
-- [ ] 実装: `packages/mcp`(@modelcontextprotocol/sdk、stdio)。全ツールはcore関数の呼び出しのみ
-- [ ] `.mcp.json` 設定例をREADMEに記載し、実際にClaude Codeから接続確認
+- [x] test: InMemoryトランスポートでSDKクライアントを接続し、全ツールを実行 — list_manuals / read_manual / read_annotation / add_annotation(不正オブジェクトはエラーメッセージにissue含む)/ update_annotation / remove_annotation / set_crop / renumber_badges / build_html / export_pdf / run_capture
+- [x] 実装: `packages/mcp`(@modelcontextprotocol/sdk、stdio)。全ツールはcore関数の呼び出しのみ
+- [x] `.mcp.json` 設定例をREADMEに記載し、実際にClaude Codeから接続確認
 
 **受け入れ基準**: MCPクライアントからマニュアルの読取・注釈編集・ビルド・撮影が完結する。
 
 ## Phase 4 — GUI注釈エディタ(SPEC §11)
 
-- [ ] test: Hono API — GET/PUT `annotations/:id`(PUT時zod検証)/ GET プロジェクト一覧 / POST 画像(ペースト取り込み)/ SSE `/watch`(ファイル変更イベント)
-- [ ] 実装: `packages/app/server`(Hono + chokidar)
-- [ ] 実装: エディタUI(Vite + React + Tailwind v4)
+- [x] test: Hono API — GET/PUT `annotations/:id`(PUT時zod検証)/ GET プロジェクト一覧 / POST 画像(ペースト取り込み)/ SSE `/watch`(ファイル変更イベント)
+- [x] 実装: `packages/app/server`(Hono + chokidar)
+- [x] 実装: エディタUI(Vite + React + Tailwind v4)
   - coreレンダラーのfigure DOMをそのまま表示(WYSIWYG一致)
   - パレットからbadge/text/frame/line/arrow追加、react-moveableでドラッグ・リサイズ→%座標で保存
   - クロップUI(imageオブジェクトのcrop編集)
   - クリップボードペーストで `img/raw/` へ保存+注釈JSON雛形生成
   - SSE受信で再読込(AI/CLI編集の即時反映)
-- [ ] test(Playwright e2e): プロジェクトを開く→badge追加→ドラッグ→保存→JSONファイルが更新される / 外部でJSONを書き換える→画面に反映される
-- [ ] 目視確認: エディタ表示とbuild後HTMLの見た目が一致する
+- [x] test(Playwright e2e): プロジェクトを開く→badge追加→ドラッグ→保存→JSONファイルが更新される / 外部でJSONを書き換える→画面に反映される
+- [x] 目視確認: エディタ表示とbuild後HTMLの見た目が一致する
 
 **受け入れ基準**: GUIだけで「画像取り込み→注釈→保存」が完結し、AI編集とライブ同期する。
 
 ## Phase 5 — 統合エディタ
 
-- [ ] CodeMirror 6のmdエディタ+右ペインプレビュー(coreのbuildをブラウザ用に流用)
-- [ ] プレビュー内のfigureクリック→該当注釈エディタを開く
-- [ ] renumber実行時、本文中のUnicode丸数字(①②…)との個数不一致を警告表示
-- [ ] test: 主要フローのe2e(md編集→プレビュー反映、figureクリック遷移)
+- [x] CodeMirror 6のmdエディタ+右ペインプレビュー(coreのbuildをブラウザ用に流用)
+- [x] プレビュー内のfigureクリック→該当注釈エディタを開く
+- [x] renumber実行時、本文中のUnicode丸数字(①②…)との個数不一致を警告表示
+- [x] test: 主要フローのe2e(md編集→プレビュー反映、figureクリック遷移)
 
 **受け入れ基準**: sample/manual.md 相当のマニュアルを、本ツールのみで新規作成→HTML/PDF納品できる。
 
