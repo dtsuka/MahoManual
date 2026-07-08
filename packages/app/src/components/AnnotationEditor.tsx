@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Moveable from "react-moveable";
 import { renderFigure } from "@mahomanual/core/render";
+import { THEME_FIGURE_CSS } from "@mahomanual/core/theme";
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
 import {
   createObjectId,
@@ -286,6 +287,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
 
   return (
     <div className="flex h-full min-h-screen flex-col" data-testid="annotation-editor">
+      <style>{THEME_FIGURE_CSS}</style>
       <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
         {onBack ? (
           <button type="button" className="rounded border px-3 py-1" onClick={onBack}>

@@ -3,7 +3,7 @@ import { defaultKeymap } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useEffect, useRef, useState } from "react";
-import { THEME_CSS } from "@mahomanual/core/theme";
+import { THEME_FIGURE_CSS } from "@mahomanual/core/theme";
 import {
   fetchManual,
   fetchPreview,
@@ -153,7 +153,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
       <div className="grid flex-1 grid-cols-2 divide-x divide-slate-200">
         <div ref={editorHostRef} className="h-full overflow-auto" data-testid="md-editor" />
         <div className="preview-pane h-full overflow-auto bg-white p-4" data-testid="preview-pane">
-          <style>{THEME_CSS}</style>
+          <style>{THEME_FIGURE_CSS}</style>
           <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
         </div>
       </div>
