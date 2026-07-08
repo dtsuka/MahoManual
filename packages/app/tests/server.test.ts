@@ -67,6 +67,18 @@ describe("Hono API", () => {
     expect(payload.annotation.version).toBe(1);
   });
 
+  it("GET /api/projects/:project/annotations/:id includes project annotation theme", async () => {
+    writeFileSync(
+      join(testProjectRoot, "project.yaml"),
+      'title: t\nannotation:\n  color: "#336699"\n  fontSize: 16\n',
+      "utf8",
+    );
+    const response = await app.request(`/api/projects/${testProject}/annotations/test-1`);
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { theme?: { color?: string; fontSize?: number } };
+    expect(payload.theme).toEqual({ color: "#336699", fontSize: 16 });
+  });
+
   it("PUT /api/projects/:project/annotations/:id validates with zod", async () => {
     const invalid = { version: 2, canvas: { width: 100, height: 100 }, objects: [] };
     const response = await app.request(`/api/projects/${testProject}/annotations/test-1`, {

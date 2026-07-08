@@ -279,6 +279,46 @@ test("project home: importing an image creates annotation skeleton and opens the
   }
 });
 
+test("annotation editor: badge color and font size can be edited from the side panel", async ({
+  page,
+  request,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; color?: string; fontSize?: number }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-b1").click();
+    await page.getByTestId("prop-color").fill("#336699");
+    await page.getByTestId("prop-font-size").fill("18");
+
+    // figure に即時反映される
+    await expect(page.locator('.mm-editor-figure [data-mm-id="b1"]')).toHaveAttribute(
+      "style",
+      /background:#336699/,
+    );
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    const badge = after.objects.find((obj) => obj.id === "b1");
+    expect(badge?.color).toBe("#336699");
+    expect(badge?.fontSize).toBe(18);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: external change while dirty shows banner instead of discarding edits", async ({
   page,
   request,
