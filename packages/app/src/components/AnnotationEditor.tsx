@@ -435,7 +435,8 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
           ) : null}
           {selected?.type === "line" || selected?.type === "arrow" ? (
             <p className="text-sm text-slate-500">
-              線・矢印は現在、GUI 上での点編集には未対応です。JSON を直接編集するか CLI / MCP から変更してください。
+              線・矢印は Delete キーで削除できます。点の編集は未対応のため、JSON を直接編集するか CLI / MCP
+              から変更してください。
             </p>
           ) : null}
         </aside>

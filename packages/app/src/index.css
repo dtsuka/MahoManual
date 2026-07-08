@@ -13,6 +13,12 @@ body {
   pointer-events: none;
 }
 
+/* line/arrow は線上のクリックで選択できるようにする(SVG 全面は透過のまま) */
+.mm-editor-figure .mm-lines polyline {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
 .mm-editor-figure .mm-obj {
   cursor: pointer;
 }
@@ -20,6 +26,11 @@ body {
 .mm-editor-figure .mm-obj.is-selected {
   outline: 2px dashed #2563eb;
   outline-offset: 2px;
+}
+
+/* polyline には outline が効かないため選択表示は drop-shadow で行う */
+.mm-editor-figure polyline.is-selected {
+  filter: drop-shadow(0 0 3px #2563eb);
 }
 
 /* md プレビューペイン: 納品 HTML の本文スタイル(core THEME_PAGE_CSS 相当)に寄せる */

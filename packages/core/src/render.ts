@@ -132,7 +132,7 @@ function renderLinesSvg(
     }
 
     polylines.push(
-      `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${markerAttr}/>`,
+      `<polyline points="${points}" data-mm-id="${escapeHtml(obj.id)}" fill="none" stroke="${color}" stroke-width="${strokeWidth}"${markerAttr}/>`,
     );
   }
 
