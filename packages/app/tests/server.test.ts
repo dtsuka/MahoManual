@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
@@ -48,6 +48,8 @@ setupTestProject();
 describe("Hono API", () => {
   afterAll(async () => {
     await closeAllWatchers();
+    // テスト用プロジェクトをリポジトリに残さない
+    rmSync(testProjectRoot, { recursive: true, force: true });
   });
 
   it("GET /api/projects lists manuals", async () => {
