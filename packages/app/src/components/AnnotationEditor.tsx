@@ -15,6 +15,7 @@ import {
   nextBadgeNumber,
   rewriteFigureHtml,
   saveAnnotation,
+  replaceAnnotationImage,
   subscribeProjectWatch,
 } from "../lib/api.js";
 import { moveItem } from "../lib/collection.js";
@@ -54,6 +55,25 @@ interface AnnotationPayload {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
   theme?: AnnotationTheme;
+}
+
+function readImageFile(file: File): Promise<{ data: string; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+    reader.onload = () => {
+      const data = reader.result as string;
+      const image = new Image();
+      image.onerror = () => reject(new Error("画像サイズを取得できません"));
+      image.onload = () => resolve({
+        data,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+      image.src = data;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ドラッグ中の一時形状。figure DOM はドラッグ中 style を直接更新し、
@@ -146,6 +166,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const annotationRef = useRef<AnnotationFile | null>(null);
   const dirtyRef = useRef(false);
   const copiedIdsRef = useRef<string[]>([]);
+  const replaceImageInputRef = useRef<HTMLInputElement>(null);
   const selectedId = selectedIds.at(-1) ?? null;
 
   const figureHtml = useMemo(() => {
@@ -740,6 +761,29 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
   };
 
+  const handleReplaceImage = async (file: File) => {
+    if (!selected || selected.type !== "image") {
+      return;
+    }
+    try {
+      const replacement = await readImageFile(file);
+      const payload = await replaceAnnotationImage(
+        project,
+        annotationId,
+        selected.id,
+        replacement.data,
+        replacement.width,
+        replacement.height,
+      );
+      applyPayload({ ...payload, theme });
+      setSelectedIds([selected.id]);
+      setStatus("画像を置換しました");
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "画像の置換に失敗しました");
+    }
+  };
+
   // 一覧は前面→背面(配列の逆順)で表示するため、表示 index を実配列に変換して並べ替える
   const reorderByDisplayIndex = (from: number, to: number) => {
     if (from === to) {
@@ -1217,6 +1261,27 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                     <p className="mt-1 text-xs text-slate-500">
                       元画像 {natural.w} × {natural.h}px
                     </p>
+                    <button
+                      type="button"
+                      className="mt-3 w-full rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                      onClick={() => replaceImageInputRef.current?.click()}
+                    >
+                      画像ファイルを置換
+                    </button>
+                    <input
+                      ref={replaceImageInputRef}
+                      data-testid="replace-image-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          void handleReplaceImage(file);
+                        }
+                        event.target.value = "";
+                      }}
+                    />
                   </div>
                 );
               })()}

@@ -100,6 +100,24 @@ export function pasteImage(
   });
 }
 
+export function replaceAnnotationImage(
+  project: string,
+  annotationId: string,
+  objectId: string,
+  data: string,
+  width: number,
+  height: number,
+): Promise<AnnotationResponse> {
+  return request(
+    `/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(annotationId)}/images/${encodeURIComponent(objectId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data, width, height }),
+    },
+  );
+}
+
 export function projectFileSrc(project: string, src: string): string {
   return `/api/projects/${encodeURIComponent(project)}/files/${src.split("/").map(encodeURIComponent).join("/")}`;
 }

@@ -215,6 +215,70 @@ export function createApp() {
     }
   });
 
+  app.put("/api/projects/:project/annotations/:id/images/:objectId", async (c) => {
+    const project = c.req.param("project");
+    const id = c.req.param("id");
+    const objectId = c.req.param("objectId");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    if (!isSafeName(id) || !isSafeName(objectId)) {
+      return c.json({ error: "不正なIDです" }, 400);
+    }
+    const body = await c.req.json<{ data?: string; width?: number; height?: number }>();
+    const match = body.data?.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/s);
+    if (!match) {
+      return c.json({ error: "画像データが不正です" }, 400);
+    }
+    const buffer = Buffer.from(match[2]!, "base64");
+    const detected = imageSize(buffer);
+    const width = body.width ?? detected.width;
+    const height = body.height ?? detected.height;
+    if (!width || !height) {
+      return c.json({ error: "画像サイズを取得できません" }, 400);
+    }
+
+    try {
+      const annotation = readAnnotationFile(root, id);
+      const image = annotation.objects.find(
+        (obj): obj is Extract<(typeof annotation.objects)[number], { type: "image" }> =>
+          obj.id === objectId && obj.type === "image",
+      );
+      if (!image) {
+        return c.json({ error: `imageオブジェクトが見つかりません: ${objectId}` }, 404);
+      }
+
+      const target = resolve(root, image.src);
+      if (!target.startsWith(root + sep)) {
+        return c.json({ error: "画像パスがプロジェクト外です" }, 400);
+      }
+      writeFileSync(target, buffer);
+
+      const fullCanvas =
+        image.rect.x === 0 &&
+        image.rect.y === 0 &&
+        image.rect.w === 100 &&
+        image.rect.h === 100;
+      const updated: AnnotationFile = {
+        ...annotation,
+        canvas: fullCanvas ? { width, height } : annotation.canvas,
+        objects: annotation.objects.map((obj) =>
+          obj.id === objectId && obj.type === "image"
+            ? { ...obj, crop: { x: 0, y: 0, w: width, h: height } }
+            : obj,
+        ),
+      };
+      writeAnnotationFile(root, id, updated);
+      return c.json({
+        annotation: updated,
+        naturalSizes: getNaturalSizes(root, collectImageSources(updated)),
+      });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "replace failed" }, 400);
+    }
+  });
+
   app.post("/api/projects/:project/preview", async (c) => {
     const project = c.req.param("project");
     const root = resolveProject(project);
