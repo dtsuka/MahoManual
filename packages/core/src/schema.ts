@@ -1,9 +1,45 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 
+// SPEC §8: バリデーションエラーは全 issue を日本語で表示する。
+// formatIssues が「パス: メッセージ」形式で連結するため、メッセージ本体を日本語化する
+const jaErrorMap: z.ZodErrorMap = (issue, ctx) => {
+  switch (issue.code) {
+    case z.ZodIssueCode.invalid_type:
+      return issue.received === "undefined"
+        ? { message: "必須項目です" }
+        : { message: `型が不正です(期待: ${issue.expected} / 実際: ${issue.received})` };
+    case z.ZodIssueCode.invalid_literal:
+      return { message: `値は ${JSON.stringify(issue.expected)} である必要があります` };
+    case z.ZodIssueCode.invalid_enum_value:
+      return { message: `許可されていない値です(許可: ${issue.options.join(", ")})` };
+    case z.ZodIssueCode.invalid_union_discriminator:
+      return { message: `未知の値です(許可: ${issue.options.join(", ")})` };
+    case z.ZodIssueCode.invalid_union:
+      return { message: "いずれの形式にも一致しません" };
+    case z.ZodIssueCode.too_small:
+      if (issue.type === "array") {
+        return { message: `${issue.minimum}個以上必要です` };
+      }
+      if (issue.type === "string") {
+        return { message: `${issue.minimum}文字以上必要です` };
+      }
+      return {
+        message: issue.inclusive
+          ? `${issue.minimum} 以上の値が必要です`
+          : `${issue.minimum} より大きい値が必要です`,
+      };
+    case z.ZodIssueCode.too_big:
+      return { message: `${issue.maximum} 以下にしてください` };
+    default:
+      return { message: ctx.defaultError };
+  }
+};
+z.setErrorMap(jaErrorMap);
+
 const colorSchema = z
   .string()
-  .regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/, "color must be #RGB or #RRGGBB");
+  .regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/, "color は #RGB または #RRGGBB 形式で指定してください");
 
 const pointSchema = z.object({
   x: z.number(),
@@ -13,8 +49,8 @@ const pointSchema = z.object({
 const rectSchema = z.object({
   x: z.number(),
   y: z.number(),
-  w: z.number().gt(0, "rect.w must be > 0"),
-  h: z.number().gt(0, "rect.h must be > 0"),
+  w: z.number().gt(0),
+  h: z.number().gt(0),
 });
 
 const cropSchema = z.object({
@@ -62,9 +98,7 @@ const frameObjectSchema = baseSchema.extend({
   radius: z.number().gte(0).optional(),
 });
 
-const linePointsSchema = z
-  .array(pointSchema)
-  .min(2, "line/arrow points must have at least 2 points");
+const linePointsSchema = z.array(pointSchema).min(2);
 
 const lineObjectSchema = baseSchema.extend({
   type: z.literal("line"),
@@ -93,22 +127,31 @@ const annotationFileSchema = z
   .object({
     version: z.literal(1),
     canvas: z.object({
-      width: z.number().gt(0, "canvas.width must be > 0"),
-      height: z.number().gt(0, "canvas.height must be > 0"),
+      width: z.number().gt(0),
+      height: z.number().gt(0),
     }),
     objects: z.array(annotationObjectSchema),
   })
   .superRefine((data, ctx) => {
     const seen = new Set<string>();
-    for (const obj of data.objects) {
+    for (const [index, obj] of data.objects.entries()) {
       if (seen.has(obj.id)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `duplicate object id: ${obj.id}`,
+          message: `id が重複しています: ${obj.id}`,
           path: ["objects"],
         });
       }
       seen.add(obj.id);
+      // recipeRef の無い recipe オブジェクトは再撮影マージ(§9.4)で
+      // 置換も削除もされないゾンビになるため拒否する
+      if (obj.source === "recipe" && !obj.recipeRef) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'source が "recipe" のオブジェクトには recipeRef が必要です',
+          path: ["objects", index, "recipeRef"],
+        });
+      }
     }
   });
 
@@ -180,7 +223,7 @@ const annotateItemSchema = z.discriminatedUnion("type", [annotateBadgeSchema, an
 
 const captureRecipeSchema = z.object({
   title: z.string().optional(),
-  url: z.string().min(1, "url is required"),
+  url: z.string().min(1, "url は必須です"),
   viewport: z
     .object({
       width: z.number().gt(0),
