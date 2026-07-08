@@ -26,6 +26,11 @@ import {
   type RectPct,
   type StickySnapState,
 } from "../lib/geometry.js";
+import {
+  clampCrop,
+  duplicateObjects,
+  translateObjects,
+} from "../lib/annotation-operations.js";
 
 // 点ドラッグ時に他の点の x/y へ吸着する距離(%)。
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
@@ -126,7 +131,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
@@ -140,6 +145,8 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const figureRef = useRef<HTMLDivElement>(null);
   const annotationRef = useRef<AnnotationFile | null>(null);
   const dirtyRef = useRef(false);
+  const copiedIdsRef = useRef<string[]>([]);
+  const selectedId = selectedIds.at(-1) ?? null;
 
   const figureHtml = useMemo(() => {
     if (!annotation) {
@@ -224,26 +231,61 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key !== "Delete" && event.key !== "Backspace") {
-        return;
-      }
-      if (!selectedId || !annotation) {
-        return;
-      }
       const active = document.activeElement;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
         return;
       }
-      event.preventDefault();
-      applyLocalChange((current) => ({
-        ...current,
-        objects: current.objects.filter((obj) => obj.id !== selectedId),
-      }));
-      setSelectedId(null);
+      if (selectedIds.length === 0 || !annotationRef.current) {
+        return;
+      }
+      const selected = new Set(selectedIds);
+      const commandKey = event.metaKey || event.ctrlKey;
+      if (commandKey && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        copiedIdsRef.current = [...selectedIds];
+        return;
+      }
+      if (commandKey && event.key.toLowerCase() === "v" && copiedIdsRef.current.length > 0) {
+        event.preventDefault();
+        const result = duplicateObjects(annotationRef.current.objects, copiedIdsRef.current);
+        applyLocalChange((current) => ({ ...current, objects: result.objects }));
+        setSelectedIds(result.selectedIds);
+        copiedIdsRef.current = result.selectedIds;
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        applyLocalChange((current) => ({
+          ...current,
+          objects: current.objects.filter((obj) => !selected.has(obj.id)),
+        }));
+        setSelectedIds([]);
+        return;
+      }
+      const directions: Record<string, Pt> = {
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+      };
+      const direction = directions[event.key];
+      if (direction) {
+        event.preventDefault();
+        const amount = event.shiftKey ? 1 : 0.1;
+        applyLocalChange((current) => ({
+          ...current,
+          objects: translateObjects(
+            current.objects,
+            selected,
+            direction.x * amount,
+            direction.y * amount,
+          ),
+        }));
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, annotation]);
+  }, [selectedIds]);
 
   // ポインタ座標 → figure 内の%座標
   const pctFromClient = (clientX: number, clientY: number): Pt => {
@@ -317,7 +359,12 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
     event.preventDefault();
     event.stopPropagation();
-    setSelectedId(objectId);
+    const wasSelected = selectedIds.includes(objectId);
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    const dragIds = wasSelected ? selectedIds : [objectId];
+    setSelectedIds(additive
+      ? (wasSelected ? selectedIds.filter((id) => id !== objectId) : [...selectedIds, objectId])
+      : dragIds);
     const startPct = pctFromClient(event.clientX, event.clientY);
 
     if (obj.type === "badge" || obj.type === "text") {
@@ -334,13 +381,11 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
             return;
           }
           const at = { x: pct.x + grab.x, y: pct.y + grab.y };
+          const dx = at.x - obj.at.x;
+          const dy = at.y - obj.at.y;
           applyLocalChange((latest) => ({
             ...latest,
-            objects: latest.objects.map((item) =>
-              item.id === objectId && (item.type === "badge" || item.type === "text")
-                ? { ...item, at }
-                : item,
-            ),
+            objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
           }));
         },
       });
@@ -365,11 +410,11 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
             return;
           }
           const next = rectFor(pct);
+          const dx = next.x - rect0.x;
+          const dy = next.y - rect0.y;
           applyLocalChange((latest) => ({
             ...latest,
-            objects: latest.objects.map((item) =>
-              item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
-            ),
+            objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
           }));
         },
       });
@@ -411,14 +456,11 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         if (!moved) {
           return;
         }
-        const next = pointsFor(pct);
+        const dx = pct.x - startPct.x;
+        const dy = pct.y - startPct.y;
         applyLocalChange((latest) => ({
           ...latest,
-          objects: latest.objects.map((item) =>
-            item.id === objectId && (item.type === "line" || item.type === "arrow")
-              ? { ...item, points: next }
-              : item,
-          ),
+          objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
         }));
       },
     });
@@ -430,11 +472,12 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
     const nodes = figureRef.current.querySelectorAll("[data-mm-id]");
     nodes.forEach((node) => node.classList.remove("is-selected"));
-    if (!selectedId) {
-      return;
+    for (const id of selectedIds) {
+      figureRef.current.querySelectorAll(`[data-mm-id="${id}"]`).forEach((node) => {
+        node.classList.add("is-selected");
+      });
     }
-    figureRef.current.querySelector(`[data-mm-id="${selectedId}"]`)?.classList.add("is-selected");
-  }, [selectedId, figureHtml]);
+  }, [selectedIds, figureHtml]);
 
   if (error) {
     return <div className="p-6 text-red-600">{error}</div>;
@@ -488,7 +531,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       }
     }
     applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
-    setSelectedId(id);
+    setSelectedIds([id]);
   };
 
   const addLine = (type: "line" | "arrow") => {
@@ -504,7 +547,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       ],
     };
     applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
-    setSelectedId(id);
+    setSelectedIds([id]);
   };
 
   const beginFrameResize = (event: ReactPointerEvent, dir: string) => {
@@ -553,11 +596,17 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     event.stopPropagation();
     const objectId = selected.id;
     const points0 = selected.points;
+    const startPct = pctFromClient(event.clientX, event.clientY);
+    const grab = {
+      x: points0[index]!.x - startPct.x,
+      y: points0[index]!.y - startPct.y,
+    };
     const guides = points0.filter((_, i) => i !== index);
     // Shift 中は隣接点を基準に 45° 刻み、通常時は他の点の x/y へ吸着
     // (水平・垂直の線を揃えやすくする)。吸着はヒステリシス付き
     let snapState: StickySnapState = {};
-    const snap = (pct: Pt, shiftKey: boolean): Pt => {
+    const snap = (pointerPct: Pt, shiftKey: boolean): Pt => {
+      const pct = { x: pointerPct.x + grab.x, y: pointerPct.y + grab.y };
       if (shiftKey) {
         snapState = {};
         const anchor = points0[index - 1] ?? points0[index + 1];
@@ -638,6 +687,19 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         ? { ...obj, rect: { ...obj.rect, [key]: clamped } }
         : obj,
     );
+  };
+
+  const updateCrop = (key: "x" | "y" | "w" | "h", value: number) => {
+    if (!selected || selected.type !== "image") {
+      return;
+    }
+    const natural = naturalSizes[selected.src];
+    if (!natural) {
+      return;
+    }
+    const current = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+    const next = clampCrop({ ...current, [key]: value }, natural);
+    updateObject(selected.id, (obj) => obj.type === "image" ? { ...obj, crop: next } : obj);
   };
 
   const updatePointValue = (index: number, axis: "x" | "y", value: number) => {
@@ -791,7 +853,18 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                 return;
               }
               const target = element.closest<HTMLElement>("[data-mm-id]");
-              setSelectedId(target?.dataset.mmId ?? null);
+              const id = target?.dataset.mmId;
+              if (!id) {
+                setSelectedIds([]);
+                return;
+              }
+              if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                setSelectedIds((current) =>
+                  current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+                );
+              } else {
+                setSelectedIds([id]);
+              }
             }}
           >
             <div
@@ -847,8 +920,16 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         </div>
         <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
           <h2 className="mb-1 text-sm font-semibold text-slate-700">オブジェクト</h2>
+          {selectedIds.length > 1 ? (
+            <div
+              className="mb-2 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800"
+              data-testid="selection-count"
+            >
+              {selectedIds.length}個選択
+            </div>
+          ) : null}
           <p className="mb-2 text-xs text-slate-400">
-            前面 → 背面の順。クリックで選択、ドラッグで重なり順を入れ替えます。
+            前面 → 背面の順。⌘/Ctrl/Shift+クリックで複数選択できます。
           </p>
           <ul className="mb-4 space-y-1">
             {[...annotation.objects].reverse().map((obj, displayIndex) => (
@@ -879,11 +960,21 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   type="button"
                   data-testid={`object-item-${obj.id}`}
                   className={`w-full cursor-grab rounded border px-2 py-1 text-left text-sm ${
-                    obj.id === selectedId
+                    selectedIds.includes(obj.id)
                       ? "border-blue-400 bg-blue-50 text-blue-800"
                       : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
                   }`}
-                  onClick={() => setSelectedId(obj.id)}
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                      setSelectedIds((current) =>
+                        current.includes(obj.id)
+                          ? current.filter((id) => id !== obj.id)
+                          : [...current, obj.id],
+                      );
+                    } else {
+                      setSelectedIds([obj.id]);
+                    }
+                  }}
                 >
                   {objectLabel(obj)}
                   <span className="ml-1 text-xs text-slate-400">{obj.id}</span>
@@ -1093,7 +1184,42 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
                   <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
                 </div>
               </div>
-              <p className="text-xs text-slate-500">crop(切り抜き)は JSON / MCP から編集してください。</p>
+              {(() => {
+                const natural = naturalSizes[selected.src];
+                if (!natural) {
+                  return <p className="text-xs text-red-600">画像サイズを取得できません。</p>;
+                }
+                const crop = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+                return (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-medium text-slate-700">クロップ (画像px)</span>
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs"
+                        onClick={() =>
+                          updateObject(selected.id, (obj) =>
+                            obj.type === "image"
+                              ? { ...obj, crop: { x: 0, y: 0, w: natural.w, h: natural.h } }
+                              : obj,
+                          )
+                        }
+                      >
+                        全体に戻す
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumberField label="x" value={crop.x} step={1} min={0} testId="crop-x" onChange={(v) => updateCrop("x", v)} />
+                      <NumberField label="y" value={crop.y} step={1} min={0} testId="crop-y" onChange={(v) => updateCrop("y", v)} />
+                      <NumberField label="w" value={crop.w} step={1} min={1} testId="crop-w" onChange={(v) => updateCrop("w", v)} />
+                      <NumberField label="h" value={crop.h} step={1} min={1} testId="crop-h" onChange={(v) => updateCrop("h", v)} />
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      元画像 {natural.w} × {natural.h}px
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
           {selected && (selected.type === "line" || selected.type === "arrow") ? (
