@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resizeRect } from "../src/lib/geometry.js";
+import { nearestSegmentIndex, resizeRect, snapAngle, snapToGuides } from "../src/lib/geometry.js";
 
 describe("resizeRect", () => {
   it("expands right/bottom edges with se handle", () => {
@@ -24,5 +24,75 @@ describe("resizeRect", () => {
     const rect = resizeRect({ x: 10, y: 10, w: 5, h: 5 }, "w", 10, 0);
     expect(rect.w).toBeGreaterThan(0);
     expect(rect.x + rect.w).toBeCloseTo(15, 5);
+  });
+});
+
+describe("snapAngle", () => {
+  it("snaps a nearly horizontal drag to exactly horizontal", () => {
+    const snapped = snapAngle({ x: 30, y: 21 }, { x: 20, y: 20 });
+    expect(snapped.y).toBeCloseTo(20, 5);
+    expect(snapped.x).toBeGreaterThan(20);
+  });
+
+  it("snaps to the 45deg diagonal", () => {
+    const snapped = snapAngle({ x: 30, y: 29 }, { x: 20, y: 20 });
+    expect(snapped.x - 20).toBeCloseTo(snapped.y - 20, 5);
+  });
+
+  it("keeps the distance from the anchor", () => {
+    const anchor = { x: 10, y: 10 };
+    const snapped = snapAngle({ x: 22, y: 13 }, anchor);
+    expect(Math.hypot(snapped.x - anchor.x, snapped.y - anchor.y)).toBeCloseTo(Math.hypot(12, 3), 5);
+  });
+});
+
+describe("snapToGuides", () => {
+  it("snaps x and y independently to nearby guide coordinates", () => {
+    const snapped = snapToGuides(
+      { x: 50.4, y: 30.6 },
+      [
+        { x: 50, y: 10 },
+        { x: 90, y: 31 },
+      ],
+      0.7,
+    );
+    expect(snapped).toEqual({ x: 50, y: 31 });
+  });
+
+  it("does not snap beyond the threshold", () => {
+    const snapped = snapToGuides({ x: 52, y: 33 }, [{ x: 50, y: 10 }], 0.7);
+    expect(snapped).toEqual({ x: 52, y: 33 });
+  });
+
+  it("prefers the nearest guide when multiple are in range", () => {
+    const snapped = snapToGuides(
+      { x: 50.4, y: 0 },
+      [
+        { x: 50, y: 0 },
+        { x: 50.6, y: 0 },
+      ],
+      0.7,
+    );
+    expect(snapped.x).toBeCloseTo(50.6, 5);
+  });
+});
+
+describe("nearestSegmentIndex", () => {
+  it("returns the index of the segment closest to the point", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    expect(nearestSegmentIndex(points, { x: 5, y: 1 })).toBe(0);
+    expect(nearestSegmentIndex(points, { x: 11, y: 5 })).toBe(1);
+  });
+
+  it("handles points beyond segment ends", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ];
+    expect(nearestSegmentIndex(points, { x: 20, y: 5 })).toBe(0);
   });
 });

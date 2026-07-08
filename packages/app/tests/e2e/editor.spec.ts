@@ -200,6 +200,37 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
   }
 });
 
+test("annotation editor: side panel numeric inputs update position", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; at?: { x: number; y: number } }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-b1").click();
+    await page.getByTestId("prop-at-x").fill("60");
+
+    // figure DOM に即時反映される(WYSIWYG)
+    await expect(page.locator('.mm-editor-figure [data-mm-id="b1"]')).toHaveAttribute("style", /left:60%/);
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    expect(after.objects.find((obj) => obj.id === "b1")?.at?.x).toBe(60);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: external change while dirty shows banner instead of discarding edits", async ({
   page,
   request,
