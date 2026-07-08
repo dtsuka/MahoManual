@@ -48,31 +48,31 @@
 
 ### 1-3. mdビルド(SPEC §5, §6.3, §7)
 
-- [ ] test: フィクスチャプロジェクト(annotated-imageフェンス1つ+見出し+生HTML+`<hr class="page-break">` を含むmanual.md)→ 出力HTMLに: figure展開済み / テーマCSS埋め込み / 見出しid(`1-施設情報カテゴリーの追加` 形式)/ 生HTMLがそのまま残る / `<title>`=最初のh1
-- [ ] test: 存在しないsrc参照はファイル名付きエラー
-- [ ] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify + フェンス変換プラグイン)。画像実サイズは image-size で解決し dist/img/ へコピー
+- [x] test: フィクスチャプロジェクト(annotated-imageフェンス1つ+見出し+生HTML+`<hr class="page-break">` を含むmanual.md)→ 出力HTMLに: figure展開済み / テーマCSS埋め込み / 見出しid(`1-施設情報カテゴリーの追加` 形式)/ 生HTMLがそのまま残る / `<title>`=最初のh1
+- [x] test: 存在しないsrc参照はファイル名付きエラー
+- [x] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify + フェンス変換プラグイン)。画像実サイズは image-size で解決し dist/img/ へコピー
 
 ### 1-4. 単一HTML化
 
-- [ ] test: `--single-file` 出力に `src="img/` が残らず `data:image/png;base64,` を含む
-- [ ] 実装: build.tsのオプション
+- [x] test: `--single-file` 出力に `src="img/` が残らず `data:image/png;base64,` を含む
+- [x] 実装: build.tsのオプション
 
 ### 1-5. PDF出力(SPEC §7)
 
-- [ ] test(スモーク): フィクスチャプロジェクト→ `dist/manual.pdf` が生成され、サイズ>1KB
-- [ ] 実装: `packages/core/src/pdf.ts`(Playwright chromium、printBackground:true、A4、margin 12mm)。`pnpm exec playwright install chromium` を事前実行
+- [x] test(スモーク): フィクスチャプロジェクト→ `dist/manual.pdf` が生成され、サイズ>1KB
+- [x] 実装: `packages/core/src/pdf.ts`(Playwright chromium、printBackground:true、A4、margin 12mm)。`pnpm exec playwright install chromium` を事前実行
 
 ### 1-6. CLI配線(SPEC §8)
 
-- [ ] test: `manual new` がSPEC §3の構造を生成 / `manual build` `manual pdf` がフィクスチャで成功終了コード0 / 不正プロジェクトパスで1
-- [ ] test: renumber — badge3つ(n=5,2,9)を配列順で1,2,3に振り直す(core関数の単体テスト)
-- [ ] 実装: `packages/cli`(commander)。bin名 `manual`。ルートpackage.jsonに `"manual": "pnpm --filter @MahoManual/cli exec manual"` 相当のスクリプト
+- [x] test: `manual new` がSPEC §3の構造を生成 / `manual build` `manual pdf` がフィクスチャで成功終了コード0 / 不正プロジェクトパスで1
+- [x] test: renumber — badge3つ(n=5,2,9)を配列順で1,2,3に振り直す(core関数の単体テスト)
+- [x] 実装: `packages/cli`(commander)。bin名 `manual`。ルートpackage.jsonに `"manual": "pnpm --filter @MahoManual/cli exec manual"` 相当のスクリプト
 
 ### 1-7. 実証デモ(Phase 1受け入れ基準)
 
-- [ ] `projects/example` を作成: `sample/manual.md` のセクション1を新形式(フェンス+annotations/1-1.json)へ変換。ベース画像は `sample/img/1-1.png` をコピーして使い、焼き込み済みの丸数字・枠・線の**同じ位置に**オーバーレイを配置する(§4.4の要領。座標は目視で近似でよい)
-- [ ] `manual build projects/example && manual pdf projects/example` が成功
-- [ ] ブラウザでdist/manual.htmlを開き、オーバーレイが焼き込み注釈とほぼ重なることを目視確認(レンダラー正しさの実証)。スクショを撮って確認する
+- [x] `projects/example` を作成: `sample/manual.md` のセクション1を新形式(フェンス+annotations/1-1.json)へ変換。ベース画像は `sample/img/1-1.png` をコピーして使い、焼き込み済みの丸数字・枠・線の**同じ位置に**オーバーレイを配置する(§4.4の要須。座標は目視で近似でよい)
+- [x] `manual build projects/example && manual pdf projects/example` が成功
+- [x] ブラウザでdist/manual.htmlを開き、オーバーレイが焼き込み注釈とほぼ重なることを目視確認(レンダラー正しさの実証)。スクショを撮って確認する
 
 **受け入れ基準**: 上記デモが通る。`pnpm -r test` 全パス。この時点でClaude Codeがファイル編集+CLIだけでマニュアルを作成できる。
 
