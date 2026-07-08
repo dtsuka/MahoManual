@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "canvas": { "width": 1280, "height": 960 },
+  "objects": [
+    {
+      "id": "img-main",
+      "type": "image",
+      "source": "manual",
+      "src": "img/demo.png",
+      "rect": { "x": 0, "y": 0, "w": 100, "h": 100 }
+    },
+    { "id": "b1", "type": "badge", "source": "manual", "n": 1, "at": { "x": 17.3, "y": 16.0 } }
+  ]
+}
