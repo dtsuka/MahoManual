@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, write
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import imageSize from "image-size";
+import { imageSize } from "image-size";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCapture } from "./capture.js";
 import { parseAnnotation } from "./schema.js";

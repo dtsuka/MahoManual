@@ -25,7 +25,7 @@ function pctToPx(value: number, canvasSize: number): number {
   return Math.round((value / 100) * canvasSize * 10) / 10;
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
