@@ -8,9 +8,6 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { buildProject } from "./build.js";
-import { runAllCaptures } from "./capture.js";
-import { exportPdf } from "./pdf.js";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import {
   annotationObjectSchema,
@@ -207,15 +204,20 @@ export function listRecipeFiles(projectRoot: string): Array<{ id: string; path: 
     });
 }
 
+// build / pdf / capture は unified・Playwright を連鎖 import して重いため、
+// 使うときだけ動的 import する(CLI の起動時間を軽く保つ)
 export async function buildManualHtml(
   projectRoot: string,
   options: { singleFile?: boolean; outputDir?: string } = {},
 ): Promise<string> {
+  const { buildProject } = await import("./build.js");
   const result = await buildProject(projectRoot, options);
   return result.htmlPath;
 }
 
 export async function exportManualPdf(projectRoot: string, outputPath?: string): Promise<string> {
+  const { buildProject } = await import("./build.js");
+  const { exportPdf } = await import("./pdf.js");
   const distDir = join(projectRoot, "dist");
   await buildProject(projectRoot, { outputDir: distDir });
   const pdfPath = outputPath ?? join(distDir, "manual.pdf");
@@ -227,6 +229,7 @@ export async function runProjectCapture(
   projectRoot: string,
   recipeId?: string,
 ): Promise<Array<{ recipeId: string; output: string }>> {
+  const { runAllCaptures } = await import("./capture.js");
   const recipes = listRecipeFiles(projectRoot);
   const selected = recipeId ? recipes.filter((item) => item.id === recipeId) : recipes;
   if (recipeId && selected.length === 0) {

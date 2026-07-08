@@ -1,16 +1,11 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { buildProject } from "@mahomanual/core/build";
-import { exportPdf } from "@mahomanual/core/pdf";
-import {
-  renumberBadges,
-  runProjectCapture,
-} from "@mahomanual/core/project";
-import { parseAnnotation } from "@mahomanual/core/schema";
-import { chromium } from "playwright";
+
+// core / playwright は import 連鎖が重いため、top-level では読み込まず
+// 各コマンドの実行時に動的 import する(`manual new` 等の起動を軽く保つ)
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -51,6 +46,7 @@ export function createManualProject(name: string): string {
 }
 
 async function runBuild(projectInput: string, options: { output?: string; singleFile?: boolean }) {
+  const { buildProject } = await import("@mahomanual/core/build");
   const projectRoot = resolveProjectPath(projectInput);
   const outputDir = options.output ? resolve(options.output) : join(projectRoot, "dist");
   await buildProject(projectRoot, { outputDir, singleFile: options.singleFile });
@@ -58,6 +54,8 @@ async function runBuild(projectInput: string, options: { output?: string; single
 }
 
 async function runPdf(projectInput: string, options: { output?: string }) {
+  const { buildProject } = await import("@mahomanual/core/build");
+  const { exportPdf } = await import("@mahomanual/core/pdf");
   const projectRoot = resolveProjectPath(projectInput);
   const outputPath = options.output ? resolve(options.output) : join(projectRoot, "dist", "manual.pdf");
   const distDir = dirname(outputPath);
@@ -67,7 +65,9 @@ async function runPdf(projectInput: string, options: { output?: string }) {
   console.log(`PDF: ${outputPath}`);
 }
 
-function runRenumber(projectInput: string, annotationId: string) {
+async function runRenumber(projectInput: string, annotationId: string) {
+  const { parseAnnotation } = await import("@mahomanual/core/schema");
+  const { renumberBadges } = await import("@mahomanual/core/project");
   const projectRoot = resolveProjectPath(projectInput);
   const annotationPath = join(projectRoot, "annotations", `${annotationId}.json`);
   if (!existsSync(annotationPath)) {
@@ -83,6 +83,7 @@ async function runCaptureCommand(
   recipeId: string | undefined,
   options: { all?: boolean },
 ) {
+  const { runProjectCapture } = await import("@mahomanual/core/project");
   const projectRoot = resolveProjectPath(projectInput);
   if (options.all) {
     const results = await runProjectCapture(projectRoot);
@@ -99,6 +100,7 @@ async function runCaptureCommand(
 }
 
 async function runLogin(projectInput: string, url: string) {
+  const { chromium } = await import("playwright");
   const projectRoot = resolveProjectPath(projectInput);
   const authDir = join(projectRoot, ".auth");
   mkdirSync(authDir, { recursive: true });
@@ -149,8 +151,8 @@ export function createProgram(): Command {
     .command("renumber")
     .argument("<project>", "project path or name")
     .argument("<annotationId>", "annotation id")
-    .action((project: string, annotationId: string) => {
-      runRenumber(project, annotationId);
+    .action(async (project: string, annotationId: string) => {
+      await runRenumber(project, annotationId);
     });
 
   program
