@@ -116,6 +116,33 @@ describe("parseAnnotation", () => {
     ).toThrow(/type/i);
   });
 
+  it("rejects recipe-sourced object without recipeRef", () => {
+    // recipeRef の無い recipe オブジェクトは再撮影マージで置換も削除もされない
+    // ゾンビになるため、スキーマで拒否する
+    expect(() =>
+      parseAnnotation({
+        version: 1,
+        canvas: { width: 100, height: 100 },
+        objects: [{ id: "r1", type: "badge", source: "recipe", n: 1, at: { x: 1, y: 1 } }],
+      }),
+    ).toThrow(/recipeRef/);
+  });
+
+  it("reports validation issues in Japanese (SPEC §8)", () => {
+    try {
+      parseAnnotation({
+        version: 1,
+        canvas: { width: 100, height: 100 },
+        // at が欠落
+        objects: [{ id: "b1", type: "badge", source: "manual", n: 1 }],
+      });
+      expect.fail("should throw");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toMatch(/必須/);
+    }
+  });
+
   it("includes all validation issues in error message", () => {
     try {
       parseAnnotation({
