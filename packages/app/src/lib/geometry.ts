@@ -74,6 +74,47 @@ export function snapToGuides(point: PointPct, guides: PointPct[], threshold: num
   return { x, y };
 }
 
+export interface StickySnapState {
+  x?: number;
+  y?: number;
+}
+
+// ヒステリシス付きスナップ。吸着開始(snapDistance)より解除(releaseDistance)を
+// 大きくすることで、閾値境界での吸着⇄解除の高速な往復(フリッカー)を防ぐ
+export function stickySnap(
+  point: PointPct,
+  guides: PointPct[],
+  previous: StickySnapState,
+  snapDistance: number,
+  releaseDistance: number,
+): { point: PointPct; snapped: StickySnapState } {
+  // 前回の吸着は解除距離以内なら維持する
+  let snappedX =
+    previous.x !== undefined && Math.abs(point.x - previous.x) <= releaseDistance
+      ? previous.x
+      : undefined;
+  let snappedY =
+    previous.y !== undefined && Math.abs(point.y - previous.y) <= releaseDistance
+      ? previous.y
+      : undefined;
+
+  // 未吸着の軸のみ新規吸着を判定する
+  if (snappedX === undefined || snappedY === undefined) {
+    const fresh = snapToGuides(point, guides, snapDistance);
+    if (snappedX === undefined && fresh.x !== point.x) {
+      snappedX = fresh.x;
+    }
+    if (snappedY === undefined && fresh.y !== point.y) {
+      snappedY = fresh.y;
+    }
+  }
+
+  return {
+    point: { x: snappedX ?? point.x, y: snappedY ?? point.y },
+    snapped: { x: snappedX, y: snappedY },
+  };
+}
+
 function distanceToSegment(point: PointPct, a: PointPct, b: PointPct): number {
   const abx = b.x - a.x;
   const aby = b.y - a.y;

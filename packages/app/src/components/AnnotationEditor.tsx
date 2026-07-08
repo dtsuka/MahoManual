@@ -15,12 +15,15 @@ import {
   nearestSegmentIndex,
   resizeRect,
   snapAngle,
-  snapToGuides,
+  stickySnap,
   type RectPct,
+  type StickySnapState,
 } from "../lib/geometry.js";
 
-// 点ドラッグ時に他の点の x/y へ吸着する距離(%)
+// 点ドラッグ時に他の点の x/y へ吸着する距離(%)。
+// 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
 const SNAP_THRESHOLD_PCT = 0.7;
+const SNAP_RELEASE_PCT = 1.5;
 
 interface AnnotationEditorProps {
   project: string;
@@ -561,13 +564,17 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     const points0 = selected.points;
     const guides = points0.filter((_, i) => i !== index);
     // Shift 中は隣接点を基準に 45° 刻み、通常時は他の点の x/y へ吸着
-    // (水平・垂直の線を揃えやすくする)
+    // (水平・垂直の線を揃えやすくする)。吸着はヒステリシス付き
+    let snapState: StickySnapState = {};
     const snap = (pct: Pt, shiftKey: boolean): Pt => {
       if (shiftKey) {
+        snapState = {};
         const anchor = points0[index - 1] ?? points0[index + 1];
         return anchor ? snapAngle(pct, anchor) : pct;
       }
-      return snapToGuides(pct, guides, SNAP_THRESHOLD_PCT);
+      const result = stickySnap(pct, guides, snapState, SNAP_THRESHOLD_PCT, SNAP_RELEASE_PCT);
+      snapState = result.snapped;
+      return result.point;
     };
     const pointsFor = (pct: Pt): Pt[] => points0.map((point, i) => (i === index ? pct : point));
     startPointerDrag(event, {
