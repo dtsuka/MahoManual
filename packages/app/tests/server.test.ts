@@ -197,6 +197,66 @@ describe("Hono API", () => {
     expect(readFileSync(join(testProjectRoot, "img/raw/test-1.png")).equals(Buffer.from(pngBase64, "base64"))).toBe(true);
   });
 
+  it("PATCH /api/projects/:project/annotations/:id/id renames annotation, images and manual reference", async () => {
+    const sourceId = "rename-source";
+    const renamedId = "renamed-1";
+    const sourceAnnotation = JSON.parse(
+      readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8"),
+    ) as { objects: Array<{ type: string; src?: string }> };
+    sourceAnnotation.objects = sourceAnnotation.objects.map((obj) =>
+      obj.type === "image" ? { ...obj, src: `img/raw/${sourceId}.png` } : obj,
+    );
+    writeFileSync(
+      join(testProjectRoot, `annotations/${sourceId}.json`),
+      `${JSON.stringify(sourceAnnotation, null, 2)}\n`,
+    );
+    copyFileSync(
+      join(testProjectRoot, "img/raw/test-1.png"),
+      join(testProjectRoot, `img/raw/${sourceId}.png`),
+    );
+    copyFileSync(
+      join(testProjectRoot, "img/test-1.png"),
+      join(testProjectRoot, `img/${sourceId}.png`),
+    );
+    writeFileSync(
+      join(testProjectRoot, "manual.md"),
+      `${readFileSync(join(testProjectRoot, "manual.md"), "utf8")}\n\`\`\`annotated-image\nsrc: ${sourceId}\n\`\`\`\n`,
+    );
+
+    const response = await app.request(
+      `/api/projects/${testProject}/annotations/${sourceId}/id`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: renamedId }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(existsSync(join(testProjectRoot, `annotations/${sourceId}.json`))).toBe(false);
+    expect(existsSync(join(testProjectRoot, `annotations/${renamedId}.json`))).toBe(true);
+    expect(existsSync(join(testProjectRoot, `img/raw/${renamedId}.png`))).toBe(true);
+    expect(existsSync(join(testProjectRoot, `img/${renamedId}.png`))).toBe(true);
+    const annotation = JSON.parse(
+      readFileSync(join(testProjectRoot, `annotations/${renamedId}.json`), "utf8"),
+    ) as { objects: Array<{ type: string; src?: string }> };
+    expect(annotation.objects.find((obj) => obj.type === "image")?.src).toBe(
+      `img/raw/${renamedId}.png`,
+    );
+    expect(readFileSync(join(testProjectRoot, "manual.md"), "utf8")).toContain(
+      `src: ${renamedId}`,
+    );
+
+    const duplicate = await app.request(
+      `/api/projects/${testProject}/annotations/${renamedId}/id`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "test-1" }),
+      },
+    );
+    expect(duplicate.status).toBe(409);
+  });
+
   it("POST /api/projects/:project/preview returns html", async () => {
     const response = await app.request(`/api/projects/${testProject}/preview`, {
       method: "POST",

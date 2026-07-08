@@ -481,3 +481,34 @@ test("annotation editor: selected image can be replaced without losing annotatio
     rmSync(replacementPath, { force: true });
   }
 });
+
+test("annotation editor: image id can be renamed and navigates to the new URL", async ({
+  page,
+  request,
+}) => {
+  const id = `e2e-rename-${Date.now()}`;
+  const renamedId = `${id}-done`;
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const create = await request.post(`/api/projects/${testProject}/images`, {
+    data: { id, data: `data:image/png;base64,${png}`, width: 1, height: 1 },
+  });
+  expect(create.ok()).toBeTruthy();
+
+  await page.goto(`/projects/${testProject}/annotations/${id}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("rename-id-input").fill(renamedId);
+    await page.getByTestId("rename-id-button").click();
+    await expect(page).toHaveURL(`/projects/${testProject}/annotations/${renamedId}`);
+    await expect(page.getByRole("heading", { name: `${testProject} / ${renamedId}` })).toBeVisible();
+  } finally {
+    const projectRoot = join(process.cwd(), "../../projects/example");
+    for (const candidate of [id, renamedId]) {
+      rmSync(join(projectRoot, `annotations/${candidate}.json`), { force: true });
+      rmSync(join(projectRoot, `img/raw/${candidate}.png`), { force: true });
+      rmSync(join(projectRoot, `img/${candidate}.png`), { force: true });
+    }
+  }
+});
