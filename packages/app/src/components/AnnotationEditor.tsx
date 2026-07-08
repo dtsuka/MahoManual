@@ -172,24 +172,42 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
           return;
         }
 
-        const updatePosition = (clientX: number, clientY: number) => {
+        // 掴んだ点と要素中心のズレを保持する(クリックしただけで中心が
+        // ポインタ位置へ吸い付いて座標が変わってしまうのを防ぐ)
+        const startBox = figure.getBoundingClientRect();
+        const grabOffset = {
+          x: obj.at.x - ((event.clientX - startBox.left) / startBox.width) * 100,
+          y: obj.at.y - ((event.clientY - startBox.top) / startBox.height) * 100,
+        };
+        const startClient = { x: event.clientX, y: event.clientY };
+        let moved = false;
+
+        const positionFor = (clientX: number, clientY: number) => {
           const figureBox = figure.getBoundingClientRect();
-          const x = ((clientX - figureBox.left) / figureBox.width) * 100;
-          const y = ((clientY - figureBox.top) / figureBox.height) * 100;
-          element.style.left = `${x}%`;
-          element.style.top = `${y}%`;
-          return { x, y };
+          return {
+            x: ((clientX - figureBox.left) / figureBox.width) * 100 + grabOffset.x,
+            y: ((clientY - figureBox.top) / figureBox.height) * 100 + grabOffset.y,
+          };
         };
 
         const onPointerMove = (moveEvent: PointerEvent) => {
-          updatePosition(moveEvent.clientX, moveEvent.clientY);
+          if (!moved && Math.hypot(moveEvent.clientX - startClient.x, moveEvent.clientY - startClient.y) < 3) {
+            return;
+          }
+          moved = true;
+          const point = positionFor(moveEvent.clientX, moveEvent.clientY);
+          element.style.left = `${point.x}%`;
+          element.style.top = `${point.y}%`;
         };
 
         const onPointerUp = (upEvent: PointerEvent) => {
           element.releasePointerCapture(upEvent.pointerId);
           window.removeEventListener("pointermove", onPointerMove);
           window.removeEventListener("pointerup", onPointerUp);
-          const point = updatePosition(upEvent.clientX, upEvent.clientY);
+          if (!moved) {
+            return;
+          }
+          const point = positionFor(upEvent.clientX, upEvent.clientY);
           applyLocalChange((current) => ({
             ...current,
             objects: current.objects.map((item) =>
