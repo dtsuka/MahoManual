@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { nearestSegmentIndex, resizeRect, snapAngle, snapToGuides } from "../src/lib/geometry.js";
+import {
+  nearestSegmentIndex,
+  resizeRect,
+  snapAngle,
+  snapToGuides,
+  stickySnap,
+} from "../src/lib/geometry.js";
 
 describe("resizeRect", () => {
   it("expands right/bottom edges with se handle", () => {
@@ -74,6 +80,34 @@ describe("snapToGuides", () => {
       0.7,
     );
     expect(snapped.x).toBeCloseTo(50.6, 5);
+  });
+});
+
+describe("stickySnap", () => {
+  const guides = [{ x: 50, y: 80 }];
+
+  it("snaps when within the snap distance", () => {
+    const result = stickySnap({ x: 50.5, y: 30 }, guides, {}, 0.7, 1.5);
+    expect(result.point.x).toBe(50);
+    expect(result.snapped.x).toBe(50);
+  });
+
+  it("keeps the snap while within the release distance (hysteresis)", () => {
+    // 吸着距離(0.7)は超えているが解除距離(1.5)以内 → 吸着を維持しフリッカーしない
+    const result = stickySnap({ x: 51.2, y: 30 }, guides, { x: 50 }, 0.7, 1.5);
+    expect(result.point.x).toBe(50);
+    expect(result.snapped.x).toBe(50);
+  });
+
+  it("releases the snap beyond the release distance", () => {
+    const result = stickySnap({ x: 52, y: 30 }, guides, { x: 50 }, 0.7, 1.5);
+    expect(result.point.x).toBe(52);
+    expect(result.snapped.x).toBeUndefined();
+  });
+
+  it("snaps x and y independently", () => {
+    const result = stickySnap({ x: 50.5, y: 80.4 }, guides, {}, 0.7, 1.5);
+    expect(result.point).toEqual({ x: 50, y: 80 });
   });
 });
 
