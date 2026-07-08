@@ -11,7 +11,16 @@ import {
   saveAnnotation,
   subscribeProjectWatch,
 } from "../lib/api.js";
-import { resizeRect, type RectPct } from "../lib/geometry.js";
+import {
+  nearestSegmentIndex,
+  resizeRect,
+  snapAngle,
+  snapToGuides,
+  type RectPct,
+} from "../lib/geometry.js";
+
+// 点ドラッグ時に他の点の x/y へ吸着する距離(%)
+const SNAP_THRESHOLD_PCT = 0.7;
 
 interface AnnotationEditorProps {
   project: string;
@@ -48,6 +57,42 @@ const FRAME_HANDLES = [
   { dir: "sw", fx: 0, fy: 1, cursor: "nesw-resize" },
   { dir: "w", fx: 0, fy: 0.5, cursor: "ew-resize" },
 ] as const;
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  testId,
+  step = 0.1,
+  min,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  testId?: string;
+  step?: number;
+  min?: number;
+}) {
+  return (
+    <label className="flex items-center gap-1">
+      <span className="w-4 shrink-0 text-xs text-slate-500">{label}</span>
+      <input
+        type="number"
+        step={step}
+        min={min}
+        data-testid={testId}
+        className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm"
+        value={Math.round(value * 100) / 100}
+        onChange={(event) => {
+          const next = Number.parseFloat(event.target.value);
+          if (!Number.isNaN(next)) {
+            onChange(next);
+          }
+        }}
+      />
+    </label>
+  );
+}
 
 function objectLabel(obj: AnnotationObject): string {
   switch (obj.type) {
@@ -200,8 +245,8 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const startPointerDrag = (
     start: { clientX: number; clientY: number },
     handlers: {
-      onMove: (pct: Pt) => void;
-      onEnd: (pct: Pt, moved: boolean) => void;
+      onMove: (pct: Pt, event: PointerEvent) => void;
+      onEnd: (pct: Pt, moved: boolean, event: PointerEvent) => void;
     },
   ) => {
     const startClient = { x: start.clientX, y: start.clientY };
@@ -211,26 +256,30 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         return;
       }
       moved = true;
-      handlers.onMove(pctFromClient(event.clientX, event.clientY));
+      handlers.onMove(pctFromClient(event.clientX, event.clientY), event);
     };
     const onPointerUp = (event: PointerEvent) => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
-      handlers.onEnd(pctFromClient(event.clientX, event.clientY), moved);
+      handlers.onEnd(pctFromClient(event.clientX, event.clientY), moved, event);
     };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
   };
 
-  const setPolylinePoints = (element: Element, points: Pt[]) => {
+  // 本体と透明ヒットエリアの両方の polyline を同時に更新する
+  const setPolylinePoints = (objectId: string, points: Pt[]) => {
     const canvas = annotationRef.current?.canvas;
-    if (!canvas) {
+    const root = figureRef.current;
+    if (!canvas || !root) {
       return;
     }
     const value = points
       .map((point) => `${(point.x / 100) * canvas.width},${(point.y / 100) * canvas.height}`)
       .join(" ");
-    element.setAttribute("points", value);
+    root
+      .querySelectorAll(`polyline[data-mm-id="${objectId}"]`)
+      .forEach((element) => element.setAttribute("points", value));
   };
 
   // figure DOM(dangerouslySetInnerHTML)へのドラッグ配線。
@@ -241,6 +290,20 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
     const root = figureRef.current;
     const cleanups: Array<() => void> = [];
+
+    // line/arrow は stroke 上でしか反応せず掴みにくいため、
+    // 透明の太いヒット用 polyline(画面上 14px 固定)を SVG 最前面に注入する
+    const linesSvg = root.querySelector("svg.mm-lines");
+    if (linesSvg && !linesSvg.querySelector(".mm-editor-hit")) {
+      for (const polyline of [...linesSvg.querySelectorAll("polyline[data-mm-id]")]) {
+        const hit = polyline.cloneNode(false) as SVGPolylineElement;
+        hit.classList.add("mm-editor-hit");
+        hit.removeAttribute("marker-end");
+        hit.removeAttribute("stroke");
+        hit.removeAttribute("stroke-width");
+        linesSvg.appendChild(hit);
+      }
+    }
 
     for (const element of root.querySelectorAll<Element>("[data-mm-id]")) {
       const objectId = element.getAttribute("data-mm-id");
@@ -315,6 +378,27 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
           return;
         }
 
+        // line / arrow: Option+クリックで最も近い線分に点を挿入
+        if (pointer.altKey) {
+          const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
+          applyLocalChange((current) => ({
+            ...current,
+            objects: current.objects.map((item) =>
+              item.id === objectId && (item.type === "line" || item.type === "arrow")
+                ? {
+                    ...item,
+                    points: [
+                      ...item.points.slice(0, insertAt),
+                      startPct,
+                      ...item.points.slice(insertAt),
+                    ],
+                  }
+                : item,
+            ),
+          }));
+          return;
+        }
+
         // line / arrow: 全点を平行移動
         const points0 = obj.points;
         const pointsFor = (pct: Pt): Pt[] =>
@@ -325,7 +409,7 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         startPointerDrag(pointer, {
           onMove: (pct) => {
             const next = pointsFor(pct);
-            setPolylinePoints(element, next);
+            setPolylinePoints(objectId, next);
             setDraft({ points: next });
           },
           onEnd: (pct, moved) => {
@@ -482,22 +566,29 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     event.stopPropagation();
     const objectId = selected.id;
     const points0 = selected.points;
-    const el = figureRef.current?.querySelector(`[data-mm-id="${objectId}"]`);
+    const guides = points0.filter((_, i) => i !== index);
+    // Shift 中は隣接点を基準に 45° 刻み、通常時は他の点の x/y へ吸着
+    // (水平・垂直の線を揃えやすくする)
+    const snap = (pct: Pt, shiftKey: boolean): Pt => {
+      if (shiftKey) {
+        const anchor = points0[index - 1] ?? points0[index + 1];
+        return anchor ? snapAngle(pct, anchor) : pct;
+      }
+      return snapToGuides(pct, guides, SNAP_THRESHOLD_PCT);
+    };
     const pointsFor = (pct: Pt): Pt[] => points0.map((point, i) => (i === index ? pct : point));
     startPointerDrag(event, {
-      onMove: (pct) => {
-        const next = pointsFor(pct);
-        if (el) {
-          setPolylinePoints(el, next);
-        }
+      onMove: (pct, moveEvent) => {
+        const next = pointsFor(snap(pct, moveEvent.shiftKey));
+        setPolylinePoints(objectId, next);
         setDraft({ points: next });
       },
-      onEnd: (pct, moved) => {
+      onEnd: (pct, moved, endEvent) => {
         setDraft(null);
         if (!moved) {
           return;
         }
-        const next = pointsFor(pct);
+        const next = pointsFor(snap(pct, endEvent.shiftKey));
         applyLocalChange((current) => ({
           ...current,
           objects: current.objects.map((item) =>
@@ -534,6 +625,51 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       }
       return { ...obj, points: obj.points.filter((_, i) => i !== index) };
     });
+  };
+
+  // サイドパネルの数値・スタイル入力(選択中オブジェクトの型に応じて使用)
+  const updateAt = (axis: "x" | "y", value: number) => {
+    if (!selected || (selected.type !== "badge" && selected.type !== "text")) {
+      return;
+    }
+    updateObject(selected.id, (obj) =>
+      obj.type === "badge" || obj.type === "text" ? { ...obj, at: { ...obj.at, [axis]: value } } : obj,
+    );
+  };
+
+  const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
+    if (!selected || (selected.type !== "frame" && selected.type !== "image")) {
+      return;
+    }
+    const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
+    updateObject(selected.id, (obj) =>
+      obj.type === "frame" || obj.type === "image"
+        ? { ...obj, rect: { ...obj.rect, [key]: clamped } }
+        : obj,
+    );
+  };
+
+  const updatePointValue = (index: number, axis: "x" | "y", value: number) => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    updateObject(selected.id, (obj) =>
+      obj.type === "line" || obj.type === "arrow"
+        ? {
+            ...obj,
+            points: obj.points.map((point, i) => (i === index ? { ...point, [axis]: value } : point)),
+          }
+        : obj,
+    );
+  };
+
+  const updateLineStyle = (patch: { color?: string; strokeWidth?: number }) => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    updateObject(selected.id, (obj) =>
+      obj.type === "line" || obj.type === "arrow" ? { ...obj, ...patch } : obj,
+    );
   };
 
   const handleSave = async () => {
@@ -696,79 +832,173 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
               オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
             </p>
           ) : null}
-          {selected?.type === "text" ? (
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700">テキスト内容</span>
-              <textarea
-                className="min-h-24 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm"
-                value={selected.content}
-                onChange={(event) => {
-                  const content = event.target.value;
-                  updateObject(selected.id, (obj) => {
-                    if (obj.type !== "text") {
-                      return obj;
-                    }
-                    return { ...obj, content };
-                  });
-                }}
-              />
-            </label>
-          ) : null}
           {selected?.type === "badge" ? (
-            <label className="block text-sm">
-              <span className="mb-1 block font-medium text-slate-700">番号 (n)</span>
-              <input
-                type="number"
-                min={1}
-                className="w-full rounded border border-slate-300 bg-white px-2 py-1"
-                value={selected.n}
-                onChange={(event) => {
-                  const n = Number.parseInt(event.target.value, 10);
-                  if (Number.isNaN(n) || n < 1) {
-                    return;
-                  }
-                  updateObject(selected.id, (obj) => {
-                    if (obj.type !== "badge") {
-                      return obj;
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="mb-1 block font-medium text-slate-700">番号 (n)</span>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  value={selected.n}
+                  onChange={(event) => {
+                    const n = Number.parseInt(event.target.value, 10);
+                    if (Number.isNaN(n) || n < 1) {
+                      return;
                     }
-                    return { ...obj, n };
-                  });
-                }}
-              />
-            </label>
+                    updateObject(selected.id, (obj) => {
+                      if (obj.type !== "badge") {
+                        return obj;
+                      }
+                      return { ...obj, n };
+                    });
+                  }}
+                />
+              </label>
+              <div>
+                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {selected?.type === "text" ? (
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="mb-1 block font-medium text-slate-700">テキスト内容</span>
+                <textarea
+                  className="min-h-24 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+                  value={selected.content}
+                  onChange={(event) => {
+                    const content = event.target.value;
+                    updateObject(selected.id, (obj) => {
+                      if (obj.type !== "text") {
+                        return obj;
+                      }
+                      return { ...obj, content };
+                    });
+                  }}
+                />
+              </label>
+              <div>
+                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1 block font-medium text-slate-700">文字色</span>
+                <input
+                  type="color"
+                  data-testid="prop-color"
+                  className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                  value={selected.color ?? "#222222"}
+                  onChange={(event) => {
+                    const color = event.target.value;
+                    updateObject(selected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, color } : obj,
+                    );
+                  }}
+                />
+              </label>
+            </div>
           ) : null}
           {selected?.type === "frame" ? (
-            <p className="text-sm text-slate-500">枠はドラッグで移動、周囲のハンドルでリサイズできます。</p>
+            <div className="space-y-3 text-sm">
+              <div>
+                <span className="mb-1 block font-medium text-slate-700">位置・サイズ (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
+                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
+                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
+                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
+            </div>
+          ) : null}
+          {selected?.type === "image" ? (
+            <div className="space-y-3 text-sm">
+              <div>
+                <span className="mb-1 block font-medium text-slate-700">配置 (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
+                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
+                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
+                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">crop(切り抜き)は JSON / MCP から編集してください。</p>
+            </div>
           ) : null}
           {selected && (selected.type === "line" || selected.type === "arrow") ? (
-            <div className="text-sm">
-              <div className="mb-1 font-medium text-slate-700">点({selected.points.length})</div>
-              <ul className="mb-2 space-y-1">
-                {selected.points.map((point, index) => (
-                  <li key={index} className="flex items-center gap-2">
-                    <span className="text-slate-500">
-                      {index + 1}: ({point.x.toFixed(1)}, {point.y.toFixed(1)})
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-40"
-                      disabled={selected.points.length <= 2}
-                      onClick={() => removePoint(index)}
-                    >
-                      削除
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs"
-                onClick={addPoint}
-              >
-                + 点を追加
-              </button>
-              <p className="mt-2 text-xs text-slate-500">
-                キャンバス上の丸ハンドルをドラッグして点を移動、線自体のドラッグで全体を移動できます。
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <input
+                    type="color"
+                    data-testid="prop-color"
+                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    value={selected.color ?? "#E91E8C"}
+                    onChange={(event) => updateLineStyle({ color: event.target.value })}
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">太さ (px)</span>
+                  <NumberField
+                    label=""
+                    value={selected.strokeWidth ?? 2}
+                    step={1}
+                    min={1}
+                    testId="prop-stroke-width"
+                    onChange={(v) => updateLineStyle({ strokeWidth: Math.max(1, Math.round(v)) })}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 font-medium text-slate-700">点({selected.points.length})</div>
+                <ul className="mb-2 space-y-1">
+                  {selected.points.map((point, index) => (
+                    <li key={index} className="flex items-center gap-1">
+                      <span className="w-3 shrink-0 text-xs text-slate-400">{index + 1}</span>
+                      <NumberField
+                        label="x"
+                        value={point.x}
+                        testId={`prop-point-${index}-x`}
+                        onChange={(v) => updatePointValue(index, "x", v)}
+                      />
+                      <NumberField
+                        label="y"
+                        value={point.y}
+                        onChange={(v) => updatePointValue(index, "y", v)}
+                      />
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-slate-300 px-1.5 text-xs disabled:opacity-40"
+                        disabled={selected.points.length <= 2}
+                        onClick={() => removePoint(index)}
+                        title="点を削除"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs"
+                  onClick={addPoint}
+                >
+                  + 点を追加
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                線上を Option(Alt)+クリックで点を追加できます。点のドラッグは他の点の x/y
+                に自動吸着し、Shift 押下中は隣の点を基準に 45° 刻みでスナップします。
               </p>
             </div>
           ) : null}
