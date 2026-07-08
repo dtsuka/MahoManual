@@ -1,0 +1,421 @@
+# MahoManual 仕様書
+
+CMS操作マニュアルをMarkdownで作成し、HTML/PDFで納品するツールの完全仕様。実装手順は [PLAN.md](PLAN.md) を参照。
+
+## 1. 背景と目的
+
+### 旧運用(sample/ 参照)
+
+`sample/manual.md` + `sample/img/` は手作業で作成していたWordPress操作マニュアル。構造は:
+
+- md先頭に印刷用CSS(`.page-break`、画像幅クラス `.img680` / `.img1000`、`@media print`)を埋め込み
+- 「見出し → スクショ → ①②③…の説明文」の繰り返し
+- スクショには画像編集ソフトでピンク(`#E91E8C` 相当)の**丸数字・強調枠・コの字接続線・矢印**を焼き込み
+- `sample/img/1-1.png` のように、縦長画面を**2カラムに分割合成**した画像もある
+- ブラウザ印刷でPDF化して納品
+
+### 課題と本ツールの目的
+
+1. 焼き込み注釈は再編集不可(CMS更新のたびに画像を作り直し)→ **注釈をHTML/CSSオーバーレイにして常に再編集可能にする**
+2. スクショ撮影・注釈配置が手作業 → **Playwrightレシピで自動化**(DOM座標から注釈位置を自動算出)
+3. AI(Claude Code / MCPクライアント)が全操作をできるように、**状態はすべてプレーンテキスト、操作はすべてCLI/コア関数**にする
+
+## 2. アーキテクチャ
+
+```
+                 packages/core(全ロジック・純関数中心)
+                 ├─ schema.ts    注釈JSON / レシピYAML の zod スキーマ
+                 ├─ render.ts    注釈JSON → figure HTML(オーバーレイ展開)
+                 ├─ build.ts     manual.md → 納品HTML(テーマCSS埋め込み)
+                 ├─ pdf.ts       HTML → PDF(Playwright print-to-PDF)
+                 ├─ capture.ts   撮影レシピ実行(Playwright)
+                 └─ project.ts   プロジェクト読み書き・renumber等の操作
+                        ↑              ↑              ↑
+                 packages/app    packages/cli    packages/mcp
+                 (GUI・人間用)    (AI・自動化用)   (MCPクライアント用)
+```
+
+- **coreに全ロジックを置き、cli / mcp / app は薄いラッパー**にする(二重実装禁止)
+- GUIはファイル監視(chokidar + SSE)で、CLI/MCP/AIによるファイル変更を即時反映する
+
+## 3. マニュアルプロジェクト構造
+
+1マニュアル = 1フォルダ。`projects/` 配下に置く。
+
+```
+projects/<name>/
+├── project.yaml        # プロジェクト設定(任意): title, baseUrl
+├── manual.md           # 本文(§5の記法)
+├── img/                # 表示用画像(captureの出力先もここ)
+│   └── raw/            # 無加工の元スクショ(非破壊クロップの原本)
+├── annotations/        # 画像1枚(=1キャンバス)につき1つのJSON(§4)
+├── captures/           # 撮影レシピ *.yaml(§9)
+├── .auth/              # Playwright storageState(gitignore対象)
+└── dist/               # build / pdf の出力先(gitignore対象)
+```
+
+`project.yaml`:
+
+```yaml
+title: アイケア様求人サイト 更新マニュアル
+baseUrl: https://example.com        # レシピの相対URLの基準(任意)
+```
+
+## 4. データモデル(注釈JSON)
+
+`annotations/<id>.json`。zodスキーマは `packages/core/src/schema.ts` に定義する。
+
+### 4.1 座標系(最重要)
+
+| 値 | 単位 | 説明 |
+|---|---|---|
+| `canvas.width / height` | px | キャンバスの設計座標。アスペクト比の基準・SVGのviewBox。撮影時はCSS px |
+| オブジェクトの `rect` / `at` / `points` | %(0-100) | キャンバスに対する相対位置。**範囲制限なし**(キャンバス外への配置を許容、線がはみ出す場合など) |
+| `image.crop` | px | **画像ファイルの実ピクセル**(Retina撮影なら2倍解像度のピクセル値) |
+| `size` / `fontSize` / `strokeWidth` | px | 表示px(バッジ・文字は表示サイズ固定で可読性を維持) |
+
+### 4.2 スキーマ
+
+```ts
+type Pct = number;                                    // %(0-100基準、範囲制限なし)
+type Rect  = { x: Pct; y: Pct; w: Pct; h: Pct };      // w,h > 0
+type Point = { x: Pct; y: Pct };
+
+interface AnnotationFile {
+  version: 1;
+  canvas: { width: number; height: number };          // px, > 0
+  objects: AnnotationObject[];                        // 配列順 = 描画順(後が上)
+}
+
+// 全オブジェクト共通
+interface Base {
+  id: string;                       // ファイル内で一意(重複はバリデーションエラー)
+  type: "image" | "badge" | "text" | "frame" | "line" | "arrow";
+  source: "manual" | "recipe";      // recipe由来は再撮影で更新される(§9.4)
+  recipeRef?: string;               // source:"recipe" のとき "<レシピID>#<index>"
+}
+
+interface ImageObj extends Base {   // キャンバスに複数配置可(2カラム合成等)
+  type: "image";
+  src: string;                      // プロジェクトルート相対(例 "img/raw/facility-add.png")
+  rect: Rect;                       // キャンバス上の配置(%)
+  crop?: { x: number; y: number; w: number; h: number };  // 省略時は画像全体
+}
+
+interface BadgeObj extends Base {   // 丸数字
+  type: "badge";
+  n: number;                        // 1以上の整数。表示は番号そのまま(①はCSSで円形に描画)
+  at: Point;                        // 中心点
+  color?: string;                   // 既定 "#E91E8C"(全オブジェクト共通の既定色)
+  size?: number;                    // 直径px、既定 22
+}
+
+interface TextObj extends Base {
+  type: "text";
+  content: string;
+  at: Point;                        // 中心点
+  fontSize?: number;                // 既定 14
+  color?: string;
+  background?: string;              // 省略時は背景なし
+}
+
+interface FrameObj extends Base {   // 強調枠
+  type: "frame";
+  rect: Rect;
+  color?: string;
+  strokeWidth?: number;             // 既定 2
+  radius?: number;                  // 既定 0
+}
+
+interface LineObj extends Base {    // 罫線(折れ線可)
+  type: "line";
+  points: Point[];                  // 2点以上
+  color?: string;
+  strokeWidth?: number;             // 既定 2
+}
+
+interface ArrowObj extends LineObj { type: "arrow" }   // 終端(最後の点)に矢印
+```
+
+`color` は `#RGB` / `#RRGGBB` 形式のみ許可。
+
+### 4.3 実例1: 基本(1枚のスクショ+注釈)
+
+`annotations/1-1.json` — 元画像 `img/raw/facility-add.png`(実ピクセル 1280×1080)の上部をトリミングして使う例:
+
+```json
+{
+  "version": 1,
+  "canvas": { "width": 1280, "height": 960 },
+  "objects": [
+    {
+      "id": "img-main", "type": "image", "source": "manual",
+      "src": "img/raw/facility-add.png",
+      "rect": { "x": 0, "y": 0, "w": 100, "h": 100 },
+      "crop": { "x": 0, "y": 120, "w": 1280, "h": 960 }
+    },
+    { "id": "b1", "type": "badge", "source": "manual", "n": 1, "at": { "x": 17.3, "y": 16.0 } },
+    { "id": "b2", "type": "badge", "source": "manual", "n": 2, "at": { "x": 17.3, "y": 27.1 } },
+    { "id": "f1", "type": "frame", "source": "manual", "rect": { "x": 0.3, "y": 18.4, "w": 12.2, "h": 3.0 } },
+    {
+      "id": "a1", "type": "arrow", "source": "manual",
+      "points": [
+        { "x": 29.5, "y": 92.0 }, { "x": 62.0, "y": 92.0 },
+        { "x": 62.0, "y": 2.0 },  { "x": 82.5, "y": 2.0 }, { "x": 82.5, "y": 6.5 }
+      ]
+    }
+  ]
+}
+```
+
+### 4.4 実例2: 2カラム合成(sample/img/1-1.png の再現方法)
+
+縦長スクショ1枚(`img/raw/tall-page.png`、実ピクセル 1280×3000)を左右2カラムに分割配置し、接続線で繋ぐ:
+
+```json
+{
+  "version": 1,
+  "canvas": { "width": 1290, "height": 1043 },
+  "objects": [
+    { "id": "img-left", "type": "image", "source": "manual",
+      "src": "img/raw/tall-page.png",
+      "rect": { "x": 0, "y": 0, "w": 58.9, "h": 100 },
+      "crop": { "x": 0, "y": 0, "w": 760, "h": 1043 } },
+    { "id": "img-right", "type": "image", "source": "manual",
+      "src": "img/raw/tall-page.png",
+      "rect": { "x": 66.7, "y": 0, "w": 33.3, "h": 96.2 },
+      "crop": { "x": 810, "y": 1900, "w": 430, "h": 1003 } },
+    { "id": "l1", "type": "arrow", "source": "manual",
+      "points": [ { "x": 29.5, "y": 94.9 }, { "x": 62.3, "y": 94.9 }, { "x": 62.3, "y": 1.6 }, { "x": 82.8, "y": 1.6 }, { "x": 82.8, "y": 6.2 } ] }
+  ]
+}
+```
+
+## 5. Markdown記法
+
+`manual.md` は通常のMarkdown。生HTMLも許可(rehype-raw)。注釈付き画像は専用コードフェンスで参照する:
+
+````md
+## 1 施設情報カテゴリーの追加
+
+```annotated-image
+src: 1-1          # annotations/1-1.json を参照(必須)
+width: 1000       # figureのmax-width px(任意、既定 1000)
+border: true      # 1px #999 の外枠(任意、既定 false)
+alt: 施設情報の追加画面   # 任意
+caption: ""       # 任意。figcaptionとして出力
+```
+
+左メニューの求人情報 > 施設情報から追加できます。
+
+①施設名を入力。
+
+②URLを入力。
+````
+
+- フェンス本文はYAML。ビルド時に §6 のfigure HTMLへ展開される
+- 本文中の丸数字(①②…)は sample/ と同じくUnicode文字をそのまま書く(著者の慣習であり、ツールは変換しない)
+- 見出しには rehype-slug でid付与(github-slugger。日本語見出しは `#1-施設情報カテゴリーの追加` 形式になり、sampleの手書きTOCリンクと互換)
+
+## 6. レンダリング仕様(注釈JSON → figure HTML)
+
+### 6.1 出力構造(§4.3 の実例に対応)
+
+```html
+<figure class="mm mm-print-l mm-border" style="max-width:1000px; aspect-ratio:1280/960;">
+  <div class="mm-obj mm-image" style="left:0%; top:0%; width:100%; height:100%;">
+    <img src="img/raw/facility-add.png" alt=""
+         style="width:100%; height:112.5%; left:0%; top:-12.5%;">
+  </div>
+  <span class="mm-obj mm-badge" style="left:17.3%; top:16%;">1</span>
+  <span class="mm-obj mm-badge" style="left:17.3%; top:27.1%;">2</span>
+  <span class="mm-obj mm-frame" style="left:0.3%; top:18.4%; width:12.2%; height:3%;"></span>
+  <svg class="mm-lines" viewBox="0 0 1280 960" preserveAspectRatio="none">
+    <defs>
+      <marker id="mm-arrow-a1" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12"
+              refX="9" refY="6" orient="auto">
+        <path d="M0,0 L12,6 L0,12 z" fill="#E91E8C"/>
+      </marker>
+    </defs>
+    <polyline points="377.6,883.2 793.6,883.2 793.6,19.2 1056,19.2 1056,62.4"
+              fill="none" stroke="#E91E8C" stroke-width="2" marker-end="url(#mm-arrow-a1)"/>
+  </svg>
+  <figcaption>…(captionがある場合のみ)</figcaption>
+</figure>
+```
+
+### 6.2 レンダリング規則
+
+- figure: `position:relative`、`aspect-ratio: canvas.width / canvas.height`、`max-width` はフェンスの `width`。`width ≤ 680` なら `mm-print-s`、それ以外は `mm-print-l` クラスを付与(印刷時の縮小率切替、§6.4)
+- **badge / text**: `left/top` = `at` の%値、`transform: translate(-50%,-50%)` で中心合わせ。サイズ・フォントはpx固定(縮小表示でも可読性維持)。badgeの表示は `n` の数値をCSSで円形に描画(Unicode①は使わない)
+- **frame**: `left/top/width/height` = `rect` の%値。`border: {strokeWidth}px solid {color}`、`box-sizing:border-box`
+- **line / arrow**: figure全面に重ねた1つの `<svg>` にまとめる。`viewBox="0 0 {canvas.width} {canvas.height}"`。点は%→キャンバスpxに変換(`x_px = x / 100 * canvas.width`)。figureのaspect-ratioとviewBoxが一致するためスケーリングは常に等倍比(歪みなし)。**strokeWidthはviewBox座標系のpxで指定し、図全体と比例スケール**(vector-effectは使わない。矢印マーカーとの太さ整合のため)。arrowは `marker-end`(オブジェクトごとに一意のmarker idを生成)
+- **image(非破壊クロップ)**: ラッパーdivを `rect` に絶対配置し `overflow:hidden`。内部imgは crop領域がラッパーを満たすよう絶対配置:
+
+```
+naturalW/H = 画像ファイルの実ピクセル(ビルド時に image-size 等で取得)
+img.width  = naturalW / crop.w * 100 %      (ラッパー基準)
+img.height = naturalH / crop.h * 100 %
+img.left   = -crop.x / crop.w * 100 %
+img.top    = -crop.y / crop.h * 100 %
+```
+
+例(§4.3): naturalH=1080, crop.h=960, crop.y=120 → height=112.5%, top=-12.5%(§6.1と一致)
+
+- レンダラーは純関数にする: `renderFigure(annotation, opts)` は画像の実サイズを `opts.naturalSizes: Record<src, {w,h}>` として受け取り、ファイルI/Oをしない(テスト容易性のため)。実サイズの解決はbuild側の責務
+
+### 6.3 テーマCSS(納品HTMLに埋め込み)
+
+```css
+body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+       line-height: 1.8; color: #222; max-width: 1080px; margin: auto; padding: 40px 24px; }
+.mm { position: relative; width: 100%; margin: 0; }
+.mm > .mm-obj { position: absolute; }
+.mm-image { overflow: hidden; }
+.mm-image > img { position: absolute; display: block; max-width: none; }
+.mm-badge { width: 22px; height: 22px; border-radius: 50%; background: #E91E8C; color: #fff;
+            font-weight: bold; font-size: 14px; display: flex; align-items: center;
+            justify-content: center; transform: translate(-50%,-50%); }
+.mm-text  { transform: translate(-50%,-50%); white-space: pre; }
+.mm-frame { box-sizing: border-box; }
+.mm-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.mm-border { border: 1px solid #999; }
+hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
+.page-break { page-break-before: always; }
+@media print {
+  body { font-size: 12px; }
+  .mm-print-s { max-width: 60% !important; }
+  .mm-print-l { max-width: 80% !important; }
+  hr.page-break { border-bottom: 0; margin: 0; }
+}
+```
+
+(badge/frame等の色・サイズは既定値をCSSに置き、オブジェクト指定があるときのみinline styleで上書き)
+
+## 7. 出力仕様
+
+### build(納品HTML)
+
+- 入力: プロジェクトフォルダ → 出力: `dist/manual.html` + `dist/img/`(参照画像のコピー)
+- 完全なスタンドアロンHTML(`<!doctype html>`、`<title>` は最初のh1、テーマCSSは `<style>` 埋め込み)
+- `--single-file`: 画像をbase64 data URIでインライン化した単一HTML(imgフォルダ不要で納品可能)
+
+### pdf
+
+- buildしたHTMLをPlaywright(Chromium)で開き `page.pdf()`
+- 既定: A4縦、`printBackground: true`、margin 12mm、出力 `dist/manual.pdf`
+- `.page-break` / `@media print` がそのまま効く
+
+## 8. CLI仕様(packages/cli、binは `manual`)
+
+| コマンド | 動作 |
+|---|---|
+| `manual new <name>` | `projects/<name>/` を§3構造で雛形生成(manual.mdテンプレート付き) |
+| `manual build <project> [--single-file] [-o <dir>]` | 納品HTML生成。既定出力 `dist/` |
+| `manual pdf <project> [-o <file>]` | build後にPDF生成。既定 `dist/manual.pdf` |
+| `manual login <project> --url <URL>` | headedブラウザを開く。人間がログイン後ブラウザを閉じると `.auth/state.json` にstorageState保存 |
+| `manual capture <project> [<recipeId>] [--all]` | 撮影レシピ実行(§9)。recipeId省略+`--all`で全レシピ |
+| `manual renumber <project> <annotationId>` | badgeの `n` を配列順で1から振り直し |
+
+- `<project>` はパスまたは `projects/` 配下の名前
+- 終了コード: 成功0 / 失敗1(zodバリデーションエラーは対象ファイル名と全issueを日本語で表示)
+
+## 9. 撮影レシピ仕様(captures/*.yaml)
+
+### 9.1 スキーマと例
+
+```yaml
+# captures/1-1.yaml(ファイル名 = レシピID = 出力ID)
+title: 施設情報の追加
+url: /wp-admin/edit-tags.php?taxonomy=facility   # 絶対URL可。相対はproject.yamlのbaseUrl基準
+viewport: { width: 1280, height: 900 }
+steps:                          # 任意。撮影前の操作(上から順に実行)
+  - waitFor: "#addtag"          # 要素の出現を待つ
+  - click: "#some-button"      # クリック
+  - hover: ".menu-item"        # ホバー
+  - fill: { selector: "#tag-name", value: "アイケアハウス小樽" }  # 入力
+screenshot:
+  target: fullPage              # fullPage | selector(CSSセレクタ文字列)| clip {x,y,w,h}
+output: "1-1"                   # img/1-1.png と annotations/1-1.json を生成/更新
+annotate:                       # 任意。上から順にbadgeは自動採番(1,2,…)
+  - type: badge
+    selector: "#tag-name"
+  - type: badge
+    selector: "#tag-slug"
+  - type: frame
+    selector: "#menu-posts .current"
+    padding: 4                  # 要素boxの外側余白px(任意、既定4)
+```
+
+### 9.2 実行フロー(`manual capture`)
+
+1. `.auth/state.json` があればstorageStateとして読み込み、Chromium起動(`deviceScaleFactor: 2` で高解像度撮影)
+2. URLへ遷移 → steps実行 → スクショを `img/raw/<output>.png` に保存
+3. 撮影領域(fullPage=ページ全体 / selector・clip=その矩形)を基準に、各annotate対象の `boundingBox()`(CSS px)を%へ変換:
+   `x% = (box.x - region.x) / region.width * 100`
+4. `annotations/<output>.json` を生成/マージ(§9.4)。canvasは撮影領域のCSS px寸法。imageオブジェクトのcropは実ピクセル(CSS pxの2倍)で全領域を指定
+5. 表示用 `img/<output>.png` は raw のコピー(GUIでクロップ変更してもrawが原本)
+
+### 9.3 注釈の自動配置規則
+
+- badge: 対象要素の**左端中央**から左に16px(CSS px)オフセットした点。レシピで `anchor: left|right|top|bottom|center` と `offset: {dx,dy}` を上書き可
+- frame: 要素boxを `padding` px 外側に広げた矩形
+- 生成オブジェクトは `source: "recipe"`、`recipeRef: "<レシピID>#<annotate配列のindex>"`、idは `"<レシピID>-r<index>"`
+
+### 9.4 再撮影時のマージ規則(重要)
+
+既存の `annotations/<output>.json` がある場合:
+
+1. `source: "recipe"` かつ `recipeRef` が当該レシピのオブジェクト → **新しい撮影結果で置き換え**(レシピから消えたindexは削除)
+2. `source: "manual"` のオブジェクト → **位置・内容そのまま保持**
+3. 既存ファイルがなければ新規作成
+
+→ 「CMS更新後に `manual capture --all` で全スクショ+レシピ由来の注釈を一括再生成、手動調整分は温存」を実現する。
+
+### 9.5 うまくいかないときの逃げ道
+
+レシピ化が困難なページは、手動スクショを `img/raw/` に置いて注釈をGUI/AIで付ければよい(撮影エンジンは他機能から疎結合)。
+
+## 10. MCPサーバー仕様(packages/mcp)
+
+`@modelcontextprotocol/sdk` のstdioサーバー。サーバー名 `MahoManual`。全ツールはcore関数の薄いラッパーで、エラー時はzodのissueを含む日本語メッセージを返す。
+
+| ツール | 引数 | 動作 |
+|---|---|---|
+| `list_manuals` | なし | projects/ 配下の一覧(name, title, ページ・画像数) |
+| `read_manual` | project | manual.md本文とannotations/capturesの一覧 |
+| `read_annotation` | project, id | 注釈JSONの取得 |
+| `add_annotation` | project, id, object | オブジェクト追加(スキーマ検証) |
+| `update_annotation` | project, id, objectId, patch | オブジェクト部分更新 |
+| `remove_annotation` | project, id, objectId | オブジェクト削除 |
+| `set_crop` | project, id, objectId, crop | imageオブジェクトのcrop変更 |
+| `renumber_badges` | project, id | badge採番の振り直し |
+| `build_html` | project, singleFile? | 納品HTML生成、出力パスを返す |
+| `export_pdf` | project | PDF生成、出力パスを返す |
+| `run_capture` | project, recipeId?(省略で全件) | レシピ実行、結果サマリを返す |
+
+クライアント設定例(`.mcp.json` / Claude Desktop):
+
+```json
+{ "mcpServers": { "MahoManual": {
+    "command": "node",
+    "args": ["<絶対パス>/packages/mcp/dist/index.js"] } } }
+```
+
+## 11. GUI仕様(packages/app、Phase 4〜5)
+
+- Vite + React + Tailwind CSS v4(`@tailwindcss/vite`、tailwind.configは使わない)+ Hono(ファイルAPI)
+- **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
+- 注釈エディタ: オブジェクトパレット(badge/text/frame/line/arrow)、ドラッグ・リサイズ(react-moveable または interact.js)、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- スクショ取り込み: クリップボードペースト(Clipboard API)→ `img/raw/` へ保存 → 注釈JSON雛形生成
+- ライブリロード: サーバーがchokidarでプロジェクトを監視し、SSEでクライアントへ通知(AI/CLIによるファイル変更が開いている画面に即反映)
+- Phase 5: CodeMirror 6のmdエディタ+プレビュー(左右分割)、プレビュー内figureクリックで注釈エディタへ、renumber結果と本文①②…の整合チェック表示
+
+## 12. 決定事項の要約(迷ったらここ)
+
+- 状態はすべてプレーンテキスト。DBなし。Git管理前提
+- 元画像は無加工保持、クロップ・注釈は常に非破壊(データで表現)
+- 座標は%、キャンバスとcropはpx(§4.1)
+- 既定色 `#E91E8C`、badge直径22px、strokeWidth 2px
+- 利用者は1人。認証・マルチユーザー機能は作らない(YAGNI)
+- coreが唯一のロジック置き場。cli/mcp/appに業務ロジックを書かない
