@@ -99,7 +99,11 @@ function parseAnnotatedImageFence(value: string): AnnotatedImageFence {
   };
 }
 
-function renderAnnotatedImageFence(projectRoot: string, body: string): string {
+function renderAnnotatedImageFence(
+  projectRoot: string,
+  body: string,
+  options: { dataAnnotationId?: boolean } = {},
+): string {
   const fence = parseAnnotatedImageFence(body);
   const annotation = loadAnnotation(projectRoot, fence.src);
   const imageSources = collectImageSources(annotation);
@@ -110,7 +114,18 @@ function renderAnnotatedImageFence(projectRoot: string, body: string): string {
     alt: fence.alt,
     caption: fence.caption,
   };
-  return renderFigure(annotation, { naturalSizes, fence: renderFence });
+  let html = renderFigure(annotation, { naturalSizes, fence: renderFence });
+  if (options.dataAnnotationId) {
+    html = html.replace("<figure ", `<figure data-mm-annotation="${fence.src}" `);
+  }
+  return html;
+}
+
+export function getNaturalSizes(
+  projectRoot: string,
+  srcPaths: string[],
+): Record<string, { w: number; h: number }> {
+  return resolveNaturalSizes(projectRoot, srcPaths);
 }
 
 function expandAnnotatedImageFences(projectRoot: string, markdown: string): string {
@@ -195,4 +210,25 @@ ${finalBodyHtml}
     htmlPath,
     imgDir: join(outputDir, "img"),
   };
+}
+
+export interface PreviewOptions {
+  rewriteImageSrc?: (src: string) => string;
+}
+
+export async function buildPreviewHtml(
+  projectRoot: string,
+  markdown: string,
+  options: PreviewOptions = {},
+): Promise<string> {
+  const expandedMarkdown = markdown.replace(ANNOTATED_IMAGE_FENCE_RE, (_match, body: string) =>
+    renderAnnotatedImageFence(projectRoot, body, { dataAnnotationId: true }),
+  );
+  let bodyHtml = await markdownToHtml(expandedMarkdown);
+  if (options.rewriteImageSrc) {
+    bodyHtml = bodyHtml.replace(/src="(img\/[^"]+)"/g, (_match, srcPath: string) => {
+      return `src="${options.rewriteImageSrc!(srcPath)}"`;
+    });
+  }
+  return bodyHtml;
 }

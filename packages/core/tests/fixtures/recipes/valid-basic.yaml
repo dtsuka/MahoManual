@@ -1,0 +1,20 @@
+# captures/1-1.yaml — SPEC §9.1 例
+title: 施設情報の追加
+url: /wp-admin/edit-tags.php?taxonomy=facility
+viewport: { width: 1280, height: 900 }
+steps:
+  - waitFor: "#addtag"
+  - click: "#some-button"
+  - hover: ".menu-item"
+  - fill: { selector: "#tag-name", value: "アイケアハウス小樽" }
+screenshot:
+  target: fullPage
+output: "1-1"
+annotate:
+  - type: badge
+    selector: "#tag-name"
+  - type: badge
+    selector: "#tag-slug"
+  - type: frame
+    selector: "#menu-posts .current"
+    padding: 4

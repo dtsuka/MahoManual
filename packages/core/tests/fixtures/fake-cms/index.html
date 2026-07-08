@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Fake CMS</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; display: flex; min-height: 1200px; }
+    nav { width: 220px; background: #222; color: #fff; padding: 16px; }
+    main { flex: 1; padding: 24px; }
+    input { display: block; width: 320px; margin: 12px 0; padding: 8px; }
+    .current { background: #444; padding: 8px; }
+  </style>
+</head>
+<body>
+  <nav id="menu-posts">
+    <div class="menu-item">求人情報</div>
+    <div class="current">施設情報</div>
+  </nav>
+  <main>
+    <form id="addtag">
+      <label>施設名 <input id="tag-name" type="text" value=""></label>
+      <label>URL <input id="tag-slug" type="text" value=""></label>
+    </form>
+  </main>
+</body>
+</html>

@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { buildProject } from "@mahomanual/core/build";
 import { exportPdf } from "@mahomanual/core/pdf";
-import { renumberBadges } from "@mahomanual/core/project";
+import {
+  renumberBadges,
+  runProjectCapture,
+} from "@mahomanual/core/project";
 import { parseAnnotation } from "@mahomanual/core/schema";
+import { chromium } from "playwright";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -74,6 +78,43 @@ function runRenumber(projectInput: string, annotationId: string) {
   writeFileSync(annotationPath, `${JSON.stringify(renumbered, null, 2)}\n`, "utf8");
 }
 
+async function runCaptureCommand(
+  projectInput: string,
+  recipeId: string | undefined,
+  options: { all?: boolean },
+) {
+  const projectRoot = resolveProjectPath(projectInput);
+  if (options.all) {
+    const results = await runProjectCapture(projectRoot);
+    for (const item of results) {
+      console.log(`Captured: ${item.output} (${item.recipeId})`);
+    }
+    return;
+  }
+  if (!recipeId) {
+    throw new Error("recipeId を指定するか --all を使ってください");
+  }
+  const results = await runProjectCapture(projectRoot, recipeId);
+  console.log(`Captured: ${results[0]?.output ?? recipeId}`);
+}
+
+async function runLogin(projectInput: string, url: string) {
+  const projectRoot = resolveProjectPath(projectInput);
+  const authDir = join(projectRoot, ".auth");
+  mkdirSync(authDir, { recursive: true });
+  const statePath = join(authDir, "state.json");
+
+  console.log("ブラウザが開きます。ログイン完了後、ブラウザを閉じると storageState が保存されます。");
+  const browser = await chromium.launch({ headless: false });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(url);
+  await page.waitForEvent("close", { timeout: 0 }).catch(() => undefined);
+  await context.storageState({ path: statePath });
+  await browser.close();
+  console.log(`Saved: ${statePath}`);
+}
+
 export function createProgram(): Command {
   const program = new Command();
 
@@ -110,6 +151,26 @@ export function createProgram(): Command {
     .argument("<annotationId>", "annotation id")
     .action((project: string, annotationId: string) => {
       runRenumber(project, annotationId);
+    });
+
+  program
+    .command("login")
+    .argument("<project>", "project path or name")
+    .requiredOption("--url <url>", "login page URL")
+    .description(
+      "headed ブラウザを開き、人間がログイン後ブラウザを閉じると .auth/state.json に storageState を保存します",
+    )
+    .action(async (project: string, options: { url: string }) => {
+      await runLogin(project, options.url);
+    });
+
+  program
+    .command("capture")
+    .argument("<project>", "project path or name")
+    .argument("[recipeId]", "capture recipe id")
+    .option("--all", "run all capture recipes")
+    .action(async (project: string, recipeId: string | undefined, options: { all?: boolean }) => {
+      await runCaptureCommand(project, recipeId, options);
     });
 
   return program;

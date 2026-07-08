@@ -13,6 +13,7 @@
   "dependencies": {
     "@mahomanual/core": "workspace:*",
     "commander": "^14.0.0",
+    "playwright": "^1.55.0",
     "tsx": "^4.20.5"
   },
   "devDependencies": {

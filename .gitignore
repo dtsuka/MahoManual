@@ -3,3 +3,6 @@ dist/
 **/.auth/
 .DS_Store
 projects/*/dist/
+projects/app-test/
+packages/app/test-results/
+packages/app/playwright-report/
