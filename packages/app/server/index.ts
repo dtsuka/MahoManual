@@ -11,6 +11,7 @@ app.use("/*", serveStatic({ root: join(packageRoot, "dist") }));
 app.get("*", serveStatic({ path: join(packageRoot, "dist/index.html") }));
 
 const port = Number(process.env.PORT ?? 3000);
-serve({ fetch: app.fetch, port }, (info) => {
+// ローカル専用ツールのため LAN には公開しない
+serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
   console.log(`Server listening on http://127.0.0.1:${info.port}`);
 });
