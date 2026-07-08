@@ -111,9 +111,19 @@ async function runLogin(projectInput: string, url: string) {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(url);
-  await page.waitForEvent("close", { timeout: 0 }).catch(() => undefined);
-  await context.storageState({ path: statePath });
-  await browser.close();
+
+  // ウィンドウごと閉じられると close イベント後の storageState 取得が
+  // ブラウザ切断と競合して失敗しうるため、開いている間は定期保存しておく
+  const saveState = async () => {
+    try {
+      await context.storageState({ path: statePath });
+    } catch {
+      // ブラウザが閉じられた直後は取得できないことがある(直前の保存が残る)
+    }
+  };
+  const timer = setInterval(() => void saveState(), 2000);
+  await new Promise<void>((resolveClosed) => browser.on("disconnected", () => resolveClosed()));
+  clearInterval(timer);
   console.log(`Saved: ${statePath}`);
 }
 
