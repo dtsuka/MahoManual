@@ -29,15 +29,23 @@ body {
   cursor: pointer;
 }
 
-/* 透明の太いヒット用 polyline(エディタが本体をクローンして注入する)。
+/* line/arrow の透明ヒット領域(React 管理のオーバーレイ SVG)。
    vector-effect で表示上の太さを一定に保ち、細い線でも掴みやすくする */
-.mm-editor-figure .mm-lines polyline.mm-editor-hit {
+.mm-editor-hit-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.mm-editor-hit-layer polyline {
+  fill: none;
   stroke: transparent;
   stroke-width: 18;
   vector-effect: non-scaling-stroke;
-  fill: none;
+  pointer-events: stroke;
   cursor: move;
-  filter: none;
 }
 
 .mm-editor-figure .mm-obj {

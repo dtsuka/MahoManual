@@ -285,28 +285,6 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       .forEach((element) => element.setAttribute("points", value));
   };
 
-  // line/arrow は stroke 上でしか反応せず掴みにくいため、
-  // 透明の太いヒット用 polyline(画面上 18px 固定)を SVG 最前面に注入する
-  useEffect(() => {
-    const root = figureRef.current;
-    if (!root || !figureHtml) {
-      return;
-    }
-    const linesSvg = root.querySelector("svg.mm-lines");
-    if (!linesSvg || linesSvg.querySelector(".mm-editor-hit")) {
-      return;
-    }
-    for (const polyline of [...linesSvg.querySelectorAll("polyline[data-mm-id]")]) {
-      const hit = polyline.cloneNode(false) as SVGPolylineElement;
-      hit.classList.add("mm-editor-hit");
-      hit.removeAttribute("marker-end");
-      hit.removeAttribute("stroke");
-      hit.removeAttribute("stroke-width");
-      hit.removeAttribute("style");
-      linesSvg.appendChild(hit);
-    }
-  }, [figureHtml]);
-
   // figure 上のドラッグはイベント委任で受ける。
   // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
   // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
@@ -693,6 +671,20 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       ? (draft?.points ?? selected.points)
       : null;
 
+  // line/arrow のヒット領域は React 管理のオーバーレイ SVG に描く。
+  // figure の innerHTML へ手動注入すると React の再セットで黙って消えるため
+  const lineObjects = annotation.objects.filter(
+    (obj): obj is Extract<AnnotationObject, { type: "line" | "arrow" }> =>
+      obj.type === "line" || obj.type === "arrow",
+  );
+  const toCanvasPoints = (points: Pt[]): string =>
+    points
+      .map(
+        (point) =>
+          `${(point.x / 100) * annotation.canvas.width},${(point.y / 100) * annotation.canvas.height}`,
+      )
+      .join(" ");
+
   return (
     <div className="flex h-full min-h-screen flex-col" data-testid="annotation-editor">
       <style>{THEME_FIGURE_CSS}</style>
@@ -763,19 +755,42 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
       ) : null}
       <div className="flex flex-1 overflow-hidden">
         <div className="relative flex-1 overflow-auto p-6">
-          <div ref={wrapRef} className="relative mx-auto" style={{ maxWidth: annotation.canvas.width }}>
+          <div
+            ref={wrapRef}
+            className="relative mx-auto"
+            style={{ maxWidth: annotation.canvas.width }}
+            onPointerDown={handleFigurePointerDown}
+            onClick={(event) => {
+              const element = event.target as HTMLElement;
+              if (element.closest(".mm-editor-handle")) {
+                return;
+              }
+              const target = element.closest<HTMLElement>("[data-mm-id]");
+              setSelectedId(target?.dataset.mmId ?? null);
+            }}
+          >
             <div
               ref={figureRef}
               className="mm-editor-figure"
               dangerouslySetInnerHTML={{ __html: figureHtml }}
-              onPointerDown={handleFigurePointerDown}
-              onClick={(event) => {
-                const target = (event.target as HTMLElement).closest<HTMLElement>("[data-mm-id]");
-                setSelectedId(target?.dataset.mmId ?? null);
-              }}
             />
-            {/* 編集ハンドルは figure と同じ%座標系のオーバーレイに描く */}
+            {/* 編集ハンドル・ヒット領域は figure と同じ%座標系のオーバーレイに描く */}
             <div className="pointer-events-none absolute inset-0">
+              <svg
+                className="mm-editor-hit-layer"
+                viewBox={`0 0 ${annotation.canvas.width} ${annotation.canvas.height}`}
+                preserveAspectRatio="none"
+              >
+                {lineObjects.map((obj) => (
+                  <polyline
+                    key={obj.id}
+                    data-mm-id={obj.id}
+                    points={toCanvasPoints(
+                      selectedId === obj.id && draft?.points ? draft.points : obj.points,
+                    )}
+                  />
+                ))}
+              </svg>
               {activeFrameRect
                 ? FRAME_HANDLES.map((handle) => (
                     <div
