@@ -148,6 +148,55 @@ describe("Hono API", () => {
     expect(readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8")).toBe(beforeJson);
   });
 
+  it("PUT /api/projects/:project/annotations/:id/images/:objectId replaces image and preserves annotations", async () => {
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const before = JSON.parse(
+      readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8"),
+    ) as { objects: Array<{ id: string }>; canvas: { width: number; height: number } };
+    before.objects.push({
+      id: "keep-badge",
+      type: "badge",
+      source: "manual",
+      n: 1,
+      at: { x: 12, y: 34 },
+    } as never);
+    writeFileSync(
+      join(testProjectRoot, "annotations/test-1.json"),
+      `${JSON.stringify(before, null, 2)}\n`,
+    );
+
+    const response = await app.request(
+      `/api/projects/${testProject}/annotations/test-1/images/img-main`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          data: `data:image/png;base64,${pngBase64}`,
+          width: 320,
+          height: 200,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      annotation: {
+        canvas: { width: number; height: number };
+        objects: Array<{ id: string; crop?: { x: number; y: number; w: number; h: number } }>;
+      };
+    };
+    expect(payload.annotation.canvas).toEqual({ width: 320, height: 200 });
+    expect(payload.annotation.objects.find((obj) => obj.id === "keep-badge")).toBeDefined();
+    expect(payload.annotation.objects.find((obj) => obj.id === "img-main")?.crop).toEqual({
+      x: 0,
+      y: 0,
+      w: 320,
+      h: 200,
+    });
+    expect(readFileSync(join(testProjectRoot, "img/raw/test-1.png")).equals(Buffer.from(pngBase64, "base64"))).toBe(true);
+  });
+
   it("POST /api/projects/:project/preview returns html", async () => {
     const response = await app.request(`/api/projects/${testProject}/preview`, {
       method: "POST",

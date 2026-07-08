@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const testProject = "example";
@@ -447,5 +447,37 @@ test("annotation editor: keyboard move, copy/paste, multi-select and crop editin
     });
   } finally {
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
+test("annotation editor: selected image can be replaced without losing annotations", async ({
+  page,
+}) => {
+  const projectRoot = join(process.cwd(), "../../projects/example");
+  const annotationPath = join(projectRoot, "annotations/1-1.json");
+  const imagePath = join(projectRoot, "img/raw/1-1.png");
+  const beforeAnnotation = readFileSync(annotationPath);
+  const beforeImage = readFileSync(imagePath);
+  const replacementPath = join(process.cwd(), "test-results/replacement.png");
+  const replacement =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  writeFileSync(replacementPath, Buffer.from(replacement, "base64"));
+
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    const objectCount = await page.locator('[data-testid^="object-item-"]').count();
+    await page.getByTestId("object-item-img-main").click();
+    await page.getByTestId("replace-image-input").setInputFiles(replacementPath);
+
+    await expect(page.getByText("画像を置換しました")).toBeVisible();
+    await expect(page.locator('[data-testid^="object-item-"]')).toHaveCount(objectCount);
+    await expect(page.getByTestId("crop-w")).toHaveValue("1");
+    await expect(page.getByTestId("crop-h")).toHaveValue("1");
+  } finally {
+    writeFileSync(annotationPath, beforeAnnotation);
+    writeFileSync(imagePath, beforeImage);
+    rmSync(replacementPath, { force: true });
   }
 });
