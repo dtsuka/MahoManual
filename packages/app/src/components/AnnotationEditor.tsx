@@ -17,6 +17,7 @@ import {
   saveAnnotation,
   subscribeProjectWatch,
 } from "../lib/api.js";
+import { moveItem } from "../lib/collection.js";
 import {
   nearestSegmentIndex,
   resizeRect,
@@ -130,6 +131,9 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [draft, setDraft] = useState<DraftShape | null>(null);
+  // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
+  const [dragListIndex, setDragListIndex] = useState<number | null>(null);
+  const [dropListIndex, setDropListIndex] = useState<number | null>(null);
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalPayload, setExternalPayload] = useState<AnnotationPayload | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -674,6 +678,17 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
     }
   };
 
+  // 一覧は前面→背面(配列の逆順)で表示するため、表示 index を実配列に変換して並べ替える
+  const reorderByDisplayIndex = (from: number, to: number) => {
+    if (from === to) {
+      return;
+    }
+    applyLocalChange((current) => {
+      const displayed = moveItem([...current.objects].reverse(), from, to);
+      return { ...current, objects: displayed.reverse() };
+    });
+  };
+
   const activeFrameRect = selected?.type === "frame" ? (draft?.rect ?? selected.rect) : null;
   const activeLinePoints =
     selected && (selected.type === "line" || selected.type === "arrow")
@@ -832,14 +847,38 @@ export function AnnotationEditor({ project, annotationId, onBack }: AnnotationEd
         </div>
         <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
           <h2 className="mb-1 text-sm font-semibold text-slate-700">オブジェクト</h2>
-          <p className="mb-2 text-xs text-slate-400">前面 → 背面の順。クリックで選択できます。</p>
+          <p className="mb-2 text-xs text-slate-400">
+            前面 → 背面の順。クリックで選択、ドラッグで重なり順を入れ替えます。
+          </p>
           <ul className="mb-4 space-y-1">
-            {[...annotation.objects].reverse().map((obj) => (
-              <li key={obj.id}>
+            {[...annotation.objects].reverse().map((obj, displayIndex) => (
+              <li
+                key={obj.id}
+                draggable
+                onDragStart={() => setDragListIndex(displayIndex)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setDropListIndex(displayIndex);
+                }}
+                onDragLeave={() => setDropListIndex((current) => (current === displayIndex ? null : current))}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (dragListIndex !== null) {
+                    reorderByDisplayIndex(dragListIndex, displayIndex);
+                  }
+                  setDragListIndex(null);
+                  setDropListIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDragListIndex(null);
+                  setDropListIndex(null);
+                }}
+                className={dropListIndex === displayIndex && dragListIndex !== displayIndex ? "border-t-2 border-blue-400" : ""}
+              >
                 <button
                   type="button"
                   data-testid={`object-item-${obj.id}`}
-                  className={`w-full rounded border px-2 py-1 text-left text-sm ${
+                  className={`w-full cursor-grab rounded border px-2 py-1 text-left text-sm ${
                     obj.id === selectedId
                       ? "border-blue-400 bg-blue-50 text-blue-800"
                       : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
