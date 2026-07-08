@@ -30,9 +30,9 @@
 
 ### 1-1. 注釈JSONスキーマ(SPEC §4)
 
-- [ ] test: 有効フィクスチャ3件がparse成功 — ①基本(SPEC §4.3そのまま)②2カラム合成(§4.4)③最小(canvas+空objects)
-- [ ] test: 無効フィクスチャがエラーになる — id重複 / version≠1 / points1点のline / w≤0のrect / 不正color / 未知のtype
-- [ ] 実装: `packages/core/src/schema.ts`(zod)。`parseAnnotation(json): AnnotationFile`(エラーは全issueを含む)
+- [x] test: 有効フィクスチャ3件がparse成功 — ①基本(SPEC §4.3そのまま)②2カラム合成(§4.4)③最小(canvas+空objects)
+- [x] test: 無効フィクスチャがエラーになる — id重複 / version≠1 / points1点のline / w≤0のrect / 不正color / 未知のtype
+- [x] 実装: `packages/core/src/schema.ts`(zod)。`parseAnnotation(json): AnnotationFile`(エラーは全issueを含む)
 
 ### 1-2. レンダラー(SPEC §6)
 
