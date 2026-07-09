@@ -636,3 +636,31 @@ test("annotation editor: composed annotation image can be downloaded", async ({ 
 
   expect(download.suggestedFilename()).toBe(`${annotationId}.png`);
 });
+
+test("annotation editor: undo and redo restore edits and dirty state", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  const objectItems = page.locator('[data-testid^="object-item-"]');
+  const initialCount = await objectItems.count();
+
+  await expect(page.getByTestId("undo-button")).toBeDisabled();
+  await expect(page.getByTestId("redo-button")).toBeDisabled();
+
+  await page.getByTestId("add-badge").click();
+  await expect(objectItems).toHaveCount(initialCount + 1);
+  await expect(page.getByText("未保存")).toBeVisible();
+
+  await page.getByTestId("undo-button").click();
+  await expect(objectItems).toHaveCount(initialCount);
+  await expect(page.getByText("未保存")).toHaveCount(0);
+  await expect(page.getByTestId("redo-button")).toBeEnabled();
+
+  await page.getByTestId("redo-button").click();
+  await expect(objectItems).toHaveCount(initialCount + 1);
+  await expect(page.getByText("未保存")).toBeVisible();
+
+  await page.keyboard.press("Meta+z");
+  await expect(objectItems).toHaveCount(initialCount);
+  await page.keyboard.press("Meta+Shift+z");
+  await expect(objectItems).toHaveCount(initialCount + 1);
+});
