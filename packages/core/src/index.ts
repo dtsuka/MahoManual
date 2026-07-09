@@ -19,6 +19,10 @@ export {
 } from "./capture-math.js";
 export { mergeAnnotations } from "./merge-annotations.js";
 export { renderAnnotationPng } from "./export-image.js";
+export {
+  renderManualHtmlDownload,
+  renderManualPdfDownload,
+} from "./export-artifact.js";
 export { exportPdf, type ExportPdfOptions } from "./pdf.js";
 export {
   addAnnotationObject,

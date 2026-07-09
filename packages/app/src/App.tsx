@@ -140,12 +140,30 @@ function ProjectHome() {
         <h1 className="mt-2 text-xl font-semibold">{project}</h1>
       </header>
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <Link
-          to={`/projects/${project}/manual`}
-          className="rounded border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-blue-300"
-        >
-          マニュアル編集 (Markdown + プレビュー)
-        </Link>
+        <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+          <Link
+            to={`/projects/${project}/manual`}
+            className="rounded border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-blue-300"
+          >
+            マニュアル編集 (Markdown + プレビュー)
+          </Link>
+          <a
+            href={`/api/projects/${encodeURIComponent(project)}/export.html`}
+            download={`${project}.html`}
+            data-testid="export-html"
+            className="rounded border border-slate-200 bg-white px-4 py-3 text-center shadow-sm hover:border-blue-300"
+          >
+            HTML出力
+          </a>
+          <a
+            href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
+            download={`${project}.pdf`}
+            data-testid="export-pdf"
+            className="rounded border border-slate-200 bg-white px-4 py-3 text-center shadow-sm hover:border-blue-300"
+          >
+            PDF出力
+          </a>
+        </div>
         <ImageImport project={project} />
         <AnnotationLinks project={project} />
       </div>

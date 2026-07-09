@@ -9,6 +9,7 @@
     "./render": "./src/render.ts",
     "./build": "./src/build.ts",
     "./export-image": "./src/export-image.ts",
+    "./export-artifact": "./src/export-artifact.ts",
     "./pdf": "./src/pdf.ts",
     "./project": "./src/project.ts",
     "./theme": "./src/theme.ts",

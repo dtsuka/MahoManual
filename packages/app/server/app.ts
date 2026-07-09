@@ -5,6 +5,8 @@ import {
   getNaturalSizes,
   parseAnnotation,
   renderAnnotationPng,
+  renderManualHtmlDownload,
+  renderManualPdfDownload,
   renumberBadges,
 } from "@mahomanual/core";
 import {
@@ -82,6 +84,48 @@ export function createApp() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "project creation failed";
       return c.json({ error: message }, message.includes("既に存在") ? 409 : 400);
+    }
+  });
+
+  app.get("/api/projects/:project/export.html", async (c) => {
+    const project = c.req.param("project");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    try {
+      const html = await renderManualHtmlDownload(root);
+      return c.body(html.toString("utf8"), 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${project}.html"`,
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "HTML export failed" },
+        500,
+      );
+    }
+  });
+
+  app.get("/api/projects/:project/export.pdf", async (c) => {
+    const project = c.req.param("project");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    try {
+      const pdf = await renderManualPdfDownload(root);
+      return c.body(Uint8Array.from(pdf), 200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${project}.pdf"`,
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "PDF export failed" },
+        500,
+      );
     }
   });
 
