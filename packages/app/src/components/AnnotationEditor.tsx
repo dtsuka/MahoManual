@@ -43,6 +43,7 @@ import {
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
 const SNAP_THRESHOLD_PCT = 0.7;
 const SNAP_RELEASE_PCT = 1.5;
+const MAX_HISTORY = 100;
 
 interface AnnotationEditorProps {
   project: string;
@@ -168,6 +169,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [nextAnnotationId, setNextAnnotationId] = useState(annotationId);
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
+  const [, setHistoryVersion] = useState(0);
   const [draft, setDraft] = useState<DraftShape | null>(null);
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
   const [dragListIndex, setDragListIndex] = useState<number | null>(null);
@@ -178,6 +180,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const figureRef = useRef<HTMLDivElement>(null);
   const annotationRef = useRef<AnnotationFile | null>(null);
   const dirtyRef = useRef(false);
+  const savedAnnotationJsonRef = useRef("");
+  const historyRef = useRef<{
+    past: AnnotationFile[];
+    future: AnnotationFile[];
+  }>({ past: [], future: [] });
   const copiedIdsRef = useRef<string[]>([]);
   const replaceImageInputRef = useRef<HTMLInputElement>(null);
   const selectedId = selectedIds.at(-1) ?? null;
@@ -211,6 +218,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   const applyPayload = (payload: AnnotationPayload) => {
     annotationRef.current = payload.annotation;
+    savedAnnotationJsonRef.current = JSON.stringify(payload.annotation);
+    historyRef.current = { past: [], future: [] };
+    setHistoryVersion((version) => version + 1);
     setAnnotation(payload.annotation);
     setNaturalSizes(payload.naturalSizes);
     setTheme(payload.theme ?? {});
@@ -221,16 +231,62 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   // GUI 上の編集はすべてここを通し、annotationRef(最新値)と dirty を同期する
   const applyLocalChange = (updater: (current: AnnotationFile) => AnnotationFile) => {
-    setAnnotation((current) => {
-      if (!current) {
-        return current;
-      }
-      const next = updater(current);
-      annotationRef.current = next;
-      return next;
-    });
-    dirtyRef.current = true;
-    setDirty(true);
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const next = updater(current);
+    if (next === current) {
+      return;
+    }
+    historyRef.current = {
+      past: [...historyRef.current.past, current].slice(-MAX_HISTORY),
+      future: [],
+    };
+    annotationRef.current = next;
+    setAnnotation(next);
+    const nextDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
+    dirtyRef.current = nextDirty;
+    setDirty(nextDirty);
+    setHistoryVersion((version) => version + 1);
+  };
+
+  const restoreHistoryAnnotation = (next: AnnotationFile) => {
+    annotationRef.current = next;
+    setAnnotation(next);
+    setSelectedIds((ids) =>
+      ids.filter((id) => next.objects.some((object) => object.id === id)),
+    );
+    const nextDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
+    dirtyRef.current = nextDirty;
+    setDirty(nextDirty);
+    setHistoryVersion((version) => version + 1);
+  };
+
+  const undo = () => {
+    const current = annotationRef.current;
+    const previous = historyRef.current.past.at(-1);
+    if (!current || !previous) {
+      return;
+    }
+    historyRef.current = {
+      past: historyRef.current.past.slice(0, -1),
+      future: [current, ...historyRef.current.future].slice(0, MAX_HISTORY),
+    };
+    restoreHistoryAnnotation(previous);
+  };
+
+  const redo = () => {
+    const current = annotationRef.current;
+    const next = historyRef.current.future[0];
+    if (!current || !next) {
+      return;
+    }
+    historyRef.current = {
+      past: [...historyRef.current.past, current].slice(-MAX_HISTORY),
+      future: historyRef.current.future.slice(1),
+    };
+    restoreHistoryAnnotation(next);
   };
 
   useEffect(() => {
@@ -272,17 +328,35 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
         return;
       }
-      if (selectedIds.length === 0 || !annotationRef.current) {
+      if (!annotationRef.current) {
+        return;
+      }
+      const commandKey = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (commandKey && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+      if (event.ctrlKey && key === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (selectedIds.length === 0) {
         return;
       }
       const selected = new Set(selectedIds);
-      const commandKey = event.metaKey || event.ctrlKey;
-      if (commandKey && event.key.toLowerCase() === "c") {
+      if (commandKey && key === "c") {
         event.preventDefault();
         copiedIdsRef.current = [...selectedIds];
         return;
       }
-      if (commandKey && event.key.toLowerCase() === "v" && copiedIdsRef.current.length > 0) {
+      if (commandKey && key === "v" && copiedIdsRef.current.length > 0) {
         event.preventDefault();
         const result = duplicateObjects(annotationRef.current.objects, copiedIdsRef.current);
         applyLocalChange((current) => ({ ...current, objects: result.objects }));
@@ -805,6 +879,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       const saved = await saveAnnotation(project, annotationId, annotationRef.current ?? annotation);
       // サーバーで zod 正規化された内容を保持し、保存エコーの同一判定を確実にする
       annotationRef.current = saved.annotation;
+      savedAnnotationJsonRef.current = JSON.stringify(saved.annotation);
       setAnnotation(saved.annotation);
       dirtyRef.current = false;
       setDirty(false);
@@ -918,6 +993,26 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         </div>
         {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
         <div className="ml-auto flex gap-2">
+          <button
+            type="button"
+            data-testid="undo-button"
+            className="rounded bg-slate-100 px-3 py-1 disabled:opacity-40"
+            disabled={historyRef.current.past.length === 0}
+            title="元に戻す (⌘/Ctrl+Z)"
+            onClick={undo}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            data-testid="redo-button"
+            className="rounded bg-slate-100 px-3 py-1 disabled:opacity-40"
+            disabled={historyRef.current.future.length === 0}
+            title="やり直す (⌘/Ctrl+Shift+Z)"
+            onClick={redo}
+          >
+            Redo
+          </button>
           <button
             type="button"
             className="rounded bg-slate-100 px-3 py-1"

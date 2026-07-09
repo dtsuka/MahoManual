@@ -420,6 +420,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - Vite + React + Tailwind CSS v4(`@tailwindcss/vite`、tailwind.configは使わない)+ Hono(ファイルAPI)
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
 - 合成画像出力: 保存済みの画像と全注釈オブジェクトをcoreレンダラーで合成し、canvasと同じピクセル寸法のPNGとしてダウンロード。画像srcはdata URL化し、Playwrightでfigureのみをキャプチャする
 - スクショ取り込み: クリップボードペースト(Clipboard API)→ `img/raw/` へ保存 → 注釈JSON雛形生成
 - ライブリロード: サーバーがchokidarでプロジェクトを監視し、SSEでクライアントへ通知(AI/CLIによるファイル変更が開いている画面に即反映)
