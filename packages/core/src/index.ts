@@ -18,6 +18,7 @@ export {
   type Region,
 } from "./capture-math.js";
 export { mergeAnnotations } from "./merge-annotations.js";
+export { renderAnnotationPng } from "./export-image.js";
 export { exportPdf, type ExportPdfOptions } from "./pdf.js";
 export {
   addAnnotationObject,

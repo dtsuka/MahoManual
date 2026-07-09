@@ -4,6 +4,7 @@ import {
   buildPreviewHtml,
   getNaturalSizes,
   parseAnnotation,
+  renderAnnotationPng,
   renumberBadges,
 } from "@mahomanual/core";
 import {
@@ -107,6 +108,32 @@ export function createApp() {
       return c.json({ annotation, naturalSizes, theme });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "not found" }, 404);
+    }
+  });
+
+  app.get("/api/projects/:project/annotations/:id/image.png", async (c) => {
+    const project = c.req.param("project");
+    const id = c.req.param("id");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    if (!isSafeName(id)) {
+      return c.json({ error: "不正な注釈IDです" }, 400);
+    }
+    try {
+      const annotation = readAnnotationFile(root, id);
+      const png = await renderAnnotationPng(root, annotation);
+      return c.body(Uint8Array.from(png), 200, {
+        "Content-Type": "image/png",
+        "Content-Disposition": `attachment; filename="${id}.png"`,
+        "Cache-Control": "no-store",
+      });
+    } catch (error) {
+      return c.json(
+        { error: error instanceof Error ? error.message : "image export failed" },
+        500,
+      );
     }
   });
 

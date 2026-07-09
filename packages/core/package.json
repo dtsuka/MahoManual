@@ -8,6 +8,7 @@
     "./schema": "./src/schema.ts",
     "./render": "./src/render.ts",
     "./build": "./src/build.ts",
+    "./export-image": "./src/export-image.ts",
     "./pdf": "./src/pdf.ts",
     "./project": "./src/project.ts",
     "./theme": "./src/theme.ts",

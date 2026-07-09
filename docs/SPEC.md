@@ -419,7 +419,8 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 - Vite + React + Tailwind CSS v4(`@tailwindcss/vite`、tailwind.configは使わない)+ Hono(ファイルAPI)
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
-- 注釈エディタ: オブジェクトパレット(badge/text/frame/line/arrow)、ドラッグ・リサイズ(react-moveable または interact.js)、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- 合成画像出力: 保存済みの画像と全注釈オブジェクトをcoreレンダラーで合成し、canvasと同じピクセル寸法のPNGとしてダウンロード。画像srcはdata URL化し、Playwrightでfigureのみをキャプチャする
 - スクショ取り込み: クリップボードペースト(Clipboard API)→ `img/raw/` へ保存 → 注釈JSON雛形生成
 - ライブリロード: サーバーがchokidarでプロジェクトを監視し、SSEでクライアントへ通知(AI/CLIによるファイル変更が開いている画面に即反映)
 - Phase 5: CodeMirror 6のmdエディタ+プレビュー(左右分割)、プレビュー内figureクリックで注釈エディタへ、renumber結果と本文①②…の整合チェック表示

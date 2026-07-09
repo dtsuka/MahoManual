@@ -919,6 +919,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addLine("arrow")}>
             + Arrow
           </button>
+          <a
+            href={`/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(annotationId)}/image.png`}
+            download={`${annotationId}.png`}
+            data-testid="download-composed-image"
+            aria-disabled={dirty}
+            title={dirty ? "先に変更を保存してください" : "画像と注釈を合成したPNGをダウンロード"}
+            className={`rounded bg-slate-100 px-3 py-1 ${
+              dirty ? "pointer-events-none opacity-40" : ""
+            }`}
+            onClick={(event) => {
+              if (dirty) {
+                event.preventDefault();
+              }
+            }}
+          >
+            PNG出力
+          </a>
           <button
             type="button"
             className="rounded bg-blue-600 px-4 py-1 text-white"
