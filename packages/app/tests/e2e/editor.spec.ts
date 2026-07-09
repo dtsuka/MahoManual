@@ -229,6 +229,23 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
   }
 });
 
+test("annotation editor: selected line point is highlighted on canvas and side panel", async ({
+  page,
+}) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await page.getByTestId("object-item-a1").click();
+
+  await page.getByTestId("point-handle-1").click();
+  await expect(page.getByTestId("point-handle-1")).toHaveClass(/is-active/);
+  await expect(page.getByTestId("point-row-1")).toHaveClass(/bg-blue-100/);
+
+  await page.getByTestId("prop-point-0-x").click();
+  await expect(page.getByTestId("point-handle-0")).toHaveClass(/is-active/);
+  await expect(page.getByTestId("point-row-0")).toHaveClass(/bg-blue-100/);
+  await expect(page.getByTestId("point-row-1")).not.toHaveClass(/bg-blue-100/);
+});
+
 test("annotation editor: line can be selected by clicking near the stroke", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
