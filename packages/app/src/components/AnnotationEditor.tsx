@@ -107,6 +107,7 @@ function NumberField({
   testId,
   step = 0.1,
   min,
+  onFocus,
 }: {
   label: string;
   value: number;
@@ -114,6 +115,7 @@ function NumberField({
   testId?: string;
   step?: number;
   min?: number;
+  onFocus?: () => void;
 }) {
   return (
     <label className="flex items-center gap-1">
@@ -125,6 +127,7 @@ function NumberField({
         data-testid={testId}
         className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm"
         value={Math.round(value * 100) / 100}
+        onFocus={onFocus}
         onChange={(event) => {
           const next = Number.parseFloat(event.target.value);
           if (!Number.isNaN(next)) {
@@ -160,6 +163,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [status, setStatus] = useState<string>("");
   const [nextAnnotationId, setNextAnnotationId] = useState(annotationId);
   const [error, setError] = useState<string>("");
@@ -259,6 +263,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   useEffect(() => {
     setDraft(null);
+    setSelectedPointIndex(null);
   }, [selectedId]);
 
   useEffect(() => {
@@ -649,6 +654,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
     event.preventDefault();
     event.stopPropagation();
+    setSelectedPointIndex(index);
     const objectId = selected.id;
     const points0 = selected.points;
     const startPct = pctFromClient(event.clientX, event.clientY);
@@ -700,6 +706,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     const objectId = selected.id;
+    setSelectedPointIndex(selected.points.length);
     updateObject(objectId, (obj) => {
       if (obj.type !== "line" && obj.type !== "arrow") {
         return obj;
@@ -718,6 +725,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         return obj;
       }
       return { ...obj, points: obj.points.filter((_, i) => i !== index) };
+    });
+    setSelectedPointIndex((current) => {
+      if (current === null) {
+        return null;
+      }
+      if (current === index) {
+        return null;
+      }
+      return current > index ? current - 1 : current;
     });
   };
 
@@ -1048,7 +1064,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     <div
                       key={index}
                       data-testid={`point-handle-${index}`}
-                      className="mm-editor-handle mm-editor-handle--point"
+                      className={`mm-editor-handle mm-editor-handle--point ${
+                        selectedPointIndex === index ? "is-active" : ""
+                      }`}
                       style={{ left: `${point.x}%`, top: `${point.y}%`, cursor: "move" }}
                       onPointerDown={(event) => beginPointDrag(event, index)}
                     />
@@ -1477,17 +1495,26 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 <div className="mb-1 font-medium text-slate-700">点({selected.points.length})</div>
                 <ul className="mb-2 space-y-1">
                   {selected.points.map((point, index) => (
-                    <li key={index} className="flex items-center gap-1">
+                    <li
+                      key={index}
+                      data-testid={`point-row-${index}`}
+                      className={`flex items-center gap-1 rounded px-1 py-0.5 ${
+                        selectedPointIndex === index ? "bg-blue-100 ring-1 ring-blue-300" : ""
+                      }`}
+                      onClick={() => setSelectedPointIndex(index)}
+                    >
                       <span className="w-3 shrink-0 text-xs text-slate-400">{index + 1}</span>
                       <NumberField
                         label="x"
                         value={point.x}
                         testId={`prop-point-${index}-x`}
+                        onFocus={() => setSelectedPointIndex(index)}
                         onChange={(v) => updatePointValue(index, "x", v)}
                       />
                       <NumberField
                         label="y"
                         value={point.y}
+                        onFocus={() => setSelectedPointIndex(index)}
                         onChange={(v) => updatePointValue(index, "y", v)}
                       />
                       <button

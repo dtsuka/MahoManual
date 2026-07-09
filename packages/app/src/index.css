@@ -89,6 +89,12 @@ body {
   height: 12px;
 }
 
+.mm-editor-handle--point.is-active {
+  background: #2563eb;
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #2563eb;
+}
+
 /* md プレビューペイン: 納品 HTML の本文スタイル(core THEME_PAGE_CSS 相当)に寄せる */
 .preview-pane {
   font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
