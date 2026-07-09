@@ -704,3 +704,17 @@ test("project list: a project can be created and opened", async ({ page }) => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("project page: HTML and PDF can be downloaded", async ({ page }) => {
+  await page.goto(`/projects/${testProject}`);
+
+  const htmlDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-html").click();
+  const htmlDownload = await htmlDownloadPromise;
+  expect(htmlDownload.suggestedFilename()).toBe(`${testProject}.html`);
+
+  const pdfDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-pdf").click();
+  const pdfDownload = await pdfDownloadPromise;
+  expect(pdfDownload.suggestedFilename()).toBe(`${testProject}.pdf`);
+});

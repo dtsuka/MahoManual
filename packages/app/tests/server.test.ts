@@ -84,6 +84,33 @@ describe("Hono API", () => {
     }
   });
 
+  it("GET /api/projects/:project/export.html downloads a single HTML file", async () => {
+    const response = await app.request(`/api/projects/${testProject}/export.html`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("content-disposition")).toContain(
+      `filename="${testProject}.html"`,
+    );
+    const html = await response.text();
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain("data:image/png;base64,");
+  });
+
+  it(
+    "GET /api/projects/:project/export.pdf downloads a PDF",
+    async () => {
+      const response = await app.request(`/api/projects/${testProject}/export.pdf`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/pdf");
+      expect(response.headers.get("content-disposition")).toContain(
+        `filename="${testProject}.pdf"`,
+      );
+      const bytes = Buffer.from(await response.arrayBuffer());
+      expect(bytes.subarray(0, 4).toString("ascii")).toBe("%PDF");
+    },
+    10_000,
+  );
+
   it("GET /api/projects/:project/annotations/:id returns annotation", async () => {
     const response = await app.request(`/api/projects/${testProject}/annotations/test-1`);
     expect(response.status).toBe(200);
