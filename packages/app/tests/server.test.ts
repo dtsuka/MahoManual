@@ -67,6 +67,17 @@ describe("Hono API", () => {
     expect(payload.annotation.version).toBe(1);
   });
 
+  it("GET /api/projects/:project/annotations/:id/image.png downloads a composed PNG", async () => {
+    const response = await app.request(
+      `/api/projects/${testProject}/annotations/test-1/image.png`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/png");
+    expect(response.headers.get("content-disposition")).toContain('filename="test-1.png"');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  });
+
   it("GET /api/projects/:project/annotations/:id includes project annotation theme", async () => {
     writeFileSync(
       join(testProjectRoot, "project.yaml"),

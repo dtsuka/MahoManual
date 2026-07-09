@@ -579,3 +579,14 @@ test("annotation editor: cursor can be added, configured and saved as inline SVG
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
   }
 });
+
+test("annotation editor: composed annotation image can be downloaded", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByTestId("download-composed-image").click();
+  const download = await downloadPromise;
+
+  expect(download.suggestedFilename()).toBe(`${annotationId}.png`);
+});
