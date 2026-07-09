@@ -10,6 +10,7 @@ import {
 import {
   countAnnotationBadges,
   countUnicodeBadges,
+  createManualProject,
   listManuals,
   readAnnotationFile,
   readManual,
@@ -66,6 +67,22 @@ export function createApp() {
 
   app.get("/api/projects", (c) => {
     return c.json(listManuals(projectsDir));
+  });
+
+  app.post("/api/projects", async (c) => {
+    const body = await c.req.json<{ id?: string; title?: string }>();
+    const id = body.id?.trim() ?? "";
+    const title = body.title?.trim() || id;
+    if (!isSafeName(id)) {
+      return c.json({ error: "不正なプロジェクトIDです" }, 400);
+    }
+    try {
+      createManualProject(projectsDir, id, title);
+      return c.json({ id, title }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "project creation failed";
+      return c.json({ error: message }, message.includes("既に存在") ? 409 : 400);
+    }
   });
 
   app.get("/api/projects/:project/manual", (c) => {

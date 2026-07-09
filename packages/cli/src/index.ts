@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { createManualProject as createCoreManualProject } from "@mahomanual/core/project";
 
 // core / playwright は import 連鎖が重いため、top-level では読み込まず
 // 各コマンドの実行時に動的 import する(`manual new` 等の起動を軽く保つ)
@@ -22,27 +23,7 @@ export function resolveProjectPath(input: string): string {
 }
 
 export function createManualProject(name: string): string {
-  const projectRoot = join(repoRoot, "projects", name);
-  if (existsSync(projectRoot)) {
-    throw new Error(`プロジェクトは既に存在します: ${name}`);
-  }
-
-  mkdirSync(join(projectRoot, "annotations"), { recursive: true });
-  mkdirSync(join(projectRoot, "img", "raw"), { recursive: true });
-  mkdirSync(join(projectRoot, "captures"), { recursive: true });
-
-  writeFileSync(
-    join(projectRoot, "project.yaml"),
-    `title: ${name}\n`,
-    "utf8",
-  );
-  writeFileSync(
-    join(projectRoot, "manual.md"),
-    `# ${name}\n\n## 1 はじめに\n\n本文をここに書きます。\n`,
-    "utf8",
-  );
-
-  return projectRoot;
+  return createCoreManualProject(join(repoRoot, "projects"), name, name);
 }
 
 async function runBuild(projectInput: string, options: { output?: string; singleFile?: boolean }) {

@@ -418,6 +418,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 ## 11. GUI仕様(packages/app、Phase 4〜5)
 
 - Vite + React + Tailwind CSS v4(`@tailwindcss/vite`、tailwind.configは使わない)+ Hono(ファイルAPI)
+- プロジェクト一覧: ID・タイトルを指定してSPEC §3の標準構造を新規作成し、作成後はプロジェクトページへ遷移する。既存IDと不正なパスは拒否する
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする

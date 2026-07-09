@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { fetchProjects, pasteImage, renameAnnotation, type ProjectInfo } from "./lib/api.js";
+import {
+  createProject,
+  fetchProjects,
+  pasteImage,
+  renameAnnotation,
+  type ProjectInfo,
+} from "./lib/api.js";
 import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
 
@@ -275,14 +281,70 @@ function ManualRoute() {
 
 function ProjectList() {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [newProjectId, setNewProjectId] = useState("");
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     void fetchProjects().then(setProjects);
   }, []);
 
+  const handleCreateProject = async () => {
+    const id = newProjectId.trim();
+    if (!id || creating) {
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    try {
+      const created = await createProject(id, newProjectTitle.trim() || id);
+      navigate(`/projects/${encodeURIComponent(created.id)}`);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "プロジェクトの作成に失敗しました");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl p-8">
       <h1 className="mb-6 text-2xl font-bold">MahoManual</h1>
+      <section className="mb-6 rounded border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="mb-3 font-semibold">プロジェクトを追加</h2>
+        <div className="grid grid-cols-[1fr_1.5fr_auto] gap-2">
+          <input
+            data-testid="new-project-id"
+            className="rounded border border-slate-300 px-3 py-2 text-sm"
+            placeholder="プロジェクトID"
+            value={newProjectId}
+            onChange={(event) => setNewProjectId(event.target.value)}
+          />
+          <input
+            data-testid="new-project-title"
+            className="rounded border border-slate-300 px-3 py-2 text-sm"
+            placeholder="タイトル（省略時はID）"
+            value={newProjectTitle}
+            onChange={(event) => setNewProjectTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                void handleCreateProject();
+              }
+            }}
+          />
+          <button
+            type="button"
+            data-testid="create-project"
+            className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40"
+            disabled={!newProjectId.trim() || creating}
+            onClick={() => void handleCreateProject()}
+          >
+            {creating ? "作成中…" : "作成"}
+          </button>
+        </div>
+        {createError ? <p className="mt-2 text-sm text-red-600" role="alert">{createError}</p> : null}
+      </section>
       <ul className="space-y-3">
         {projects.map((project) => (
           <li key={project.name}>

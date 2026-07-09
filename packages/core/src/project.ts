@@ -47,6 +47,36 @@ function annotationPath(projectRoot: string, id: string): string {
   return join(projectRoot, "annotations", `${id}.json`);
 }
 
+export function createManualProject(
+  projectsRoot: string,
+  name: string,
+  title = name,
+): string {
+  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
+    throw new Error("不正なプロジェクトIDです");
+  }
+  const projectRoot = join(projectsRoot, name);
+  if (existsSync(projectRoot)) {
+    throw new Error(`プロジェクトは既に存在します: ${name}`);
+  }
+  const cleanTitle = title.replace(/\r?\n/g, " ").trim() || name;
+
+  mkdirSync(join(projectRoot, "annotations"), { recursive: true });
+  mkdirSync(join(projectRoot, "img", "raw"), { recursive: true });
+  mkdirSync(join(projectRoot, "captures"), { recursive: true });
+  writeFileSync(
+    join(projectRoot, "project.yaml"),
+    `title: ${JSON.stringify(cleanTitle)}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    join(projectRoot, "manual.md"),
+    `# ${cleanTitle}\n\n## 1 はじめに\n\n本文をここに書きます。\n`,
+    "utf8",
+  );
+  return projectRoot;
+}
+
 export function readProjectYaml(projectRoot: string): Record<string, unknown> {
   const path = join(projectRoot, "project.yaml");
   if (!existsSync(path)) {

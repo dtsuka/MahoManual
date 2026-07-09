@@ -25,6 +25,7 @@ export {
   buildManualHtml,
   countAnnotationBadges,
   countUnicodeBadges,
+  createManualProject,
   createAnnotationSkeleton,
   exportManualPdf,
   listManuals,

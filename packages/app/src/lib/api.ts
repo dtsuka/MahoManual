@@ -33,6 +33,14 @@ export function fetchProjects(): Promise<ProjectInfo[]> {
   return request("/api/projects");
 }
 
+export function createProject(id: string, title: string): Promise<{ id: string; title: string }> {
+  return request("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, title }),
+  });
+}
+
 export function fetchManual(project: string): Promise<ManualContents> {
   return request(`/api/projects/${encodeURIComponent(project)}/manual`);
 }
