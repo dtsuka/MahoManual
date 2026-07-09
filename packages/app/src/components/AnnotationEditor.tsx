@@ -87,7 +87,6 @@ function readImageFile(file: File): Promise<{ data: string; width: number; heigh
 // state へのコミット(applyLocalChange)は pointerup 時にのみ行う
 interface DraftShape {
   rect?: RectPct;
-  points?: Pt[];
 }
 
 const FRAME_HANDLES = [
@@ -373,6 +372,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       .forEach((element) => element.setAttribute("points", value));
   };
 
+  const setPointHandlePositions = (points: Pt[]) => {
+    const root = wrapRef.current;
+    if (!root) {
+      return;
+    }
+    root.querySelectorAll<HTMLElement>('[data-testid^="point-handle-"]').forEach((handle, index) => {
+      const point = points[index];
+      if (point) {
+        handle.style.left = `${point.x}%`;
+        handle.style.top = `${point.y}%`;
+      }
+    });
+  };
+
   // figure 上のドラッグはイベント委任で受ける。
   // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
   // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
@@ -482,10 +495,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       onMove: (pct) => {
         const next = pointsFor(pct);
         setPolylinePoints(objectId, next);
-        setDraft({ points: next });
+        setPointHandlePositions(next);
       },
       onEnd: (pct, moved) => {
-        setDraft(null);
         if (!moved) {
           return;
         }
@@ -664,10 +676,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       onMove: (pct, moveEvent) => {
         const next = pointsFor(snap(pct, moveEvent.shiftKey));
         setPolylinePoints(objectId, next);
-        setDraft({ points: next });
+        setPointHandlePositions(next);
       },
       onEnd: (pct, moved, endEvent) => {
-        setDraft(null);
         if (!moved) {
           return;
         }
@@ -840,7 +851,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const activeFrameRect = selected?.type === "frame" ? (draft?.rect ?? selected.rect) : null;
   const activeLinePoints =
     selected && (selected.type === "line" || selected.type === "arrow")
-      ? (draft?.points ?? selected.points)
+      ? selected.points
       : null;
 
   // line/arrow のヒット領域は React 管理のオーバーレイ SVG に描く。
@@ -1013,9 +1024,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   <polyline
                     key={obj.id}
                     data-mm-id={obj.id}
-                    points={toCanvasPoints(
-                      selectedId === obj.id && draft?.points ? draft.points : obj.points,
-                    )}
+                    points={toCanvasPoints(obj.points)}
                   />
                 ))}
               </svg>
