@@ -91,6 +91,17 @@ const textObjectSchema = baseSchema.extend({
   background: colorSchema.optional(),
 });
 
+export const cursorIconSchema = z.enum(["pointer", "move", "grab", "text", "crosshair"]);
+export type CursorIcon = z.infer<typeof cursorIconSchema>;
+
+const cursorObjectSchema = baseSchema.extend({
+  type: z.literal("cursor"),
+  icon: cursorIconSchema,
+  at: pointSchema,
+  color: colorSchema.optional(),
+  size: z.number().gt(0).optional(),
+});
+
 const frameObjectSchema = baseSchema.extend({
   type: z.literal("frame"),
   rect: rectSchema,
@@ -119,6 +130,7 @@ const annotationObjectSchema = z.discriminatedUnion("type", [
   imageObjectSchema,
   badgeObjectSchema,
   textObjectSchema,
+  cursorObjectSchema,
   frameObjectSchema,
   lineObjectSchema,
   arrowObjectSchema,

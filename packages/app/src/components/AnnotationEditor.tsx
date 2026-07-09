@@ -8,7 +8,11 @@ import {
   THEME_FIGURE_CSS,
   type AnnotationTheme,
 } from "@mahomanual/core/theme";
-import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
+import type {
+  AnnotationFile,
+  AnnotationObject,
+  CursorIcon,
+} from "@mahomanual/core/schema";
 import {
   createObjectId,
   injectObjectIds,
@@ -46,7 +50,7 @@ interface AnnotationEditorProps {
   onRenamed?: (id: string) => void;
 }
 
-type MovableObject = Extract<AnnotationObject, { type: "badge" | "text" | "frame" }>;
+type MovableObject = Extract<AnnotationObject, { type: "badge" | "text" | "cursor" | "frame" }>;
 
 interface Pt {
   x: number;
@@ -138,6 +142,8 @@ function objectLabel(obj: AnnotationObject): string {
       return `badge ${obj.n}`;
     case "text":
       return `text 「${obj.content.slice(0, 8)}${obj.content.length > 8 ? "…" : ""}」`;
+    case "cursor":
+      return `cursor ${obj.icon}`;
     case "image":
       return `image ${obj.src.split("/").pop() ?? obj.src}`;
     case "frame":
@@ -177,7 +183,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return "";
     }
     const taggable = annotation.objects.filter(
-      (obj): obj is MovableObject => obj.type === "badge" || obj.type === "text" || obj.type === "frame",
+      (obj): obj is MovableObject =>
+        obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
     );
     return injectObjectIds(
       rewriteFigureHtml(
@@ -392,7 +399,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       : dragIds);
     const startPct = pctFromClient(event.clientX, event.clientY);
 
-    if (obj.type === "badge" || obj.type === "text") {
+    if (obj.type === "badge" || obj.type === "text" || obj.type === "cursor") {
       // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
       const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
       const el = target as HTMLElement;
@@ -540,6 +547,16 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           source: "manual",
           content: "テキスト",
           at: { x: 50, y: 50 },
+        };
+        break;
+      case "cursor":
+        newObject = {
+          id,
+          type: "cursor",
+          source: "manual",
+          icon: "pointer",
+          at: { x: 50, y: 50 },
+          size: 28,
         };
         break;
       case "frame":
@@ -694,11 +711,16 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   // サイドパネルの数値・スタイル入力(選択中オブジェクトの型に応じて使用)
   const updateAt = (axis: "x" | "y", value: number) => {
-    if (!selected || (selected.type !== "badge" && selected.type !== "text")) {
+    if (
+      !selected ||
+      (selected.type !== "badge" && selected.type !== "text" && selected.type !== "cursor")
+    ) {
       return;
     }
     updateObject(selected.id, (obj) =>
-      obj.type === "badge" || obj.type === "text" ? { ...obj, at: { ...obj.at, [axis]: value } } : obj,
+      obj.type === "badge" || obj.type === "text" || obj.type === "cursor"
+        ? { ...obj, at: { ...obj.at, [axis]: value } }
+        : obj,
     );
   };
 
@@ -878,6 +900,14 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           </button>
           <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addObject("text")}>
             + Text
+          </button>
+          <button
+            type="button"
+            className="rounded bg-slate-100 px-3 py-1"
+            data-testid="add-cursor"
+            onClick={() => addObject("cursor")}
+          >
+            + Cursor
           </button>
           <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addObject("frame")}>
             + Frame
@@ -1205,6 +1235,72 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </div>
               </div>
+            </div>
+          ) : null}
+          {selected?.type === "cursor" ? (
+            <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="mb-1 block font-medium text-slate-700">カーソル種類</span>
+                <select
+                  data-testid="cursor-icon"
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  value={selected.icon}
+                  onChange={(event) => {
+                    const icon = event.target.value as CursorIcon;
+                    updateObject(selected.id, (obj) =>
+                      obj.type === "cursor" ? { ...obj, icon } : obj,
+                    );
+                  }}
+                >
+                  <option value="pointer">通常 (Pointer)</option>
+                  <option value="move">移動 (Move)</option>
+                  <option value="grab">つかむ (Grab)</option>
+                  <option value="text">テキスト (Text)</option>
+                  <option value="crosshair">十字 (Crosshair)</option>
+                </select>
+              </label>
+              <div>
+                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <input
+                    type="color"
+                    data-testid="prop-color"
+                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                    onChange={(event) => {
+                      const color = event.target.value;
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "cursor" ? { ...obj, color } : obj,
+                      );
+                    }}
+                  />
+                </label>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-slate-700">サイズ (px)</span>
+                  <NumberField
+                    label=""
+                    value={selected.size ?? 28}
+                    step={1}
+                    min={8}
+                    testId="cursor-size"
+                    onChange={(v) =>
+                      updateObject(selected.id, (obj) =>
+                        obj.type === "cursor" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">
+                SVGはHTMLへ直接埋め込まれるため、単体HTMLでも表示されます。
+              </p>
             </div>
           ) : null}
           {selected?.type === "frame" ? (

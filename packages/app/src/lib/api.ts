@@ -138,7 +138,20 @@ export function projectFileSrc(project: string, src: string): string {
 }
 
 export function createObjectId(type: AnnotationObject["type"], objects: AnnotationObject[]): string {
-  const prefix = type === "badge" ? "b" : type === "text" ? "t" : type === "frame" ? "f" : type === "line" ? "l" : "a";
+  const prefix =
+    type === "badge"
+      ? "b"
+      : type === "text"
+        ? "t"
+        : type === "cursor"
+          ? "c"
+          : type === "frame"
+            ? "f"
+            : type === "line"
+              ? "l"
+              : type === "image"
+                ? "img"
+                : "a";
   let index = objects.filter((obj) => obj.type === type).length + 1;
   let candidate = `${prefix}${index}`;
   const ids = new Set(objects.map((obj) => obj.id));
@@ -164,11 +177,11 @@ export function rewriteFigureHtml(html: string, project: string): string {
 
 export function injectObjectIds(html: string, objects: AnnotationObject[]): string {
   const taggable = objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "badge" | "text" | "frame" }> =>
-      obj.type === "badge" || obj.type === "text" || obj.type === "frame",
+    (obj): obj is Extract<AnnotationObject, { type: "badge" | "text" | "cursor" | "frame" }> =>
+      obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
   );
   let index = 0;
-  return html.replace(/<(span|div) class="mm-obj mm-(badge|text|frame)/g, (match, tag, kind) => {
+  return html.replace(/<(span|div) class="mm-obj mm-(badge|text|cursor|frame)/g, (match, tag, kind) => {
     const obj = taggable[index];
     index += 1;
     if (!obj) {

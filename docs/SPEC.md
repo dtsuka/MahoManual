@@ -93,7 +93,7 @@ interface AnnotationFile {
 // 全オブジェクト共通
 interface Base {
   id: string;                       // ファイル内で一意(重複はバリデーションエラー)
-  type: "image" | "badge" | "text" | "frame" | "line" | "arrow";
+  type: "image" | "badge" | "text" | "cursor" | "frame" | "line" | "arrow";
   source: "manual" | "recipe";      // recipe由来は再撮影で更新される(§9.4)
   recipeRef?: string;               // source:"recipe" のとき "<レシピID>#<index>"
 }
@@ -121,6 +121,14 @@ interface TextObj extends Base {
   fontSize?: number;                // 既定 14
   color?: string;
   background?: string;              // 省略時は背景なし
+}
+
+interface CursorObj extends Base { // 操作説明用のマウスカーソル
+  type: "cursor";
+  icon: "pointer" | "move" | "grab" | "text" | "crosshair";
+  at: Point;                        // pointerは先端、その他は中心
+  color?: string;                   // 既定はテーマ色
+  size?: number;                    // px、既定 28
 }
 
 interface FrameObj extends Base {   // 強調枠
@@ -252,6 +260,7 @@ caption: ""       # 任意。figcaptionとして出力
 
 - figure: `position:relative`、`aspect-ratio: canvas.width / canvas.height`、`max-width` はフェンスの `width`。`width ≤ 680` なら `mm-print-s`、それ以外は `mm-print-l` クラスを付与(印刷時の縮小率切替、§6.4)
 - **badge / text**: `left/top` = `at` の%値、`transform: translate(-50%,-50%)` で中心合わせ。サイズ・フォントはpx固定(縮小表示でも可読性維持)。badgeの表示は `n` の数値をCSSで円形に描画(Unicode①は使わない)
+- **cursor**: Lucide相当のアイコンを外部ファイルやWebフォントへ依存しないinline SVGで描画する。`pointer`は`at`を矢印の先端、その他は中心として配置し、単一HTML出力にもSVGパスを直接含める
 - **frame**: `left/top/width/height` = `rect` の%値。`border: {strokeWidth}px solid {color}`、`box-sizing:border-box`
 - **line / arrow**: figure全面に重ねた1つの `<svg>` にまとめる。`viewBox="0 0 {canvas.width} {canvas.height}"`。点は%→キャンバスpxに変換(`x_px = x / 100 * canvas.width`)。figureのaspect-ratioとviewBoxが一致するためスケーリングは常に等倍比(歪みなし)。**strokeWidthはviewBox座標系のpxで指定し、図全体と比例スケール**(vector-effectは使わない。矢印マーカーとの太さ整合のため)。arrowは `marker-end`(オブジェクトごとに一意のmarker idを生成)
 - **image(非破壊クロップ)**: ラッパーdivを `rect` に絶対配置し `overflow:hidden`。内部imgは crop領域がラッパーを満たすよう絶対配置:

@@ -15,6 +15,7 @@ function translateObject(obj: AnnotationObject, dx: number, dy: number): Annotat
   switch (obj.type) {
     case "badge":
     case "text":
+    case "cursor":
       return { ...obj, at: { x: obj.at.x + dx, y: obj.at.y + dy } };
     case "frame":
     case "image":

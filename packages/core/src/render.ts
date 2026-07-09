@@ -85,6 +85,31 @@ function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): str
   return `<span class="mm-obj mm-text" style="${styles.join("; ")};">${escapeHtml(obj.content)}</span>`;
 }
 
+const CURSOR_ICON_CONTENT = {
+  pointer: '<path d="m4 3 7.2 17.2 2.5-7.4 7.3-2.5L4 3Z" fill="currentColor" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>',
+  move: '<path d="M12 2v20M2 12h20M12 2 9 5m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m17-3-3-3m3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  grab: '<path d="M6.5 11V7.5a1.5 1.5 0 0 1 3 0V10m0-3.5V5a1.5 1.5 0 0 1 3 0v5m0-3.5V5.5a1.5 1.5 0 0 1 3 0V10m0-2.5a1.5 1.5 0 0 1 3 0V14c0 4.4-2.6 8-7 8h-1c-2.7 0-4.3-1.5-5.5-3.5L3.2 15a1.7 1.7 0 0 1 2.8-1.9L8 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  text: '<path d="M5 4h14M9 4v16m6-16v16M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  crosshair: '<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v5m0 10v5M2 12h5m10 0h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+} as const;
+
+function renderCursorObject(obj: Extract<AnnotationObject, { type: "cursor" }>): string {
+  const size = obj.size ?? 28;
+  const styles = [
+    `left:${pct(obj.at.x)}`,
+    `top:${pct(obj.at.y)}`,
+    `width:${size}px`,
+    `height:${size}px`,
+  ];
+  if (obj.icon !== "pointer") {
+    styles.push("transform:translate(-50%,-50%)");
+  }
+  if (obj.color) {
+    styles.push(`color:${obj.color}`);
+  }
+  return `<span class="mm-obj mm-cursor" data-cursor-icon="${obj.icon}" style="${styles.join("; ")};"><svg viewBox="0 0 24 24" aria-hidden="true">${CURSOR_ICON_CONTENT[obj.icon]}</svg></span>`;
+}
+
 function renderFrameObject(obj: Extract<AnnotationObject, { type: "frame" }>): string {
   const styles = [
     `left:${pct(obj.rect.x)}`,
@@ -161,6 +186,8 @@ function renderObject(
       return renderBadgeObject(obj);
     case "text":
       return renderTextObject(obj);
+    case "cursor":
+      return renderCursorObject(obj);
     case "frame":
       return renderFrameObject(obj);
     case "line":

@@ -51,6 +51,7 @@ export {
   type AnnotationFile,
   type AnnotationObject,
   type CaptureRecipe,
+  type CursorIcon,
   type RecipeStep,
 } from "./schema.js";
 export { renderFigure, type RenderFenceOptions, type RenderOptions } from "./render.js";
