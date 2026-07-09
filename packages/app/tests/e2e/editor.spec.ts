@@ -246,6 +246,26 @@ test("annotation editor: selected line point is highlighted on canvas and side p
   await expect(page.getByTestId("point-row-1")).not.toHaveClass(/bg-blue-100/);
 });
 
+test("annotation editor: line and arrow types can be switched without changing points", async ({
+  page,
+}) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await page.getByTestId("object-item-a1").click();
+  const polyline = page.locator('.mm-editor-figure polyline[data-mm-id="a1"]');
+  const originalPoints = await polyline.getAttribute("points");
+
+  await page.getByTestId("line-type").selectOption("line");
+  await expect(polyline).not.toHaveAttribute("marker-end");
+  await expect(page.getByTestId("object-item-a1")).toContainText("line");
+  await expect(polyline).toHaveAttribute("points", originalPoints!);
+
+  await page.getByTestId("line-type").selectOption("arrow");
+  await expect(polyline).toHaveAttribute("marker-end", /mm-arrow-a1/);
+  await expect(page.getByTestId("object-item-a1")).toContainText("arrow");
+  await expect(polyline).toHaveAttribute("points", originalPoints!);
+});
+
 test("annotation editor: line can be selected by clicking near the stroke", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
