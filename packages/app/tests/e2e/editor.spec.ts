@@ -684,3 +684,23 @@ test("annotation editor: undo and redo restore edits and dirty state", async ({ 
   await page.keyboard.press("Meta+Shift+z");
   await expect(objectItems).toHaveCount(initialCount + 1);
 });
+
+test("project list: a project can be created and opened", async ({ page }) => {
+  const id = `e2e-project-${Date.now()}`;
+  const title = "E2E 新規マニュアル";
+  const root = join(process.cwd(), `../../projects/${id}`);
+  await page.goto("/");
+
+  try {
+    await page.getByTestId("new-project-id").fill(id);
+    await page.getByTestId("new-project-title").fill(title);
+    await page.getByTestId("create-project").click();
+
+    await expect(page).toHaveURL(`/projects/${id}`);
+    await expect(page.getByRole("heading", { name: id })).toBeVisible();
+    expect(existsSync(join(root, "manual.md"))).toBe(true);
+    expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain(title);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

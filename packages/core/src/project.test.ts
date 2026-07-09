@@ -1,13 +1,33 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  createManualProject,
   readAnnotationFile,
   readProjectTheme,
   renumberAllBadgesFiles,
   renumberBadges,
 } from "./project.js";
+
+describe("createManualProject", () => {
+  it("creates the standard project structure with the specified title", () => {
+    const projectsRoot = mkdtempSync(join(tmpdir(), "mahomanual-projects-"));
+    try {
+      const root = createManualProject(projectsRoot, "new-project", "新規マニュアル");
+      expect(existsSync(join(root, "annotations"))).toBe(true);
+      expect(existsSync(join(root, "img/raw"))).toBe(true);
+      expect(existsSync(join(root, "captures"))).toBe(true);
+      expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain("新規マニュアル");
+      expect(readFileSync(join(root, "manual.md"), "utf8")).toContain("# 新規マニュアル");
+      expect(() => createManualProject(projectsRoot, "new-project", "duplicate")).toThrow(
+        /既に存在/,
+      );
+    } finally {
+      rmSync(projectsRoot, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("renumberBadges", () => {
   it("renumbers badges in array order starting from 1", () => {

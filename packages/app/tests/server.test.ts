@@ -60,6 +60,30 @@ describe("Hono API", () => {
     expect(projects.some((project) => project.name === testProject)).toBe(true);
   });
 
+  it("POST /api/projects creates a new project and rejects duplicate ids", async () => {
+    const id = "app-created-project";
+    const root = join(projectsDir, id);
+    try {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title: "画面から作成" }),
+      });
+      expect(response.status).toBe(201);
+      expect(existsSync(join(root, "manual.md"))).toBe(true);
+      expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain("画面から作成");
+
+      const duplicate = await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, title: "duplicate" }),
+      });
+      expect(duplicate.status).toBe(409);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("GET /api/projects/:project/annotations/:id returns annotation", async () => {
     const response = await app.request(`/api/projects/${testProject}/annotations/test-1`);
     expect(response.status).toBe(200);
