@@ -164,6 +164,23 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
     await page.getByTestId("object-item-a1").click();
     const handle = page.getByTestId("point-handle-0");
     await expect(handle).toBeVisible();
+    const originalPoints = await page
+      .locator('.mm-editor-figure .mm-lines polyline[data-mm-id="a1"]')
+      .getAttribute("points");
+    expect(originalPoints).toBeTruthy();
+    await page.locator(".mm-editor-figure").evaluate((root) => {
+      const read = () =>
+        root.querySelector('.mm-lines polyline[data-mm-id="a1"]')?.getAttribute("points") ?? "";
+      const history = [read()];
+      const observer = new MutationObserver(() => {
+        const value = read();
+        if (history.at(-1) !== value) {
+          history.push(value);
+        }
+      });
+      observer.observe(root, { attributes: true, childList: true, subtree: true });
+      Object.assign(window, { __arrowPointsHistory: history, __arrowPointsObserver: observer });
+    });
     // 点はキャンバス下部(y=92%)にあり viewport 外のため、生 mouse API の前にスクロールする
     await handle.scrollIntoViewIfNeeded();
 
@@ -177,6 +194,18 @@ test("annotation editor: arrow points can be edited by dragging point handles", 
     await page.mouse.down();
     await page.mouse.move(cx + 30, cy - 20, { steps: 4 });
     await page.mouse.up();
+    const pointsHistory = await page.evaluate(() => {
+      const state = window as typeof window & {
+        __arrowPointsHistory?: string[];
+        __arrowPointsObserver?: MutationObserver;
+      };
+      state.__arrowPointsObserver?.disconnect();
+      return state.__arrowPointsHistory ?? [];
+    });
+    const firstChanged = pointsHistory.findIndex((value) => value !== originalPoints);
+    expect(firstChanged).toBeGreaterThan(0);
+    // ドラッグが始まった後に元の点列へ戻ると、元位置と現在位置の線が交互に描画される
+    expect(pointsHistory.slice(firstChanged)).not.toContain(originalPoints);
 
     const [saveResponse] = await Promise.all([
       page.waitForResponse(
