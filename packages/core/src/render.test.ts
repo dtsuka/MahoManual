@@ -175,4 +175,33 @@ describe("renderFigure", () => {
     expect(html).toContain("mm-border");
     expect(html).toContain("<figcaption>テストキャプション</figcaption>");
   });
+
+  it("renders cursor icons as self-contained inline SVG", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "c1",
+          type: "cursor",
+          source: "manual",
+          icon: "pointer",
+          at: { x: 20, y: 30 },
+          size: 28,
+          color: "#123456",
+        },
+      ],
+    });
+    const html = renderFigure(annotation, { naturalSizes: {} });
+
+    expect(html).toContain('class="mm-obj mm-cursor"');
+    expect(html).toContain("left:20%");
+    expect(html).toContain("top:30%");
+    expect(html).toContain("width:28px");
+    expect(html).toContain("color:#123456");
+    expect(html).toContain('<svg viewBox="0 0 24 24"');
+    expect(html).toContain("<path ");
+    expect(html).not.toMatch(/(?:href|src)="https?:/);
+    expect(html).not.toContain("<use");
+  });
 });

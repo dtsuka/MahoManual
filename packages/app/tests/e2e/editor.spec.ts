@@ -543,3 +543,39 @@ test("project page: annotation id can be renamed from the annotation list", asyn
     }
   }
 });
+
+test("annotation editor: cursor can be added, configured and saved as inline SVG", async ({
+  page,
+  request,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; type: string; icon?: string; size?: number }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("add-cursor").click();
+    await expect(page.locator(".mm-editor-figure .mm-cursor svg")).toBeVisible();
+    await page.getByTestId("cursor-icon").selectOption("move");
+    await page.getByTestId("cursor-size").fill("36");
+
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) &&
+          response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const after = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    const cursor = after.objects.find((obj) => obj.type === "cursor");
+    expect(cursor).toMatchObject({ icon: "move", size: 36 });
+    await expect(page.locator(".mm-editor-figure .mm-cursor svg")).toHaveCount(1);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});

@@ -126,6 +126,35 @@ describe("parseAnnotation", () => {
     expect(badge?.type === "badge" ? badge.fontSize : undefined).toBe(18);
   });
 
+  it("accepts cursor annotations and rejects unknown cursor icons", () => {
+    const parsed = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "c1",
+          type: "cursor",
+          source: "manual",
+          icon: "move",
+          at: { x: 25, y: 30 },
+          size: 32,
+          color: "#112233",
+        },
+      ],
+    });
+    expect(parsed.objects[0]).toMatchObject({ type: "cursor", icon: "move", size: 32 });
+
+    expect(() =>
+      parseAnnotation({
+        version: 1,
+        canvas: { width: 100, height: 100 },
+        objects: [
+          { id: "c1", type: "cursor", source: "manual", icon: "unknown", at: { x: 1, y: 1 } },
+        ],
+      }),
+    ).toThrow(/icon|許可/);
+  });
+
   it("rejects recipe-sourced object without recipeRef", () => {
     // recipeRef の無い recipe オブジェクトは再撮影マージで置換も削除もされない
     // ゾンビになるため、スキーマで拒否する
