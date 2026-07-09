@@ -204,4 +204,26 @@ describe("renderFigure", () => {
     expect(html).not.toMatch(/(?:href|src)="https?:/);
     expect(html).not.toContain("<use");
   });
+
+  it("uses black as the default cursor color while allowing an explicit override", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        { id: "c1", type: "cursor", source: "manual", icon: "pointer", at: { x: 10, y: 10 } },
+        {
+          id: "c2",
+          type: "cursor",
+          source: "manual",
+          icon: "move",
+          at: { x: 20, y: 20 },
+          color: "#123456",
+        },
+      ],
+    });
+    const html = renderFigure(annotation, { naturalSizes: {} });
+
+    expect(html).toMatch(/data-cursor-icon="pointer"[^>]*color:#000000/);
+    expect(html).toMatch(/data-cursor-icon="move"[^>]*color:#123456/);
+  });
 });
