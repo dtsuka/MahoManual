@@ -93,7 +93,7 @@ describe("Hono API", () => {
     );
     const html = await response.text();
     expect(html).toContain("<!doctype html>");
-    expect(html).toContain("data:image/png;base64,");
+    expect(html).toContain("data:image/webp;base64,");
   });
 
   it(

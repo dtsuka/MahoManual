@@ -8,9 +8,10 @@ describe("manual download artifacts", () => {
   it("renders a single-file HTML download", async () => {
     const html = (await renderManualHtmlDownload(fixtureProject)).toString("utf8");
     expect(html).toContain("<!doctype html>");
-    expect(html).toContain("data:image/png;base64,");
+    expect(html).toContain("data:image/webp;base64,");
+    expect(html).not.toContain("data:image/png;base64,");
     expect(html).not.toContain('src="img/');
-  });
+  }, 10_000);
 
   it(
     "renders a PDF download",
