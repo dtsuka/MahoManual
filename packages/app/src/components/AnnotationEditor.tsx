@@ -874,6 +874,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     );
   };
 
+  const updateLineType = (type: "line" | "arrow") => {
+    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+      return;
+    }
+    updateObject(selected.id, (obj) =>
+      obj.type === "line" || obj.type === "arrow" ? { ...obj, type } : obj,
+    );
+  };
+
   const handleSave = async () => {
     try {
       const saved = await saveAnnotation(project, annotationId, annotationRef.current ?? annotation);
@@ -1563,6 +1572,18 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           ) : null}
           {selected && (selected.type === "line" || selected.type === "arrow") ? (
             <div className="space-y-3 text-sm">
+              <label className="block">
+                <span className="mb-1 block font-medium text-slate-700">線種</span>
+                <select
+                  data-testid="line-type"
+                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  value={selected.type}
+                  onChange={(event) => updateLineType(event.target.value as "line" | "arrow")}
+                >
+                  <option value="line">Line（線）</option>
+                  <option value="arrow">Arrow（矢印）</option>
+                </select>
+              </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
