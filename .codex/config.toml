@@ -1,0 +1,3 @@
+[mcp_servers.MahoManual]
+command = "node"
+args = ["packages/mcp/dist/index.js"]
