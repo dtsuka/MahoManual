@@ -127,7 +127,7 @@ interface CursorObj extends Base { // 操作説明用のマウスカーソル
   type: "cursor";
   icon: "pointer" | "move" | "grab" | "text" | "crosshair";
   at: Point;                        // pointerは先端、その他は中心
-  color?: string;                   // 既定はテーマ色
+  color?: string;                   // 既定 "#000000"
   size?: number;                    // px、既定 28
 }
 

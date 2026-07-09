@@ -1,4 +1,5 @@
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
+import { DEFAULT_CURSOR_COLOR } from "./theme.js";
 
 // 既定の色・サイズはテーマ CSS(CSS カスタムプロパティ)が持つ。
 // レンダラーはオブジェクトに明示指定があるときだけ inline style を出力する
@@ -104,9 +105,7 @@ function renderCursorObject(obj: Extract<AnnotationObject, { type: "cursor" }>):
   if (obj.icon !== "pointer") {
     styles.push("transform:translate(-50%,-50%)");
   }
-  if (obj.color) {
-    styles.push(`color:${obj.color}`);
-  }
+  styles.push(`color:${obj.color ?? DEFAULT_CURSOR_COLOR}`);
   return `<span class="mm-obj mm-cursor" data-cursor-icon="${obj.icon}" style="${styles.join("; ")};"><svg viewBox="0 0 24 24" aria-hidden="true">${CURSOR_ICON_CONTENT[obj.icon]}</svg></span>`;
 }
 

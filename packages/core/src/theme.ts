@@ -8,6 +8,7 @@
 
 export const DEFAULT_ANNOTATION_COLOR = "#E91E8C";
 export const DEFAULT_ANNOTATION_FONT_SIZE = 14;
+export const DEFAULT_CURSOR_COLOR = "#000000";
 
 export const THEME_PAGE_CSS = `body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
        line-height: 1.8; color: #222; max-width: 1080px; margin: auto; padding: 40px 24px; }
@@ -29,7 +30,7 @@ export const THEME_FIGURE_CSS = `.mm { --mm-color: ${DEFAULT_ANNOTATION_COLOR}; 
             font-weight: bold; font-size: var(--mm-font-size); display: flex; align-items: center;
             justify-content: center; transform: translate(-50%,-50%); }
 .mm-text  { transform: translate(-50%,-50%); white-space: pre; color: var(--mm-color); font-size: var(--mm-font-size); }
-.mm-cursor { color: var(--mm-color); line-height: 0; }
+.mm-cursor { color: ${DEFAULT_CURSOR_COLOR}; line-height: 0; }
 .mm-cursor > svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .mm-frame { box-sizing: border-box; border: 2px solid var(--mm-color); }
 .mm-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

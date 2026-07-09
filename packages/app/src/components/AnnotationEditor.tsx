@@ -5,6 +5,7 @@ import {
   annotationThemeCss,
   DEFAULT_ANNOTATION_COLOR,
   DEFAULT_ANNOTATION_FONT_SIZE,
+  DEFAULT_CURSOR_COLOR,
   THEME_FIGURE_CSS,
   type AnnotationTheme,
 } from "@mahomanual/core/theme";
@@ -1273,7 +1274,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     type="color"
                     data-testid="prop-color"
                     className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
-                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                    value={selected.color ?? DEFAULT_CURSOR_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
                       updateObject(selected.id, (obj) =>

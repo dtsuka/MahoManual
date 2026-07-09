@@ -55,4 +55,4 @@ export {
   type RecipeStep,
 } from "./schema.js";
 export { renderFigure, type RenderFenceOptions, type RenderOptions } from "./render.js";
-export { THEME_CSS } from "./theme.js";
+export { DEFAULT_CURSOR_COLOR, THEME_CSS } from "./theme.js";
