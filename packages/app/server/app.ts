@@ -21,6 +21,7 @@ import {
   renumberAllBadgesFiles,
   savePastedImage,
   writeAnnotationFile,
+  writeProjectTheme,
 } from "@mahomanual/core/project";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -149,6 +150,38 @@ export function createApp() {
     }
     writeFileSync(join(root, "manual.md"), body.body, "utf8");
     return c.json({ ok: true });
+  });
+
+  app.get("/api/projects/:project/theme", (c) => {
+    const root = resolveProject(c.req.param("project"));
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    return c.json({ theme: readProjectTheme(root) });
+  });
+
+  // 注釈の既定テーマを更新する。キー省略(または null)は「既定値に戻す」
+  app.put("/api/projects/:project/theme", async (c) => {
+    const root = resolveProject(c.req.param("project"));
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    const body = await c.req.json<{ color?: unknown; fontSize?: unknown }>();
+    if (body.color != null && typeof body.color !== "string") {
+      return c.json({ error: "colorは文字列で指定してください" }, 400);
+    }
+    if (body.fontSize != null && typeof body.fontSize !== "number") {
+      return c.json({ error: "fontSizeは数値で指定してください" }, 400);
+    }
+    try {
+      const theme = writeProjectTheme(root, {
+        color: body.color ?? undefined,
+        fontSize: body.fontSize ?? undefined,
+      });
+      return c.json({ theme });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "theme update failed" }, 400);
+    }
   });
 
   app.get("/api/projects/:project/annotations/:id", (c) => {
