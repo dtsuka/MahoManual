@@ -7,10 +7,12 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { imageSize } from "image-size";
-import type { Code, Heading, Root as MdastRoot } from "mdast";
+import type { Code, Heading, Html, Root as MdastRoot } from "mdast";
+import GithubSlugger from "github-slugger";
 import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
+import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
@@ -42,6 +44,7 @@ interface AnnotatedImageFence {
 type NaturalSizeCache = Map<string, { w: number; h: number }>;
 
 const IMG_SRC_RE = /src="(img\/[^"]+)"/g;
+const TOC_MARKER = "<!-- toc -->";
 
 function loadAnnotation(projectRoot: string, annotationId: string) {
   const annotationPath = join(projectRoot, "annotations", `${annotationId}.json`);
@@ -151,6 +154,40 @@ function headingText(node: Heading): string {
   return text.trim();
 }
 
+function renderTocHtml(entries: { text: string; slug: string }[]): string {
+  const items = entries
+    .map(({ text, slug }) => `    <li><a href="#${escapeHtml(slug)}">${escapeHtml(text)}</a></li>`)
+    .join("\n");
+  return `<nav class="mm-toc">\n  <ul>\n${items}\n  </ul>\n</nav>`;
+}
+
+// <!-- toc --> マーカーを H2 のみの目次 HTML に展開する。
+// slug は rehype-slug と同じ github-slugger で全見出しを文書順に採番する。
+function tocTransformer() {
+  return (tree: MdastRoot) => {
+    const slugger = new GithubSlugger();
+    const h2Entries: { text: string; slug: string }[] = [];
+
+    visit(tree, "heading", (node: Heading) => {
+      const text = headingText(node);
+      const slug = slugger.slug(text);
+      if (node.depth === 2) {
+        h2Entries.push({ text, slug });
+      }
+    });
+
+    if (h2Entries.length === 0) {
+      return;
+    }
+
+    visit(tree, "html", (node: Html) => {
+      if (node.value.trim() === TOC_MARKER) {
+        node.value = renderTocHtml(h2Entries);
+      }
+    });
+  };
+}
+
 interface ProcessMarkdownOptions {
   dataAnnotationId?: boolean;
 }
@@ -200,6 +237,8 @@ async function processMarkdown(
   const sizeCache: NaturalSizeCache = new Map();
   const processor = unified()
     .use(remarkParse)
+    .use(remarkGfm)
+    .use(() => tocTransformer())
     .use(() => annotatedImageTransformer(projectRoot, options, out, sizeCache))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)

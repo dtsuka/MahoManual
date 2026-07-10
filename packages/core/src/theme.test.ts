@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { annotationThemeCss, THEME_FIGURE_CSS } from "./theme.js";
+import {
+  annotationThemeCss,
+  scopeCss,
+  THEME_FIGURE_CSS,
+  THEME_PAGE_CSS,
+  THEME_TYPOGRAPHY_CSS,
+} from "./theme.js";
 
 describe("THEME_FIGURE_CSS", () => {
   it("defines annotation defaults as CSS custom properties", () => {
@@ -11,6 +17,23 @@ describe("THEME_FIGURE_CSS", () => {
   it("colors text with the default annotation color (not black)", () => {
     const textRule = THEME_FIGURE_CSS.match(/\.mm-text\s*\{[^}]*\}/)?.[0] ?? "";
     expect(textRule).toContain("color: var(--mm-color)");
+  });
+});
+
+describe("THEME_TYPOGRAPHY_CSS", () => {
+  it("restores heading/paragraph spacing and table cell borders", () => {
+    expect(THEME_TYPOGRAPHY_CSS).toMatch(/h1\s*\{[^}]*margin:/);
+    expect(THEME_TYPOGRAPHY_CSS).toMatch(/h2\s*\{[^}]*margin:/);
+    expect(THEME_TYPOGRAPHY_CSS).toMatch(/p\s*,\s*ul\s*,\s*ol[^\{]*\{[^}]*margin:/);
+    expect(THEME_TYPOGRAPHY_CSS).toMatch(/th\s*,\s*td\s*\{[^}]*border:\s*1px\s+solid/);
+    expect(THEME_PAGE_CSS).toContain(THEME_TYPOGRAPHY_CSS.trim());
+  });
+
+  it("scopes typography selectors for the preview pane", () => {
+    const scoped = scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane");
+    expect(scoped).toContain(".preview-pane h1");
+    expect(scoped).toContain(".preview-pane th, .preview-pane td");
+    expect(scoped).not.toMatch(/(^|\n)h1\s*\{/);
   });
 });
 

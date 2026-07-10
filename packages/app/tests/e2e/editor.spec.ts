@@ -718,3 +718,34 @@ test("project page: HTML and PDF can be downloaded", async ({ page }) => {
   const pdfDownload = await pdfDownloadPromise;
   expect(pdfDownload.suggestedFilename()).toBe(`${testProject}.pdf`);
 });
+
+test("manual editor: HTML and PDF can be downloaded", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+
+  const htmlDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-html").click();
+  const htmlDownload = await htmlDownloadPromise;
+  expect(htmlDownload.suggestedFilename()).toBe(`${testProject}.html`);
+
+  const pdfDownloadPromise = page.waitForEvent("download");
+  await page.getByTestId("export-pdf").click();
+  const pdfDownload = await pdfDownloadPromise;
+  expect(pdfDownload.suggestedFilename()).toBe(`${testProject}.pdf`);
+});
+
+test("manual editor: insert TOC marker at cursor", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.locator(".cm-content").click();
+  await page.getByTestId("insert-toc").click();
+  await expect(page.locator(".cm-content")).toContainText("<!-- toc -->");
+});
+
+test("manual editor: insert existing annotated image at cursor", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.locator(".cm-content").click();
+  await page.getByTestId("insert-image").click();
+  await page.getByTestId("insert-image-select").selectOption(annotationId);
+  await page.getByTestId("insert-image-existing").click();
+  await expect(page.locator(".cm-content")).toContainText("```annotated-image");
+  await expect(page.locator(".cm-content")).toContainText(`src: ${annotationId}`);
+});

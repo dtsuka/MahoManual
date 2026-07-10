@@ -10,10 +10,28 @@ export const DEFAULT_ANNOTATION_COLOR = "#E91E8C";
 export const DEFAULT_ANNOTATION_FONT_SIZE = 14;
 export const DEFAULT_CURSOR_COLOR = "#000000";
 
+// 本文タイポグラフィ。納品 HTML と GUI プレビューで共有する。
+// UA 既定に近い余白を明示し、Tailwind Preflight 等で margin が消えても見た目を揃える。
+export const THEME_TYPOGRAPHY_CSS = `h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
+h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
+h3 { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
+h4 { font-size: 1em; font-weight: bold; margin: 1.33em 0; }
+h5 { font-size: 0.83em; font-weight: bold; margin: 1.67em 0; }
+h6 { font-size: 0.67em; font-weight: bold; margin: 2.33em 0; }
+p, ul, ol, blockquote, pre { margin: 1em 0; }
+ul, ol { padding-left: 40px; }
+li { margin: 0.25em 0; }
+blockquote { padding-left: 1em; border-left: 4px solid #ccc; color: #444; }
+table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+th, td { border: 1px solid #666; padding: 0.4em 0.75em; text-align: left; vertical-align: top; }
+th { background: #f5f5f5; font-weight: bold; }
+.mm-toc { margin: 1em 0; }
+hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
+.page-break { page-break-before: always; }`;
+
 export const THEME_PAGE_CSS = `body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
        line-height: 1.8; color: #222; max-width: 1080px; margin: auto; padding: 40px 24px; }
-hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
-.page-break { page-break-before: always; }
+${THEME_TYPOGRAPHY_CSS}
 @media print {
   body { font-size: 12px; }
   .mm-print-s { max-width: 60% !important; }
@@ -40,6 +58,26 @@ export const THEME_FIGURE_CSS = `.mm { --mm-color: ${DEFAULT_ANNOTATION_COLOR}; 
 
 export const THEME_CSS = `${THEME_PAGE_CSS}
 ${THEME_FIGURE_CSS}`;
+
+/** CSS ルールのセレクタにスコープを付与する(プレビューペイン用)。@media は再帰的に処理する */
+export function scopeCss(css: string, scope: string): string {
+  return css.replace(/(@media[^{]+)\{([\s\S]*?)\}|([^{}@]+)\{([^{}]*)\}/g, (match, mediaQuery, mediaBody, selectors, body) => {
+    if (mediaQuery) {
+      return `${mediaQuery}{${scopeCss(mediaBody, scope)}}`;
+    }
+    const scopedSelectors = String(selectors)
+      .split(",")
+      .map((selector: string) => {
+        const trimmed = selector.trim();
+        if (!trimmed) {
+          return trimmed;
+        }
+        return `${scope} ${trimmed}`;
+      })
+      .join(", ");
+    return `${scopedSelectors} {${body}}`;
+  });
+}
 
 export interface AnnotationTheme {
   color?: string;

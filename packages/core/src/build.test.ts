@@ -178,4 +178,109 @@ describe("buildProject", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("renders GFM pipe tables as HTML tables", async () => {
+    const root = createTempProject(
+      [
+        "# テーブル",
+        "",
+        "| 操作する人 | 主な操作 |",
+        "|---|---|",
+        "| 管理者 | 公開 |",
+        "| 投稿者 | 編集 |",
+        "",
+      ].join("\n"),
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-table-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      expect(html).toContain("<table>");
+      expect(html).toContain("<th>操作する人</th>");
+      expect(html).toContain("<td>管理者</td>");
+      expect(html).toContain("<td>公開</td>");
+      expect(html).not.toContain("| 操作する人 | 主な操作 |");
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("expands <!-- toc --> into an H2-only table of contents", async () => {
+    const root = createTempProject(
+      [
+        "# 目次テスト",
+        "",
+        "導入文",
+        "",
+        "<!-- toc -->",
+        "",
+        "## 1 運用ルール",
+        "",
+        "### 1-1 詳細",
+        "",
+        "## 2 お知らせの追加（管理者）",
+        "",
+      ].join("\n"),
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-toc-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      expect(html).toContain('<nav class="mm-toc">');
+      expect(html).toContain('href="#1-運用ルール"');
+      expect(html).toContain('href="#2-お知らせの追加管理者"');
+      expect(html).toContain("1 運用ルール");
+      expect(html).toContain("2 お知らせの追加（管理者）");
+      const tocHtml = html.match(/<nav class="mm-toc">[\s\S]*?<\/nav>/)?.[0] ?? "";
+      expect(tocHtml).not.toContain("1-1 詳細");
+      expect(html).not.toContain("<!-- toc -->");
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("matches TOC href slugs with rehype-slug heading ids", async () => {
+    const root = createTempProject(
+      [
+        "# 目次",
+        "",
+        "<!-- toc -->",
+        "",
+        "## 1 運用ルール",
+        "",
+      ].join("\n"),
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-toc-slug-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      expect(html).toContain('href="#1-運用ルール"');
+      expect(html).toContain('id="1-運用ルール"');
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not emit a table of contents without <!-- toc --> marker", async () => {
+    const root = createTempProject(
+      [
+        "# 目次なし",
+        "",
+        "## 1 運用ルール",
+        "",
+      ].join("\n"),
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-no-toc-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      expect(html).not.toContain('<nav class="mm-toc">');
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

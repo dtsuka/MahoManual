@@ -49,8 +49,9 @@
 ### 1-3. mdビルド(SPEC §5, §6.3, §7)
 
 - [x] test: フィクスチャプロジェクト(annotated-imageフェンス1つ+見出し+生HTML+`<hr class="page-break">` を含むmanual.md)→ 出力HTMLに: figure展開済み / テーマCSS埋め込み / 見出しid(`1-施設情報カテゴリーの追加` 形式)/ 生HTMLがそのまま残る / `<title>`=最初のh1
+- [x] test: `<!-- toc -->` マーカー→ H2 のみの `<nav class="mm-toc">` 展開、slug が rehype-slug の id と一致、マーカー無しでは目次なし
 - [x] test: 存在しないsrc参照はファイル名付きエラー
-- [x] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify + フェンス変換プラグイン)。画像実サイズは image-size で解決し dist/img/ へコピー
+- [x] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-gfm → tocTransformer → annotated-image フェンス変換 → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify)。画像実サイズは image-size で解決し dist/img/ へコピー
 
 ### 1-4. 単一HTML化
 
@@ -133,7 +134,9 @@
 - [x] CodeMirror 6のmdエディタ+右ペインプレビュー(coreのbuildをブラウザ用に流用)
 - [x] プレビュー内のfigureクリック→該当注釈エディタを開く
 - [x] renumber実行時、本文中のUnicode丸数字(①②…)との個数不一致を警告表示
-- [x] test: 主要フローのe2e(md編集→プレビュー反映、figureクリック遷移)
+- [x] マニュアル編集ページから HTML/PDF をダウンロードできる
+- [x] マニュアル編集ページから目次・画像(annotated-image)をカーソル位置へ挿入できる
+- [x] test: 主要フローのe2e(md編集→プレビュー反映、figureクリック遷移、HTML/PDF出力、目次/画像挿入)
 
 **受け入れ基準**: sample/manual.md 相当のマニュアルを、本ツールのみで新規作成→HTML/PDF納品できる。
 

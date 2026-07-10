@@ -205,7 +205,7 @@ interface ArrowObj extends LineObj { type: "arrow" }   // 終端(最後の点)�
 
 ## 5. Markdown記法
 
-`manual.md` は通常のMarkdown。生HTMLも許可(rehype-raw)。注釈付き画像は専用コードフェンスで参照する:
+`manual.md` は通常のMarkdown(GFM対応。パイプテーブル等を含む)。生HTMLも許可(rehype-raw)。注釈付き画像は専用コードフェンスで参照する:
 
 ````md
 ## 1 施設情報カテゴリーの追加
@@ -228,6 +228,7 @@ caption: ""       # 任意。figcaptionとして出力
 - フェンス本文はYAML。ビルド時に §6 のfigure HTMLへ展開される
 - 本文中の丸数字(①②…)は sample/ と同じくUnicode文字をそのまま書く(著者の慣習であり、ツールは変換しない)
 - 見出しには rehype-slug でid付与(github-slugger。日本語見出しは `#1-施設情報カテゴリーの追加` 形式になり、sampleの手書きTOCリンクと互換)
+- 目次: 単独行の `<!-- toc -->` を H2 のみのリンク一覧(`<nav class="mm-toc">`)へ展開する。マーカーが無い場合は目次を出力しない。リンク先 slug は rehype-slug と同じ github-slugger 採番
 
 ## 6. レンダリング仕様(注釈JSON → figure HTML)
 
@@ -282,17 +283,15 @@ img.top    = -crop.y / crop.h * 100 %
 ```css
 body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
        line-height: 1.8; color: #222; max-width: 1080px; margin: auto; padding: 40px 24px; }
+/* 見出し・段落余白は UA 既定相当を明示(プレビューの Preflight 対策含む) */
+h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
+h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
+/* …h3〜h6、p/ul/ol/blockquote も同様に余白を明示 */
+table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+th, td { border: 1px solid #666; padding: 0.4em 0.75em; text-align: left; vertical-align: top; }
+th { background: #f5f5f5; font-weight: bold; }
 .mm { position: relative; width: 100%; margin: 0; }
-.mm > .mm-obj { position: absolute; }
-.mm-image { overflow: hidden; }
-.mm-image > img { position: absolute; display: block; max-width: none; }
-.mm-badge { width: 22px; height: 22px; border-radius: 50%; background: #E91E8C; color: #fff;
-            font-weight: bold; font-size: 14px; display: flex; align-items: center;
-            justify-content: center; transform: translate(-50%,-50%); }
-.mm-text  { transform: translate(-50%,-50%); white-space: pre; }
-.mm-frame { box-sizing: border-box; }
-.mm-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.mm-border { border: 1px solid #999; }
+/* …figure 系は THEME_FIGURE_CSS 参照 */
 hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 .page-break { page-break-before: always; }
 @media print {
@@ -303,7 +302,7 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 }
 ```
 
-(badge/frame等の色・サイズは既定値をCSSに置き、オブジェクト指定があるときのみinline styleで上書き)
+(badge/frame等の色・サイズは既定値をCSSに置き、オブジェクト指定があるときのみinline styleで上書き。GUIプレビューは `THEME_TYPOGRAPHY_CSS` を `.preview-pane` スコープで注入し納品HTMLと余白・表罫線を揃える)
 
 ## 7. 出力仕様
 
@@ -419,7 +418,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 - Vite + React + Tailwind CSS v4(`@tailwindcss/vite`、tailwind.configは使わない)+ Hono(ファイルAPI)
 - プロジェクト一覧: ID・タイトルを指定してSPEC §3の標準構造を新規作成し、作成後はプロジェクトページへ遷移する。既存IDと不正なパスは拒否する
-- プロジェクトページ: 画像をbase64埋め込みした単一HTMLと、A4・背景印刷有効のPDFをGUIからダウンロードできる
+- プロジェクトページ / マニュアル編集ページ: 画像をbase64埋め込みした単一HTMLと、A4・背景印刷有効のPDFをGUIからダウンロードできる
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
@@ -427,6 +426,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - スクショ取り込み: クリップボードペースト(Clipboard API)→ `img/raw/` へ保存 → 注釈JSON雛形生成
 - ライブリロード: サーバーがchokidarでプロジェクトを監視し、SSEでクライアントへ通知(AI/CLIによるファイル変更が開いている画面に即反映)
 - Phase 5: CodeMirror 6のmdエディタ+プレビュー(左右分割)、プレビュー内figureクリックで注釈エディタへ、renumber結果と本文①②…の整合チェック表示
+- マニュアル編集: カーソル位置へ `<!-- toc -->` または `annotated-image` フェンスを挿入できる(既存注釈の参照、または新規画像取り込み)
 
 ## 12. 決定事項の要約(迷ったらここ)
 

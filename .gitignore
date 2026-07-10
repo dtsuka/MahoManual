@@ -7,3 +7,4 @@ projects/*/dist/
 projects/app-test/
 packages/app/test-results/
 packages/app/playwright-report/
+.playwright-mcp/

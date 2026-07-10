@@ -4,14 +4,27 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { annotationThemeCss, THEME_FIGURE_CSS, type AnnotationTheme } from "@mahomanual/core/theme";
+import {
+  annotationThemeCss,
+  scopeCss,
+  THEME_FIGURE_CSS,
+  THEME_TYPOGRAPHY_CSS,
+  type AnnotationTheme,
+} from "@mahomanual/core/theme";
 import {
   fetchManual,
   fetchPreview,
+  pasteImage,
   renumberAllAnnotations,
   saveManual,
   subscribeProjectWatch,
 } from "../lib/api.js";
+import { readAsDataUrl, readImageSize } from "../lib/image-data.js";
+import {
+  formatAnnotatedImageFence,
+  formatTocMarker,
+  insertEditorText,
+} from "../lib/manual-insert.js";
 
 interface ManualEditorProps {
   project: string;
@@ -25,6 +38,12 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const [warning, setWarning] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [annotations, setAnnotations] = useState<string[]>([]);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState("");
+  const [newImageId, setNewImageId] = useState("");
+  const [insertError, setInsertError] = useState<string | null>(null);
+  const [insertBusy, setInsertBusy] = useState(false);
+  const [showImagePanel, setShowImagePanel] = useState(false);
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -36,6 +55,15 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const applyingExternalRef = useRef(false);
   const previewSeqRef = useRef(0);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const refreshAnnotations = async () => {
+    const manual = await fetchManual(project);
+    setAnnotations(manual.annotations);
+    if (manual.annotations.length > 0 && !manual.annotations.includes(selectedAnnotationId)) {
+      setSelectedAnnotationId(manual.annotations[0] ?? "");
+    }
+  };
 
   const markDirty = (value: boolean) => {
     dirtyRef.current = value;
@@ -91,6 +119,8 @@ export function ManualEditor({ project }: ManualEditorProps) {
     void fetchManual(project).then((manual) => {
       markdownRef.current = manual.body;
       setMarkdownText(manual.body);
+      setAnnotations(manual.annotations);
+      setSelectedAnnotationId(manual.annotations[0] ?? "");
       schedulePreview(manual.body, true);
     });
     return () => {
@@ -187,6 +217,54 @@ export function ManualEditor({ project }: ManualEditorProps) {
     }
   };
 
+  const handleInsertToc = () => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+    setInsertError(null);
+    insertEditorText(view, formatTocMarker());
+  };
+
+  const handleInsertExistingImage = () => {
+    const view = viewRef.current;
+    if (!view || !selectedAnnotationId) {
+      setInsertError("挿入する画像を選択してください");
+      return;
+    }
+    setInsertError(null);
+    insertEditorText(view, formatAnnotatedImageFence(selectedAnnotationId));
+    setShowImagePanel(false);
+  };
+
+  const handleImportAndInsertImage = async (file: Blob) => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+    const id = newImageId.trim() || `img-${Date.now()}`;
+    if (/[/\\]/.test(id) || id.includes("..")) {
+      setInsertError("ID にパス区切りや .. は使えません");
+      return;
+    }
+    setInsertBusy(true);
+    setInsertError(null);
+    try {
+      const dataUrl = await readAsDataUrl(file);
+      const size = await readImageSize(dataUrl);
+      await pasteImage(project, id, dataUrl, size.width, size.height);
+      insertEditorText(view, formatAnnotatedImageFence(id));
+      setNewImageId("");
+      setShowImagePanel(false);
+      await refreshAnnotations();
+      setSelectedAnnotationId(id);
+    } catch (error) {
+      setInsertError(error instanceof Error ? error.message : "画像の取り込みに失敗しました");
+    } finally {
+      setInsertBusy(false);
+    }
+  };
+
   if (markdownText === null) {
     return <div className="p-6">読み込み中…</div>;
   }
@@ -197,6 +275,41 @@ export function ManualEditor({ project }: ManualEditorProps) {
         <h1 className="text-lg font-semibold">{project} — マニュアル編集</h1>
         {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
         <div className="ml-auto flex gap-2">
+          <a
+            href={`/api/projects/${encodeURIComponent(project)}/export.html`}
+            download={`${project}.html`}
+            data-testid="export-html"
+            className="rounded bg-slate-100 px-3 py-1"
+          >
+            HTML出力
+          </a>
+          <a
+            href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
+            download={`${project}.pdf`}
+            data-testid="export-pdf"
+            className="rounded bg-slate-100 px-3 py-1"
+          >
+            PDF出力
+          </a>
+          <button
+            type="button"
+            className="rounded bg-slate-100 px-3 py-1"
+            data-testid="insert-toc"
+            onClick={handleInsertToc}
+          >
+            目次挿入
+          </button>
+          <button
+            type="button"
+            className="rounded bg-slate-100 px-3 py-1"
+            data-testid="insert-image"
+            onClick={() => {
+              setInsertError(null);
+              setShowImagePanel((current) => !current);
+            }}
+          >
+            画像挿入
+          </button>
           <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => void handleRenumber()}>
             Renumber
           </button>
@@ -213,6 +326,73 @@ export function ManualEditor({ project }: ManualEditorProps) {
       {status ? <div className="bg-green-50 px-4 py-2 text-green-700">{status}</div> : null}
       {warning ? <div className="bg-amber-50 px-4 py-2 text-amber-800">{warning}</div> : null}
       {previewError ? <div className="bg-red-50 px-4 py-2 text-red-700">プレビューエラー: {previewError}</div> : null}
+      {showImagePanel ? (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2"
+          data-testid="insert-image-panel"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <span>既存:</span>
+            <select
+              data-testid="insert-image-select"
+              className="rounded border border-slate-300 px-2 py-1"
+              value={selectedAnnotationId}
+              onChange={(event) => setSelectedAnnotationId(event.target.value)}
+            >
+              {annotations.length === 0 ? (
+                <option value="">(画像なし)</option>
+              ) : (
+                annotations.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="rounded bg-white px-3 py-1 text-sm shadow-sm"
+            data-testid="insert-image-existing"
+            disabled={!selectedAnnotationId}
+            onClick={handleInsertExistingImage}
+          >
+            挿入
+          </button>
+          <span className="text-slate-400">|</span>
+          <input
+            data-testid="insert-image-id"
+            className="w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+            placeholder="新規ID(空なら自動)"
+            value={newImageId}
+            onChange={(event) => setNewImageId(event.target.value)}
+          />
+          <button
+            type="button"
+            className="rounded bg-white px-3 py-1 text-sm shadow-sm"
+            data-testid="insert-image-new"
+            disabled={insertBusy}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            新規画像を選択
+          </button>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void handleImportAndInsertImage(file);
+              }
+              event.target.value = "";
+            }}
+          />
+          {insertBusy ? <span className="text-sm text-slate-500">取り込み中…</span> : null}
+          {insertError ? <span className="text-sm text-red-600">{insertError}</span> : null}
+        </div>
+      ) : null}
       {externalBody !== null ? (
         <div
           className="flex items-center gap-3 bg-amber-50 px-4 py-2 text-amber-800"
@@ -238,6 +418,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
       <div className="grid flex-1 grid-cols-2 divide-x divide-slate-200">
         <div ref={editorHostRef} className="h-full overflow-auto" data-testid="md-editor" />
         <div className="preview-pane h-full overflow-auto bg-white p-4" data-testid="preview-pane">
+          <style>{scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane")}</style>
           <style>{THEME_FIGURE_CSS}</style>
           {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
           <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
