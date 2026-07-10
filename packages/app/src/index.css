@@ -1,11 +1,53 @@
 @import "tailwindcss";
 
+/* ============================================================
+   デザイントークン
+   - UIクロームは寒色ニュートラル(slate)+青アクセント(操作・選択)
+   - ブランドマゼンタ #E91E8C はロゴと注釈既定色のみ(キャンバス上で
+     注釈オブジェクトと選択UIを混同させないための分離)
+   ============================================================ */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    "Hiragino Sans", monospace;
+  --color-brand: #e91e8c;
+}
+
 /* アプリ UI 全体(figure テーマは core の THEME_FIGURE_CSS を各エディタが注入する) */
 body {
   margin: 0;
   min-height: 100vh;
   background: #f8fafc;
   color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* キーボード操作時のフォーカスリング(フォーム部品は各自 focus スタイルを持つ) */
+:focus-visible:not(input):not(select):not(textarea) {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* select の矢印(appearance-none と併用) */
+.ui-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 14px 14px;
+}
+
+/* ============================================================
+   注釈エディタ: キャンバス
+   ============================================================ */
+
+/* 作業面であることを示す控えめなドットグリッド */
+.editor-canvas {
+  background-color: #eef1f6;
+  background-image: radial-gradient(circle, rgba(100, 116, 139, 0.22) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 
 /* 注釈エディタの操作用スタイル */
@@ -81,6 +123,7 @@ body {
   transform: translate(-50%, -50%);
   pointer-events: auto;
   touch-action: none;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
 }
 
 .mm-editor-handle--point {
@@ -93,6 +136,36 @@ body {
   background: #2563eb;
   border-color: #fff;
   box-shadow: 0 0 0 2px #2563eb;
+}
+
+/* ============================================================
+   マニュアル編集: CodeMirror / プレビュー
+   ============================================================ */
+
+/* CodeMirror はホスト div いっぱいに広げ、内部スクロールさせる */
+.cm-editor {
+  height: 100%;
+  font-size: 13.5px;
+  background: #fff;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.75;
+  padding: 12px 0;
+}
+
+.cm-content {
+  padding: 0 20px 40vh;
+  caret-color: #2563eb;
+}
+
+.cm-cursor {
+  border-left-color: #2563eb;
 }
 
 /* md プレビューペイン: 本文タイポグラフィは ManualEditor が THEME_TYPOGRAPHY_CSS を注入 */
@@ -108,4 +181,16 @@ body {
 
 .preview-pane .mm:hover {
   outline: 2px solid #93c5fd;
+}
+
+/* ============================================================
+   モーション
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
