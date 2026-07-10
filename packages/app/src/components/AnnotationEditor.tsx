@@ -58,6 +58,7 @@ import {
   Banner,
   Button,
   ButtonLink,
+  ColorInput,
   DirtyBadge,
   IconButton,
   Kbd,
@@ -1346,10 +1347,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <input
-                    type="color"
+                  <ColorInput
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1419,10 +1418,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>
-                  <input
-                    type="color"
+                  <ColorInput
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1482,10 +1479,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <input
-                    type="color"
+                  <ColorInput
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? DEFAULT_CURSOR_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1530,10 +1525,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">線色</span>
-                  <input
-                    type="color"
+                  <ColorInput
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1653,10 +1646,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <input
-                    type="color"
+                  <ColorInput
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => updateLineStyle({ color: event.target.value })}
                   />

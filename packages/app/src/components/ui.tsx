@@ -128,6 +128,21 @@ export function SelectInput({ uiSize = "md", className, ...rest }: SelectInputPr
   );
 }
 
+// カラーピッカー。ブラウザ既定のスウォッチ余白を消し、他のコントロールと高さを揃える
+export function ColorInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="color"
+      className={cx(
+        "h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400",
+        "[&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
