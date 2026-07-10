@@ -1,0 +1,6 @@
+{
+  "files": ["packages/app/index.html"],
+  "insertBefore": "</head>",
+  "commentSyntax": "html",
+  "cspChecked": true
+}
