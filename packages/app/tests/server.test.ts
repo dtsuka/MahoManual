@@ -141,6 +141,62 @@ describe("Hono API", () => {
     expect(payload.theme).toEqual({ color: "#336699", fontSize: 16 });
   });
 
+  it("GET /api/projects/:project/theme returns the current annotation theme", async () => {
+    writeFileSync(
+      join(testProjectRoot, "project.yaml"),
+      'title: t\nannotation:\n  color: "#336699"\n  fontSize: 16\n',
+      "utf8",
+    );
+    const response = await app.request(`/api/projects/${testProject}/theme`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ theme: { color: "#336699", fontSize: 16 } });
+
+    const missing = await app.request("/api/projects/no-such-project/theme");
+    expect(missing.status).toBe(404);
+  });
+
+  it("PUT /api/projects/:project/theme updates project.yaml", async () => {
+    writeFileSync(join(testProjectRoot, "project.yaml"), "title: テーマ更新\n", "utf8");
+    const response = await app.request(`/api/projects/${testProject}/theme`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ color: "#ff6600", fontSize: 18 }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ theme: { color: "#ff6600", fontSize: 18 } });
+    const yaml = readFileSync(join(testProjectRoot, "project.yaml"), "utf8");
+    expect(yaml).toContain("テーマ更新");
+    expect(yaml).toContain("#ff6600");
+
+    // キー省略で既定値に戻す
+    const cleared = await app.request(`/api/projects/${testProject}/theme`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(cleared.status).toBe(200);
+    expect(await cleared.json()).toEqual({ theme: {} });
+    expect(readFileSync(join(testProjectRoot, "project.yaml"), "utf8")).not.toContain("annotation");
+  });
+
+  it("PUT /api/projects/:project/theme rejects invalid values", async () => {
+    writeFileSync(join(testProjectRoot, "project.yaml"), "title: t\n", "utf8");
+    for (const body of [
+      { color: "pink" },
+      { color: 123 },
+      { fontSize: -1 },
+      { fontSize: "big" },
+    ]) {
+      const response = await app.request(`/api/projects/${testProject}/theme`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(readFileSync(join(testProjectRoot, "project.yaml"), "utf8")).toBe("title: t\n");
+  });
+
   it("PUT /api/projects/:project/annotations/:id validates with zod", async () => {
     const invalid = { version: 2, canvas: { width: 100, height: 100 }, objects: [] };
     const response = await app.request(`/api/projects/${testProject}/annotations/test-1`, {
