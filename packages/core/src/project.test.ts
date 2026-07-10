@@ -8,6 +8,7 @@ import {
   readProjectTheme,
   renumberAllBadgesFiles,
   renumberBadges,
+  writeProjectTheme,
 } from "./project.js";
 
 describe("createManualProject", () => {
@@ -73,6 +74,88 @@ describe("readProjectTheme", () => {
       expect(readProjectTheme(root)).toEqual({});
       rmSync(join(root, "project.yaml"));
       expect(readProjectTheme(root)).toEqual({});
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("writeProjectTheme", () => {
+  it("writes annotation color and fontSize preserving other keys and comments", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-write-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        "# 手書きコメント\ntitle: 元のタイトル\n",
+        "utf8",
+      );
+      writeProjectTheme(root, { color: "#112233", fontSize: 16 });
+
+      expect(readProjectTheme(root)).toEqual({ color: "#112233", fontSize: 16 });
+      const yaml = readFileSync(join(root, "project.yaml"), "utf8");
+      expect(yaml).toContain("# 手書きコメント");
+      expect(yaml).toContain("元のタイトル");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes omitted keys and drops the annotation section when empty", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-clear-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        'title: t\nannotation:\n  color: "#112233"\n  fontSize: 16\n',
+        "utf8",
+      );
+      writeProjectTheme(root, { color: "#445566" });
+      expect(readProjectTheme(root)).toEqual({ color: "#445566" });
+      expect(readFileSync(join(root, "project.yaml"), "utf8")).not.toContain("fontSize");
+
+      writeProjectTheme(root, {});
+      expect(readProjectTheme(root)).toEqual({});
+      expect(readFileSync(join(root, "project.yaml"), "utf8")).not.toContain("annotation");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps unknown annotation keys when updating", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-keep-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        'title: t\nannotation:\n  color: "#112233"\n  custom: keep-me\n',
+        "utf8",
+      );
+      writeProjectTheme(root, { fontSize: 18 });
+      const yaml = readFileSync(join(root, "project.yaml"), "utf8");
+      expect(yaml).toContain("custom: keep-me");
+      expect(readProjectTheme(root)).toEqual({ fontSize: 18 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects invalid color and fontSize", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-invalid-"));
+    try {
+      writeFileSync(join(root, "project.yaml"), "title: t\n", "utf8");
+      expect(() => writeProjectTheme(root, { color: "pink" })).toThrow(/カラー/);
+      expect(() => writeProjectTheme(root, { fontSize: -1 })).toThrow(/フォントサイズ/);
+      expect(() => writeProjectTheme(root, { fontSize: Number.NaN })).toThrow(/フォントサイズ/);
+      // 失敗時はファイルを変更しない
+      expect(readFileSync(join(root, "project.yaml"), "utf8")).toBe("title: t\n");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("creates project.yaml when it does not exist", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-theme-new-"));
+    try {
+      writeProjectTheme(root, { color: "#aabbcc" });
+      expect(readProjectTheme(root)).toEqual({ color: "#aabbcc" });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
