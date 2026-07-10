@@ -38,6 +38,34 @@ import {
   duplicateObjects,
   translateObjects,
 } from "../lib/annotation-operations.js";
+import {
+  IconArrowLeft,
+  IconArrowLine,
+  IconBadge,
+  IconDownload,
+  IconFrame,
+  IconGrip,
+  IconImage,
+  IconLine,
+  IconPlus,
+  IconPointer,
+  IconRedo,
+  IconType,
+  IconUndo,
+  IconX,
+} from "./icons.js";
+import {
+  Banner,
+  Button,
+  ButtonLink,
+  DirtyBadge,
+  IconButton,
+  Kbd,
+  SelectInput,
+  Separator,
+  TextInput,
+  cx,
+} from "./ui.js";
 
 // 点ドラッグ時に他の点の x/y へ吸着する距離(%)。
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
@@ -119,14 +147,16 @@ function NumberField({
   onFocus?: () => void;
 }) {
   return (
-    <label className="flex items-center gap-1">
-      <span className="w-4 shrink-0 text-xs text-slate-500">{label}</span>
+    <label className="flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 shadow-xs transition-colors duration-150 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20">
+      {label ? (
+        <span className="w-3 shrink-0 text-[11px] font-medium text-slate-500">{label}</span>
+      ) : null}
       <input
         type="number"
         step={step}
         min={min}
         data-testid={testId}
-        className="w-full rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm"
+        className="h-full w-full min-w-0 bg-transparent text-[13px] text-slate-900 outline-none"
         value={Math.round(value * 100) / 100}
         onFocus={onFocus}
         onChange={(event) => {
@@ -156,6 +186,26 @@ function objectLabel(obj: AnnotationObject): string {
       return "line";
     case "arrow":
       return "arrow";
+  }
+}
+
+// オブジェクト一覧・プロパティ見出しで使う種別アイコン
+function objectIcon(type: AnnotationObject["type"], size = 14) {
+  switch (type) {
+    case "badge":
+      return <IconBadge size={size} />;
+    case "text":
+      return <IconType size={size} />;
+    case "cursor":
+      return <IconPointer size={size} />;
+    case "image":
+      return <IconImage size={size} />;
+    case "frame":
+      return <IconFrame size={size} />;
+    case "line":
+      return <IconLine size={size} />;
+    case "arrow":
+      return <IconArrowLine size={size} />;
   }
 }
 
@@ -604,10 +654,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   }, [selectedIds, figureHtml]);
 
   if (error) {
-    return <div className="p-6 text-red-600">{error}</div>;
+    return (
+      <div className="flex h-screen items-center justify-center px-6">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      </div>
+    );
   }
   if (!annotation) {
-    return <div className="p-6">読み込み中…</div>;
+    return (
+      <div className="flex h-screen items-center justify-center text-sm text-slate-500">
+        読み込み中…
+      </div>
+    );
   }
 
   const selected = annotation.objects.find((obj) => obj.id === selectedId) ?? null;
@@ -969,143 +1029,124 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       .join(" ");
 
   return (
-    <div className="flex h-full min-h-screen flex-col" data-testid="annotation-editor">
+    <div className="flex h-screen min-h-0 flex-col" data-testid="annotation-editor">
       <style>{THEME_FIGURE_CSS}</style>
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
+      <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         {onBack ? (
-          <button type="button" className="rounded border px-3 py-1" onClick={onBack}>
-            戻る
-          </button>
+          <IconButton label="戻る" onClick={onBack}>
+            <IconArrowLeft />
+          </IconButton>
         ) : null}
-        <h1 className="text-lg font-semibold">
+        <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
           {project} / {annotationId}
         </h1>
         <div className="flex items-center gap-1">
-          <input
+          <TextInput
             data-testid="rename-id-input"
-            className="w-48 rounded border border-slate-300 px-2 py-1 text-sm"
+            uiSize="sm"
+            className="w-40 font-mono"
             value={nextAnnotationId}
             aria-label="画像ID"
             onChange={(event) => setNextAnnotationId(event.target.value)}
           />
-          <button
-            type="button"
+          <Button
+            size="sm"
             data-testid="rename-id-button"
-            className="rounded border border-slate-300 bg-white px-2 py-1 text-sm disabled:opacity-40"
             disabled={dirty || !nextAnnotationId.trim() || nextAnnotationId.trim() === annotationId}
             title={dirty ? "先に変更を保存してください" : "画像IDを変更"}
             onClick={() => void handleRename()}
           >
             ID変更
-          </button>
+          </Button>
         </div>
-        {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
-        <div className="ml-auto flex gap-2">
-          <button
-            type="button"
+        {dirty ? <DirtyBadge /> : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          <IconButton
+            label="元に戻す (⌘Z)"
             data-testid="undo-button"
-            className="rounded bg-slate-100 px-3 py-1 disabled:opacity-40"
             disabled={historyRef.current.past.length === 0}
-            title="元に戻す (⌘/Ctrl+Z)"
             onClick={undo}
           >
-            Undo
-          </button>
-          <button
-            type="button"
+            <IconUndo />
+          </IconButton>
+          <IconButton
+            label="やり直す (⌘⇧Z)"
             data-testid="redo-button"
-            className="rounded bg-slate-100 px-3 py-1 disabled:opacity-40"
             disabled={historyRef.current.future.length === 0}
-            title="やり直す (⌘/Ctrl+Shift+Z)"
             onClick={redo}
           >
-            Redo
-          </button>
-          <button
-            type="button"
-            className="rounded bg-slate-100 px-3 py-1"
-            data-testid="add-badge"
-            onClick={() => addObject("badge")}
-          >
-            + Badge
-          </button>
-          <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addObject("text")}>
-            + Text
-          </button>
-          <button
-            type="button"
-            className="rounded bg-slate-100 px-3 py-1"
-            data-testid="add-cursor"
-            onClick={() => addObject("cursor")}
-          >
-            + Cursor
-          </button>
-          <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addObject("frame")}>
-            + Frame
-          </button>
-          <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addLine("line")}>
-            + Line
-          </button>
-          <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => addLine("arrow")}>
-            + Arrow
-          </button>
-          <a
+            <IconRedo />
+          </IconButton>
+          <Separator />
+          <ButtonLink
+            size="sm"
             href={`/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(annotationId)}/image.png`}
             download={`${annotationId}.png`}
             data-testid="download-composed-image"
             aria-disabled={dirty}
             title={dirty ? "先に変更を保存してください" : "画像と注釈を合成したPNGをダウンロード"}
-            className={`rounded bg-slate-100 px-3 py-1 ${
-              dirty ? "pointer-events-none opacity-40" : ""
-            }`}
+            className={dirty ? "pointer-events-none opacity-40" : ""}
             onClick={(event) => {
               if (dirty) {
                 event.preventDefault();
               }
             }}
           >
+            <IconDownload size={14} />
             PNG出力
-          </a>
-          <button
-            type="button"
-            className="rounded bg-blue-600 px-4 py-1 text-white"
+          </ButtonLink>
+          <Button
+            size="sm"
+            variant="primary"
+            className="px-4"
             data-testid="save-button"
             onClick={() => void handleSave()}
           >
             保存
-          </button>
+          </Button>
         </div>
       </header>
-      {status ? <div className="bg-green-50 px-4 py-2 text-green-700">{status}</div> : null}
+      {status ? <Banner kind="success">{status}</Banner> : null}
       {externalPayload ? (
-        <div
-          className="flex items-center gap-3 bg-amber-50 px-4 py-2 text-amber-800"
-          data-testid="external-change-banner"
-        >
-          <span>外部で注釈が変更されました。読み込むと未保存の編集は失われます。</span>
-          <button
-            type="button"
-            className="rounded border border-amber-400 px-2 py-0.5"
-            data-testid="apply-external"
-            onClick={() => applyPayload(externalPayload)}
-          >
+        <Banner kind="warning" testId="external-change-banner">
+          <span className="min-w-0 flex-1">
+            外部で注釈が変更されました。読み込むと未保存の編集は失われます。
+          </span>
+          <Button size="sm" data-testid="apply-external" onClick={() => applyPayload(externalPayload)}>
             外部の内容を読み込む
-          </button>
-          <button
-            type="button"
-            className="rounded border border-slate-300 px-2 py-0.5"
-            onClick={() => setExternalPayload(null)}
-          >
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setExternalPayload(null)}>
             無視する
-          </button>
-        </div>
+          </Button>
+        </Banner>
       ) : null}
-      <div className="flex flex-1 overflow-hidden">
-        <div className="relative flex-1 overflow-auto p-6">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* オブジェクト追加ツールレール(キャンバス左端にフロート) */}
+        <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
+          <IconButton label="バッジを追加" data-testid="add-badge" onClick={() => addObject("badge")}>
+            <IconBadge />
+          </IconButton>
+          <IconButton label="テキストを追加" onClick={() => addObject("text")}>
+            <IconType />
+          </IconButton>
+          <IconButton label="カーソルを追加" data-testid="add-cursor" onClick={() => addObject("cursor")}>
+            <IconPointer />
+          </IconButton>
+          <IconButton label="枠を追加" onClick={() => addObject("frame")}>
+            <IconFrame />
+          </IconButton>
+          <IconButton label="罫線を追加" onClick={() => addLine("line")}>
+            <IconLine />
+          </IconButton>
+          <IconButton label="矢印を追加" onClick={() => addLine("arrow")}>
+            <IconArrowLine />
+          </IconButton>
+        </div>
+        <div className="editor-canvas relative flex-1 overflow-auto p-8 pl-16">
           <div
             ref={wrapRef}
-            className="relative mx-auto"
+            className="relative mx-auto bg-white shadow-md ring-1 ring-slate-900/10"
             style={{ maxWidth: annotation.canvas.width }}
             onPointerDown={handleFigurePointerDown}
             onClick={(event) => {
@@ -1179,20 +1220,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             </div>
           </div>
         </div>
-        <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
-          <h2 className="mb-1 text-sm font-semibold text-slate-700">オブジェクト</h2>
-          {selectedIds.length > 1 ? (
-            <div
-              className="mb-2 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800"
-              data-testid="selection-count"
-            >
-              {selectedIds.length}個選択
+        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white">
+          <section className="border-b border-slate-100 p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-slate-700">オブジェクト</h2>
+              {selectedIds.length > 1 ? (
+                <span
+                  className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+                  data-testid="selection-count"
+                >
+                  {selectedIds.length}個選択
+                </span>
+              ) : null}
             </div>
-          ) : null}
-          <p className="mb-2 text-xs text-slate-400">
-            前面 → 背面の順。⌘/Ctrl/Shift+クリックで複数選択できます。
-          </p>
-          <ul className="mb-4 space-y-1">
+            <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+              前面 → 背面の順。⌘/Ctrl/Shift+クリックで複数選択できます。
+            </p>
+            <ul className="space-y-0.5">
             {[...annotation.objects].reverse().map((obj, displayIndex) => (
               <li
                 key={obj.id}
@@ -1215,16 +1259,21 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   setDragListIndex(null);
                   setDropListIndex(null);
                 }}
-                className={dropListIndex === displayIndex && dragListIndex !== displayIndex ? "border-t-2 border-blue-400" : ""}
+                className={cx(
+                  "rounded-md",
+                  dropListIndex === displayIndex && dragListIndex !== displayIndex &&
+                    "border-t-2 border-blue-400",
+                )}
               >
                 <button
                   type="button"
                   data-testid={`object-item-${obj.id}`}
-                  className={`w-full cursor-grab rounded border px-2 py-1 text-left text-sm ${
+                  className={cx(
+                    "group flex w-full cursor-grab items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[13px] transition-colors duration-150",
                     selectedIds.includes(obj.id)
                       ? "border-blue-400 bg-blue-50 text-blue-800"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
-                  }`}
+                      : "border-transparent text-slate-700 hover:bg-slate-100",
+                  )}
                   onClick={(event) => {
                     if (event.metaKey || event.ctrlKey || event.shiftKey) {
                       setSelectedIds((current) =>
@@ -1237,26 +1286,40 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     }
                   }}
                 >
-                  {objectLabel(obj)}
-                  <span className="ml-1 text-xs text-slate-400">{obj.id}</span>
+                  <span
+                    className={cx(
+                      "shrink-0",
+                      selectedIds.includes(obj.id) ? "text-blue-600" : "text-slate-400",
+                    )}
+                  >
+                    {objectIcon(obj.type)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{objectLabel(obj)}</span>
+                  <span className="shrink-0 font-mono text-[10px] text-slate-500">{obj.id}</span>
+                  <IconGrip
+                    size={12}
+                    className="shrink-0 text-slate-300 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                  />
                 </button>
               </li>
             ))}
-          </ul>
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">プロパティ</h2>
+            </ul>
+          </section>
+          <section className="flex-1 p-3">
+          <h2 className="mb-2 text-xs font-semibold text-slate-700">プロパティ</h2>
           {!selected ? (
-            <p className="text-sm text-slate-500">
+            <p className="rounded-md bg-slate-50 px-3 py-4 text-xs leading-relaxed text-slate-500">
               オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
             </p>
           ) : null}
           {selected?.type === "badge" ? (
             <div className="space-y-3 text-sm">
               <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">番号 (n)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">番号 (n)</span>
                 <input
                   type="number"
                   min={1}
-                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm shadow-xs transition-colors duration-150 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={selected.n}
                   onChange={(event) => {
                     const n = Number.parseInt(event.target.value, 10);
@@ -1273,7 +1336,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 />
               </label>
               <div>
-                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
                   <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
@@ -1281,11 +1344,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                   <input
                     type="color"
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1296,7 +1359,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </label>
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-700">直径 (px)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">直径 (px)</span>
                   <NumberField
                     label=""
                     value={selected.size ?? 22}
@@ -1311,7 +1374,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 </div>
               </div>
               <div>
-                <span className="mb-1 block text-xs font-medium text-slate-700">フォントサイズ (px)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
                 <NumberField
                   label=""
                   value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
@@ -1330,9 +1393,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           {selected?.type === "text" ? (
             <div className="space-y-3 text-sm">
               <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">テキスト内容</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">テキスト内容</span>
                 <textarea
-                  className="min-h-24 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+                  className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[13px] shadow-xs transition-colors duration-150 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   value={selected.content}
                   onChange={(event) => {
                     const content = event.target.value;
@@ -1346,7 +1409,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 />
               </label>
               <div>
-                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
                   <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
@@ -1354,11 +1417,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-700">文字色</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>
                   <input
                     type="color"
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1369,7 +1432,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </label>
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-700">フォントサイズ (px)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
                   <NumberField
                     label=""
                     value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
@@ -1389,10 +1452,10 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           {selected?.type === "cursor" ? (
             <div className="space-y-3 text-sm">
               <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">カーソル種類</span>
-                <select
+                <span className="mb-1 block text-xs font-medium text-slate-600">カーソル種類</span>
+                <SelectInput
                   data-testid="cursor-icon"
-                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  className="w-full"
                   value={selected.icon}
                   onChange={(event) => {
                     const icon = event.target.value as CursorIcon;
@@ -1406,10 +1469,10 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   <option value="grab">つかむ (Grab)</option>
                   <option value="text">テキスト (Text)</option>
                   <option value="crosshair">十字 (Crosshair)</option>
-                </select>
+                </SelectInput>
               </label>
               <div>
-                <span className="mb-1 block font-medium text-slate-700">位置 (%)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
                   <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
@@ -1417,11 +1480,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                   <input
                     type="color"
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? DEFAULT_CURSOR_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1432,7 +1495,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </label>
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-700">サイズ (px)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">サイズ (px)</span>
                   <NumberField
                     label=""
                     value={selected.size ?? 28}
@@ -1447,7 +1510,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </div>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs leading-relaxed text-slate-500">
                 SVGはHTMLへ直接埋め込まれるため、単体HTMLでも表示されます。
               </p>
             </div>
@@ -1455,7 +1518,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           {selected?.type === "frame" ? (
             <div className="space-y-3 text-sm">
               <div>
-                <span className="mb-1 block font-medium text-slate-700">位置・サイズ (%)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">位置・サイズ (%)</span>
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
                   <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
@@ -1465,11 +1528,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-700">線色</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">線色</span>
                   <input
                     type="color"
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => {
                       const color = event.target.value;
@@ -1480,7 +1543,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </label>
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-700">線幅 (px)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">線幅 (px)</span>
                   <NumberField
                     label=""
                     value={selected.strokeWidth ?? 2}
@@ -1497,13 +1560,13 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   />
                 </div>
               </div>
-              <p className="text-xs text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
+              <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
             </div>
           ) : null}
           {selected?.type === "image" ? (
             <div className="space-y-3 text-sm">
               <div>
-                <span className="mb-1 block font-medium text-slate-700">配置 (%)</span>
+                <span className="mb-1 block text-xs font-medium text-slate-600">配置 (%)</span>
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
                   <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
@@ -1519,11 +1582,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 const crop = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
                 return (
                   <div>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="font-medium text-slate-700">クロップ (画像px)</span>
-                      <button
-                        type="button"
-                        className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs"
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-600">クロップ (画像px)</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1.5 text-[11px]"
                         onClick={() =>
                           updateObject(selected.id, (obj) =>
                             obj.type === "image"
@@ -1533,7 +1597,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                         }
                       >
                         全体に戻す
-                      </button>
+                      </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <NumberField label="x" value={crop.x} step={1} min={0} testId="crop-x" onChange={(v) => updateCrop("x", v)} />
@@ -1544,13 +1608,14 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     <p className="mt-1 text-xs text-slate-500">
                       元画像 {natural.w} × {natural.h}px
                     </p>
-                    <button
-                      type="button"
-                      className="mt-3 w-full rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                    <Button
+                      size="sm"
+                      className="mt-3 w-full"
                       onClick={() => replaceImageInputRef.current?.click()}
                     >
+                      <IconImage size={14} />
                       画像ファイルを置換
-                    </button>
+                    </Button>
                     <input
                       ref={replaceImageInputRef}
                       data-testid="replace-image-input"
@@ -1573,30 +1638,30 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           {selected && (selected.type === "line" || selected.type === "arrow") ? (
             <div className="space-y-3 text-sm">
               <label className="block">
-                <span className="mb-1 block font-medium text-slate-700">線種</span>
-                <select
+                <span className="mb-1 block text-xs font-medium text-slate-600">線種</span>
+                <SelectInput
                   data-testid="line-type"
-                  className="w-full rounded border border-slate-300 bg-white px-2 py-1"
+                  className="w-full"
                   value={selected.type}
                   onChange={(event) => updateLineType(event.target.value as "line" | "arrow")}
                 >
                   <option value="line">Line（線）</option>
                   <option value="arrow">Arrow（矢印）</option>
-                </select>
+                </SelectInput>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-700">色</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                   <input
                     type="color"
                     data-testid="prop-color"
-                    className="h-8 w-full cursor-pointer rounded border border-slate-300 bg-white"
+                    className="h-8 w-full cursor-pointer rounded-md border border-slate-300 bg-white p-1 shadow-xs transition-colors duration-150 hover:border-slate-400 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-sm [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded-sm [&::-moz-color-swatch]:border-none"
                     value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                     onChange={(event) => updateLineStyle({ color: event.target.value })}
                   />
                 </label>
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-700">太さ (px)</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-600">太さ (px)</span>
                   <NumberField
                     label=""
                     value={selected.strokeWidth ?? 2}
@@ -1608,18 +1673,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 </div>
               </div>
               <div>
-                <div className="mb-1 font-medium text-slate-700">点({selected.points.length})</div>
+                <div className="mb-1.5 text-xs font-medium text-slate-600">
+                  点({selected.points.length})
+                </div>
                 <ul className="mb-2 space-y-1">
                   {selected.points.map((point, index) => (
                     <li
                       key={index}
                       data-testid={`point-row-${index}`}
-                      className={`flex items-center gap-1 rounded px-1 py-0.5 ${
-                        selectedPointIndex === index ? "bg-blue-100 ring-1 ring-blue-300" : ""
-                      }`}
+                      className={cx(
+                        "flex items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150",
+                        selectedPointIndex === index
+                          ? "bg-blue-100 ring-1 ring-blue-300"
+                          : "hover:bg-slate-50",
+                      )}
                       onClick={() => setSelectedPointIndex(index)}
                     >
-                      <span className="w-3 shrink-0 text-xs text-slate-400">{index + 1}</span>
+                      <span className="w-3 shrink-0 text-center text-[11px] text-slate-500">{index + 1}</span>
                       <NumberField
                         label="x"
                         value={point.x}
@@ -1635,30 +1705,34 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                       />
                       <button
                         type="button"
-                        className="shrink-0 rounded border border-slate-300 px-1.5 text-xs disabled:opacity-40"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors duration-150 hover:bg-slate-200 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
                         disabled={selected.points.length <= 2}
                         onClick={() => removePoint(index)}
                         title="点を削除"
+                        aria-label="点を削除"
                       >
-                        ×
+                        <IconX size={11} />
                       </button>
                     </li>
                   ))}
                 </ul>
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs"
-                  onClick={addPoint}
-                >
-                  + 点を追加
-                </button>
+                <Button size="sm" onClick={addPoint}>
+                  <IconPlus size={12} />
+                  点を追加
+                </Button>
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs leading-relaxed text-slate-500">
                 線上を Option(Alt)+クリックで点を追加できます。点のドラッグは他の点の x/y
                 に自動吸着し、Shift 押下中は隣の点を基準に 45° 刻みでスナップします。
               </p>
             </div>
           ) : null}
+          </section>
+          <footer className="mt-auto border-t border-slate-100 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
+            <Kbd>⌘Z</Kbd> 取り消し ・ <Kbd>⌘C</Kbd>
+            <Kbd>⌘V</Kbd> 複製 ・ <Kbd>Delete</Kbd> 削除 ・ 矢印キーで 0.1% 移動(
+            <Kbd>⇧</Kbd> で 1%)
+          </footer>
         </aside>
       </div>
     </div>
