@@ -3,10 +3,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { imageSize } from "image-size";
+import sharp from "sharp";
 import type { Code, Heading, Html, Root as MdastRoot } from "mdast";
 import GithubSlugger from "github-slugger";
 import rehypeRaw from "rehype-raw";
@@ -42,6 +44,19 @@ interface AnnotatedImageFence {
 }
 
 type NaturalSizeCache = Map<string, { w: number; h: number }>;
+
+interface PixelCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface CroppedImageJob {
+  source: string;
+  output: string;
+  crop: PixelCrop;
+}
 
 const IMG_SRC_RE = /src="(img\/[^"]+)"/g;
 const TOC_MARKER = "<!-- toc -->";
@@ -101,6 +116,61 @@ function copyImages(projectRoot: string, outputDir: string, srcPaths: string[]):
   }
 }
 
+function toPixelCrop(
+  crop: PixelCrop,
+  natural: { w: number; h: number },
+  src: string,
+): PixelCrop {
+  const pixelCrop = {
+    x: Math.round(crop.x),
+    y: Math.round(crop.y),
+    w: Math.round(crop.w),
+    h: Math.round(crop.h),
+  };
+  if (
+    pixelCrop.x < 0 ||
+    pixelCrop.y < 0 ||
+    pixelCrop.w < 1 ||
+    pixelCrop.h < 1 ||
+    pixelCrop.x + pixelCrop.w > natural.w ||
+    pixelCrop.y + pixelCrop.h > natural.h
+  ) {
+    throw new Error(`crop is outside the source image: ${src}`);
+  }
+  return pixelCrop;
+}
+
+async function writeCroppedImages(
+  projectRoot: string,
+  outputDir: string,
+  jobs: CroppedImageJob[],
+): Promise<void> {
+  const uniqueJobs = new Map(jobs.map((job) => [job.output, job]));
+  await Promise.all(
+    [...uniqueJobs.values()].map(async ({ source, output, crop }) => {
+      const destinationPath = join(outputDir, output);
+      mkdirSync(dirname(destinationPath), { recursive: true });
+      await sharp(join(projectRoot, source))
+        .extract({ left: crop.x, top: crop.y, width: crop.w, height: crop.h })
+        .png()
+        .toFile(destinationPath);
+    }),
+  );
+}
+
+function removeStaleAnnotatedSources(
+  outputDir: string,
+  jobs: CroppedImageJob[],
+  outputImages: string[],
+): void {
+  const copiedImages = new Set(outputImages);
+  for (const source of new Set(jobs.map((job) => job.source))) {
+    if (!copiedImages.has(source)) {
+      rmSync(join(outputDir, source), { force: true });
+    }
+  }
+}
+
 function parseAnnotatedImageFence(value: string): AnnotatedImageFence {
   const parsed = parseYaml(value) as Partial<AnnotatedImageFence>;
   if (!parsed.src || typeof parsed.src !== "string") {
@@ -118,19 +188,47 @@ function parseAnnotatedImageFence(value: string): AnnotatedImageFence {
 function renderAnnotatedImageFence(
   projectRoot: string,
   body: string,
-  options: { dataAnnotationId?: boolean; sizeCache?: NaturalSizeCache } = {},
+  options: {
+    dataAnnotationId?: boolean;
+    sizeCache?: NaturalSizeCache;
+    croppedImages?: CroppedImageJob[];
+  } = {},
 ): string {
   const fence = parseAnnotatedImageFence(body);
   const annotation = loadAnnotation(projectRoot, fence.src);
   const imageSources = collectImageSources(annotation);
   const naturalSizes = resolveNaturalSizes(projectRoot, imageSources, options.sizeCache);
+  let renderAnnotation = annotation;
+  let renderNaturalSizes = naturalSizes;
+
+  if (options.croppedImages) {
+    const croppedNaturalSizes: Record<string, { w: number; h: number }> = {};
+    renderAnnotation = {
+      ...annotation,
+      objects: annotation.objects.map((obj) => {
+        if (obj.type !== "image") {
+          return obj;
+        }
+        const crop = toPixelCrop(
+          obj.crop ?? { x: 0, y: 0, w: naturalSizes[obj.src]!.w, h: naturalSizes[obj.src]!.h },
+          naturalSizes[obj.src]!,
+          obj.src,
+        );
+        const output = `img/cropped/${fence.src}/${obj.id}.png`;
+        options.croppedImages!.push({ source: obj.src, output, crop });
+        croppedNaturalSizes[output] = { w: crop.w, h: crop.h };
+        return { ...obj, src: output, crop: undefined };
+      }),
+    };
+    renderNaturalSizes = croppedNaturalSizes;
+  }
   const renderFence: RenderFenceOptions = {
     width: fence.width,
     border: fence.border,
     alt: fence.alt,
     caption: fence.caption,
   };
-  let html = renderFigure(annotation, { naturalSizes, fence: renderFence });
+  let html = renderFigure(renderAnnotation, { naturalSizes: renderNaturalSizes, fence: renderFence });
   if (options.dataAnnotationId) {
     html = html.replace("<figure ", `<figure data-mm-annotation="${fence.src}" `);
   }
@@ -190,12 +288,14 @@ function tocTransformer() {
 
 interface ProcessMarkdownOptions {
   dataAnnotationId?: boolean;
+  cropImages?: boolean;
 }
 
 interface ProcessMarkdownResult {
   html: string;
   title: string;
   images: string[];
+  croppedImages: CroppedImageJob[];
 }
 
 // annotated-image フェンスを mdast の code ノードとして検出して figure HTML に置換する。
@@ -205,6 +305,7 @@ function annotatedImageTransformer(
   options: ProcessMarkdownOptions,
   out: { title?: string },
   sizeCache: NaturalSizeCache,
+  croppedImages: CroppedImageJob[],
 ) {
   return (tree: MdastRoot) => {
     visit(tree, "heading", (node: Heading) => {
@@ -219,6 +320,7 @@ function annotatedImageTransformer(
       const html = renderAnnotatedImageFence(projectRoot, node.value, {
         dataAnnotationId: options.dataAnnotationId,
         sizeCache,
+        croppedImages: options.cropImages ? croppedImages : undefined,
       });
       const replacement = node as unknown as { type: string; lang?: string; value: string };
       replacement.type = "html";
@@ -235,11 +337,12 @@ async function processMarkdown(
 ): Promise<ProcessMarkdownResult> {
   const out: { title?: string } = {};
   const sizeCache: NaturalSizeCache = new Map();
+  const croppedImages: CroppedImageJob[] = [];
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(() => tocTransformer())
-    .use(() => annotatedImageTransformer(projectRoot, options, out, sizeCache))
+    .use(() => annotatedImageTransformer(projectRoot, options, out, sizeCache, croppedImages))
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSlug)
@@ -248,7 +351,7 @@ async function processMarkdown(
   const result = await processor.process(markdown);
   const html = String(result);
   const images = [...new Set([...html.matchAll(IMG_SRC_RE)].map((match) => match[1] as string))];
-  return { html, title: out.title ?? "Manual", images };
+  return { html, title: out.title ?? "Manual", images, croppedImages };
 }
 
 function inlineImagesAsDataUri(html: string, outputDir: string): string {
@@ -272,9 +375,15 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
   const outputDir = options.outputDir ?? join(projectRoot, "dist");
   mkdirSync(outputDir, { recursive: true });
 
-  const { html: bodyHtml, title, images } = await processMarkdown(projectRoot, sourceMarkdown);
+  const { html: bodyHtml, title, images, croppedImages } = await processMarkdown(projectRoot, sourceMarkdown, {
+    cropImages: true,
+  });
 
-  copyImages(projectRoot, outputDir, images);
+  await writeCroppedImages(projectRoot, outputDir, croppedImages);
+  const croppedPaths = new Set(croppedImages.map((job) => job.output));
+  const copiedImages = images.filter((src) => !croppedPaths.has(src));
+  copyImages(projectRoot, outputDir, copiedImages);
+  removeStaleAnnotatedSources(outputDir, croppedImages, copiedImages);
 
   let finalBodyHtml = bodyHtml;
   if (options.singleFile) {

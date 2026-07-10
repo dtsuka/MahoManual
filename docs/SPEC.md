@@ -264,7 +264,7 @@ caption: ""       # 任意。figcaptionとして出力
 - **cursor**: Lucide相当のアイコンを外部ファイルやWebフォントへ依存しないinline SVGで描画する。`pointer`は`at`を矢印の先端、その他は中心として配置し、単一HTML出力にもSVGパスを直接含める
 - **frame**: `left/top/width/height` = `rect` の%値。`border: {strokeWidth}px solid {color}`、`box-sizing:border-box`
 - **line / arrow**: figure全面に重ねた1つの `<svg>` にまとめる。`viewBox="0 0 {canvas.width} {canvas.height}"`。点は%→キャンバスpxに変換(`x_px = x / 100 * canvas.width`)。figureのaspect-ratioとviewBoxが一致するためスケーリングは常に等倍比(歪みなし)。**strokeWidthはviewBox座標系のpxで指定し、図全体と比例スケール**(vector-effectは使わない。矢印マーカーとの太さ整合のため)。arrowは `marker-end`(オブジェクトごとに一意のmarker idを生成)
-- **image(非破壊クロップ)**: ラッパーdivを `rect` に絶対配置し `overflow:hidden`。内部imgは crop領域がラッパーを満たすよう絶対配置:
+- **image(編集時は非破壊クロップ)**: GUIプレビューではラッパーdivを `rect` に絶対配置し `overflow:hidden`。内部imgは crop領域がラッパーを満たすよう絶対配置:
 
 ```
 naturalW/H = 画像ファイルの実ピクセル(ビルド時に image-size 等で取得)
@@ -275,6 +275,8 @@ img.top    = -crop.y / crop.h * 100 %
 ```
 
 例(§4.3): naturalH=1080, crop.h=960, crop.y=120 → height=112.5%, top=-12.5%(§6.1と一致)
+
+- **納品時の実クロップ**: `build` は各imageオブジェクトのcrop範囲を `dist/img/cropped/<annotationId>/<objectId>.png` としてPNG出力し、納品HTMLはこの画像を参照する。クロップ範囲外の画素を含む元画像は、同時に本文から参照されない限り`dist`から除去する。`--single-file` とPDFもこの実クロップ済み画像を使う。
 
 - レンダラーは純関数にする: `renderFigure(annotation, opts)` は画像の実サイズを `opts.naturalSizes: Record<src, {w,h}>` として受け取り、ファイルI/Oをしない(テスト容易性のため)。実サイズの解決はbuild側の責務
 
@@ -308,7 +310,7 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 
 ### build(納品HTML)
 
-- 入力: プロジェクトフォルダ → 出力: `dist/manual.html` + `dist/img/`(参照画像のコピー)
+- 入力: プロジェクトフォルダ → 出力: `dist/manual.html` + `dist/img/`。注釈付き画像は `dist/img/cropped/` に実クロップして出力し、クロップ外の画素を納品物へ含めない。通常Markdownの画像はそのままコピーする
 - 完全なスタンドアロンHTML(`<!doctype html>`、`<title>` は最初のh1、テーマCSSは `<style>` 埋め込み)
 - `--single-file`: 画像をbase64 data URIでインライン化した単一HTML(imgフォルダ不要で納品可能)
 

@@ -50,8 +50,9 @@
 
 - [x] test: フィクスチャプロジェクト(annotated-imageフェンス1つ+見出し+生HTML+`<hr class="page-break">` を含むmanual.md)→ 出力HTMLに: figure展開済み / テーマCSS埋め込み / 見出しid(`1-施設情報カテゴリーの追加` 形式)/ 生HTMLがそのまま残る / `<title>`=最初のh1
 - [x] test: `<!-- toc -->` マーカー→ H2 のみの `<nav class="mm-toc">` 展開、slug が rehype-slug の id と一致、マーカー無しでは目次なし
+- [x] test: 注釈付き画像をcrop指定してbuild → `dist/img/cropped/` にcrop範囲だけのPNGを生成し、HTMLはその画像を参照、元画像を出力先に残さない
 - [x] test: 存在しないsrc参照はファイル名付きエラー
-- [x] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-gfm → tocTransformer → annotated-image フェンス変換 → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify)。画像実サイズは image-size で解決し dist/img/ へコピー
+- [x] 実装: `packages/core/src/build.ts`(unified: remark-parse → remark-gfm → tocTransformer → annotated-image フェンス変換 → remark-rehype(allowDangerousHtml)→ rehype-raw → rehype-slug → rehype-stringify)。画像実サイズはimage-sizeで解決し、注釈付き画像はsharpで実クロップしてdist/img/cropped/へ出力、通常画像はdist/img/へコピー
 
 ### 1-4. 単一HTML化
 
