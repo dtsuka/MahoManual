@@ -9,6 +9,7 @@ import {
 } from "./lib/api.js";
 import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
+import { ThemeSettings } from "./components/ThemeSettings.js";
 import {
   IconArrowLeft,
   IconBook,
@@ -217,6 +218,7 @@ function ProjectHome() {
         </Link>
         <ImageImport project={project} />
         <AnnotationLinks project={project} />
+        <ThemeSettings project={project} />
       </div>
     </div>
   );

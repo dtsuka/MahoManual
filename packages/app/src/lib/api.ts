@@ -53,6 +53,22 @@ export function saveManual(project: string, body: string): Promise<{ ok: boolean
   });
 }
 
+export function fetchProjectTheme(project: string): Promise<{ theme: AnnotationTheme }> {
+  return request(`/api/projects/${encodeURIComponent(project)}/theme`);
+}
+
+// 注釈の既定テーマを全置換する。キー省略は「既定値に戻す」
+export function saveProjectTheme(
+  project: string,
+  theme: AnnotationTheme,
+): Promise<{ theme: AnnotationTheme }> {
+  return request(`/api/projects/${encodeURIComponent(project)}/theme`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(theme),
+  });
+}
+
 export function fetchAnnotation(project: string, id: string): Promise<AnnotationResponse> {
   return request(`/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(id)}`);
 }
