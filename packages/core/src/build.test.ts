@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { imageSize } from "image-size";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { buildProject } from "./build.js";
@@ -63,6 +64,44 @@ describe("buildProject", () => {
       expect(html).toContain("data:image/png;base64,");
     } finally {
       rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a physically cropped image for annotated images", async () => {
+    const root = createTempProject(
+      ["# 実クロップ", "", "```annotated-image", "src: demo", "```", ""].join("\n"),
+    );
+    writeFileSync(
+      join(root, "annotations/demo.json"),
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 100, height: 50 },
+        objects: [
+          {
+            id: "img-main",
+            type: "image",
+            source: "manual",
+            src: "img/demo.png",
+            rect: { x: 0, y: 0, w: 100, h: 100 },
+            crop: { x: 20, y: 30, w: 100, h: 50 },
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-cropped-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      const croppedPath = join(outDir, "img/cropped/demo/img-main.png");
+
+      expect(html).toContain('src="img/cropped/demo/img-main.png"');
+      expect(existsSync(croppedPath)).toBe(true);
+      expect(existsSync(join(outDir, "img/demo.png"))).toBe(false);
+      expect(imageSize(readFileSync(croppedPath))).toMatchObject({ width: 100, height: 50 });
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
