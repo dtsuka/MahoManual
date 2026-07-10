@@ -749,3 +749,26 @@ test("manual editor: insert existing annotated image at cursor", async ({ page }
   await expect(page.locator(".cm-content")).toContainText("```annotated-image");
   await expect(page.locator(".cm-content")).toContainText(`src: ${annotationId}`);
 });
+
+test("annotation editor: tool palette shows tool-name tooltips", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  // ツール名 = SPEC の注釈用語。aria-label と CSS ツールチップ(data-tip)を持つ
+  const toolNames = ["丸数字", "テキスト", "カーソル", "強調枠", "罫線", "矢印"];
+  for (const name of toolNames) {
+    const button = page.getByRole("button", { name, exact: true });
+    await expect(button).toBeVisible();
+    await expect(button).toHaveAttribute("data-tip", name);
+    // ネイティブ title は外す(CSS ツールチップと二重表示になるため)
+    await expect(button).not.toHaveAttribute("title");
+  }
+
+  // ホバーで ::after のツールチップが表示される(遅延後に不透明化)
+  const badgeTool = page.getByRole("button", { name: "丸数字", exact: true });
+  const tipOpacity = () =>
+    badgeTool.evaluate((el) => getComputedStyle(el, "::after").opacity);
+  expect(await tipOpacity()).toBe("0");
+  await badgeTool.hover();
+  await expect.poll(tipOpacity, { timeout: 2000 }).toBe("1");
+});
