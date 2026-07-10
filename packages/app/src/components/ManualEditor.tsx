@@ -1,7 +1,7 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { defaultKeymap } from "@codemirror/commands";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
+import { minimalSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -25,6 +25,23 @@ import {
   formatTocMarker,
   insertEditorText,
 } from "../lib/manual-insert.js";
+import {
+  IconArrowLeft,
+  IconDownload,
+  IconImage,
+  IconList,
+  IconRefresh,
+} from "./icons.js";
+import {
+  Banner,
+  Button,
+  ButtonLink,
+  DirtyBadge,
+  IconButton,
+  SelectInput,
+  Separator,
+  TextInput,
+} from "./ui.js";
 
 interface ManualEditorProps {
   project: string;
@@ -138,8 +155,9 @@ export function ManualEditor({ project }: ManualEditorProps) {
       state: EditorState.create({
         doc: markdownText,
         extensions: [
+          minimalSetup,
           markdown(),
-          keymap.of(defaultKeymap),
+          EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) {
               return;
@@ -266,116 +284,126 @@ export function ManualEditor({ project }: ManualEditorProps) {
   };
 
   if (markdownText === null) {
-    return <div className="p-6">読み込み中…</div>;
+    return (
+      <div className="flex h-screen items-center justify-center text-sm text-slate-500">
+        読み込み中…
+      </div>
+    );
   }
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <h1 className="text-lg font-semibold">{project} — マニュアル編集</h1>
-        {dirty ? <span className="text-sm text-amber-600">未保存</span> : null}
-        <div className="ml-auto flex gap-2">
-          <a
-            href={`/api/projects/${encodeURIComponent(project)}/export.html`}
-            download={`${project}.html`}
-            data-testid="export-html"
-            className="rounded bg-slate-100 px-3 py-1"
-          >
-            HTML出力
-          </a>
-          <a
-            href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
-            download={`${project}.pdf`}
-            data-testid="export-pdf"
-            className="rounded bg-slate-100 px-3 py-1"
-          >
-            PDF出力
-          </a>
-          <button
-            type="button"
-            className="rounded bg-slate-100 px-3 py-1"
-            data-testid="insert-toc"
-            onClick={handleInsertToc}
-          >
+      <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <IconButton label="プロジェクトへ戻る" onClick={() => navigate(`/projects/${project}`)}>
+          <IconArrowLeft />
+        </IconButton>
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <h1 className="truncate text-[15px] font-semibold tracking-tight">{project}</h1>
+          <span className="shrink-0 text-slate-300">/</span>
+          <span className="shrink-0 text-[13px] font-medium text-slate-500">マニュアル編集</span>
+        </div>
+        {dirty ? <DirtyBadge /> : null}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button size="sm" data-testid="insert-toc" onClick={handleInsertToc}>
+            <IconList size={14} />
             目次挿入
-          </button>
-          <button
-            type="button"
-            className="rounded bg-slate-100 px-3 py-1"
+          </Button>
+          <Button
+            size="sm"
             data-testid="insert-image"
             onClick={() => {
               setInsertError(null);
               setShowImagePanel((current) => !current);
             }}
           >
+            <IconImage size={14} />
             画像挿入
-          </button>
-          <button type="button" className="rounded bg-slate-100 px-3 py-1" onClick={() => void handleRenumber()}>
-            Renumber
-          </button>
-          <button
-            type="button"
-            className="rounded bg-blue-600 px-4 py-1 text-white"
-            data-testid="save-manual"
-            onClick={() => void handleSave()}
+          </Button>
+          <Button
+            size="sm"
+            title="全注釈の badge 番号を出現順に振り直す"
+            onClick={() => void handleRenumber()}
           >
+            <IconRefresh size={14} />
+            番号振り直し
+          </Button>
+          <Separator />
+          <ButtonLink
+            size="sm"
+            href={`/api/projects/${encodeURIComponent(project)}/export.html`}
+            download={`${project}.html`}
+            data-testid="export-html"
+          >
+            <IconDownload size={14} />
+            HTML出力
+          </ButtonLink>
+          <ButtonLink
+            size="sm"
+            href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
+            download={`${project}.pdf`}
+            data-testid="export-pdf"
+          >
+            <IconDownload size={14} />
+            PDF出力
+          </ButtonLink>
+          <Separator />
+          <Button size="sm" variant="primary" className="px-4" data-testid="save-manual" onClick={() => void handleSave()}>
             保存
-          </button>
+          </Button>
         </div>
       </header>
-      {status ? <div className="bg-green-50 px-4 py-2 text-green-700">{status}</div> : null}
-      {warning ? <div className="bg-amber-50 px-4 py-2 text-amber-800">{warning}</div> : null}
-      {previewError ? <div className="bg-red-50 px-4 py-2 text-red-700">プレビューエラー: {previewError}</div> : null}
+      {status ? <Banner kind="success">{status}</Banner> : null}
+      {warning ? <Banner kind="warning">{warning}</Banner> : null}
+      {previewError ? <Banner kind="danger">プレビューエラー: {previewError}</Banner> : null}
       {showImagePanel ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2"
           data-testid="insert-image-panel"
         >
-          <label className="flex items-center gap-2 text-sm">
-            <span>既存:</span>
-            <select
-              data-testid="insert-image-select"
-              className="rounded border border-slate-300 px-2 py-1"
-              value={selectedAnnotationId}
-              onChange={(event) => setSelectedAnnotationId(event.target.value)}
-            >
-              {annotations.length === 0 ? (
-                <option value="">(画像なし)</option>
-              ) : (
-                annotations.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="rounded bg-white px-3 py-1 text-sm shadow-sm"
+          <span className="text-xs font-medium text-slate-600">既存:</span>
+          <SelectInput
+            data-testid="insert-image-select"
+            uiSize="sm"
+            className="w-44"
+            aria-label="挿入する既存画像"
+            value={selectedAnnotationId}
+            onChange={(event) => setSelectedAnnotationId(event.target.value)}
+          >
+            {annotations.length === 0 ? (
+              <option value="">(画像なし)</option>
+            ) : (
+              annotations.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))
+            )}
+          </SelectInput>
+          <Button
+            size="sm"
             data-testid="insert-image-existing"
             disabled={!selectedAnnotationId}
             onClick={handleInsertExistingImage}
           >
             挿入
-          </button>
-          <span className="text-slate-400">|</span>
-          <input
+          </Button>
+          <Separator />
+          <TextInput
             data-testid="insert-image-id"
-            className="w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+            uiSize="sm"
+            className="w-40"
             placeholder="新規ID(空なら自動)"
             value={newImageId}
             onChange={(event) => setNewImageId(event.target.value)}
           />
-          <button
-            type="button"
-            className="rounded bg-white px-3 py-1 text-sm shadow-sm"
+          <Button
+            size="sm"
             data-testid="insert-image-new"
             disabled={insertBusy}
             onClick={() => imageInputRef.current?.click()}
           >
             新規画像を選択
-          </button>
+          </Button>
           <input
             ref={imageInputRef}
             type="file"
@@ -389,40 +417,47 @@ export function ManualEditor({ project }: ManualEditorProps) {
               event.target.value = "";
             }}
           />
-          {insertBusy ? <span className="text-sm text-slate-500">取り込み中…</span> : null}
-          {insertError ? <span className="text-sm text-red-600">{insertError}</span> : null}
+          {insertBusy ? <span className="text-xs text-slate-500">取り込み中…</span> : null}
+          {insertError ? (
+            <span className="text-xs text-red-600" role="alert">
+              {insertError}
+            </span>
+          ) : null}
         </div>
       ) : null}
       {externalBody !== null ? (
-        <div
-          className="flex items-center gap-3 bg-amber-50 px-4 py-2 text-amber-800"
-          data-testid="external-change-banner"
-        >
-          <span>外部で manual.md が変更されました。読み込むと未保存の編集は失われます。</span>
-          <button
-            type="button"
-            className="rounded border border-amber-400 px-2 py-0.5"
-            onClick={() => applyExternal(externalBody)}
-          >
+        <Banner kind="warning" testId="external-change-banner">
+          <span className="min-w-0 flex-1">
+            外部で manual.md が変更されました。読み込むと未保存の編集は失われます。
+          </span>
+          <Button size="sm" onClick={() => applyExternal(externalBody)}>
             外部の内容を読み込む
-          </button>
-          <button
-            type="button"
-            className="rounded border border-slate-300 px-2 py-0.5"
-            onClick={() => setExternalBody(null)}
-          >
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setExternalBody(null)}>
             無視する
-          </button>
-        </div>
+          </Button>
+        </Banner>
       ) : null}
-      <div className="grid flex-1 grid-cols-2 divide-x divide-slate-200">
-        <div ref={editorHostRef} className="h-full overflow-auto" data-testid="md-editor" />
-        <div className="preview-pane h-full overflow-auto bg-white p-4" data-testid="preview-pane">
-          <style>{scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane")}</style>
-          <style>{THEME_FIGURE_CSS}</style>
-          {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
-          <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
-        </div>
+      <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-slate-200">
+        <section className="flex min-h-0 flex-col">
+          <div className="flex h-7 shrink-0 items-center border-b border-slate-100 bg-white px-4 text-[11px] font-medium text-slate-500">
+            Markdown
+          </div>
+          <div ref={editorHostRef} className="min-h-0 flex-1 overflow-hidden" data-testid="md-editor" />
+        </section>
+        <section className="flex min-h-0 flex-col bg-slate-100">
+          <div className="flex h-7 shrink-0 items-center border-b border-slate-200/70 bg-slate-100 px-4 text-[11px] font-medium text-slate-500">
+            プレビュー
+          </div>
+          <div className="preview-pane min-h-0 flex-1 overflow-auto p-6" data-testid="preview-pane">
+            <style>{scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane")}</style>
+            <style>{THEME_FIGURE_CSS}</style>
+            {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
+            <div className="mx-auto max-w-[860px] rounded-sm bg-white px-10 py-10 shadow-sm ring-1 ring-slate-900/5">
+              <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
