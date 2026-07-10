@@ -72,14 +72,17 @@ export function ButtonLink({ variant = "secondary", size = "md", className, ...r
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   label: string;
   size?: ButtonSize;
+  /** true なら title の代わりに CSS ツールチップ(data-tip)で label を表示する */
+  tip?: boolean;
 }
 
-export function IconButton({ label, size = "md", className, type = "button", ...rest }: IconButtonProps) {
+export function IconButton({ label, tip, size = "md", className, type = "button", ...rest }: IconButtonProps) {
   return (
     <button
       type={type}
       aria-label={label}
-      title={label}
+      title={tip ? undefined : label}
+      data-tip={tip ? label : undefined}
       className={cx(
         BUTTON_BASE,
         BUTTON_VARIANT.ghost,

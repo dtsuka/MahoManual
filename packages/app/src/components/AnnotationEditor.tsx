@@ -1122,24 +1122,25 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         </Banner>
       ) : null}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        {/* オブジェクト追加ツールレール(キャンバス左端にフロート) */}
+        {/* オブジェクト追加ツールレール(キャンバス左端にフロート)。
+            ツール名は SPEC の注釈用語に合わせ、CSS ツールチップで表示する */}
         <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
-          <IconButton label="バッジを追加" data-testid="add-badge" onClick={() => addObject("badge")}>
+          <IconButton label="丸数字" tip data-testid="add-badge" onClick={() => addObject("badge")}>
             <IconBadge />
           </IconButton>
-          <IconButton label="テキストを追加" onClick={() => addObject("text")}>
+          <IconButton label="テキスト" tip onClick={() => addObject("text")}>
             <IconType />
           </IconButton>
-          <IconButton label="カーソルを追加" data-testid="add-cursor" onClick={() => addObject("cursor")}>
+          <IconButton label="カーソル" tip data-testid="add-cursor" onClick={() => addObject("cursor")}>
             <IconPointer />
           </IconButton>
-          <IconButton label="枠を追加" onClick={() => addObject("frame")}>
+          <IconButton label="強調枠" tip onClick={() => addObject("frame")}>
             <IconFrame />
           </IconButton>
-          <IconButton label="罫線を追加" onClick={() => addLine("line")}>
+          <IconButton label="罫線" tip onClick={() => addLine("line")}>
             <IconLine />
           </IconButton>
-          <IconButton label="矢印を追加" onClick={() => addLine("arrow")}>
+          <IconButton label="矢印" tip onClick={() => addLine("arrow")}>
             <IconArrowLine />
           </IconButton>
         </div>
