@@ -37,7 +37,7 @@ GUIエディタ(packages/app)の視覚システム。戦略的な背景は [PROD
 
 - **Button**: `primary`(blue-600 / 保存など各画面1つ) ・ `secondary`(白+枠 / 通常操作) ・ `ghost`(ツールバー・軽い操作)。サイズ `sm`(h-7)/`md`(h-8)
 - **ButtonLink**: `<a>` 用の同スキン(ダウンロード系)
-- **IconButton**: 正方形 ghost + `aria-label` 必須(戻る・Undo/Redo・ツールレール)
+- **IconButton**: 正方形 ghost + `aria-label` 必須(戻る・Undo/Redo・ツールレール)。`tip` 指定で title の代わりに CSS ツールチップ(`data-tip`、右側・ダーク・350ms遅延、hover/focus-visible で表示)を出す。ツール名は SPEC の注釈用語(丸数字・テキスト・カーソル・強調枠・罫線・矢印)に合わせる
 - **TextInput / SelectInput**: 共通 `CONTROL_BASE`(focus: border-blue-400 + ring-blue-500/20)。select は `.ui-select` のシェブロン
 - **NumberField**(AnnotationEditor内): Figma風 — 枠内に接頭ラベル(x/y/w/h)+ 枠なし input、`focus-within` リング
 - **Banner**: success / warning / danger。アイコン付き全幅ストリップ(状態通知・外部変更確認)
