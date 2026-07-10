@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { YAMLMap, parseDocument, parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
 import {
@@ -102,6 +102,43 @@ export function readProjectTheme(projectRoot: string): AnnotationTheme {
     theme.fontSize = fontSize;
   }
   return theme;
+}
+
+// project.yaml の annotation セクション(テーマ設定)を書き込む。
+// 渡されたキーのみ設定し、省略されたキーは削除する(= 既定値に戻す)。
+// title などの他キー・手書きコメント・annotation 内の未知キーは保持する
+export function writeProjectTheme(projectRoot: string, theme: AnnotationTheme): AnnotationTheme {
+  if (
+    theme.color !== undefined &&
+    !/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(theme.color)
+  ) {
+    throw new Error(`不正なカラーコードです: ${theme.color}`);
+  }
+  if (
+    theme.fontSize !== undefined &&
+    !(Number.isFinite(theme.fontSize) && theme.fontSize > 0)
+  ) {
+    throw new Error(`不正なフォントサイズです: ${theme.fontSize}`);
+  }
+
+  const path = join(projectRoot, "project.yaml");
+  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
+  for (const [key, value] of [
+    ["color", theme.color],
+    ["fontSize", theme.fontSize],
+  ] as const) {
+    if (value !== undefined) {
+      doc.setIn(["annotation", key], value);
+    } else {
+      doc.deleteIn(["annotation", key]);
+    }
+  }
+  const annotation = doc.get("annotation");
+  if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
+    doc.delete("annotation");
+  }
+  writeFileSync(path, doc.toString(), "utf8");
+  return readProjectTheme(projectRoot);
 }
 
 export function listManuals(projectsDir: string): ProjectInfo[] {
