@@ -87,6 +87,26 @@ describe("parseAnnotation", () => {
     ).toThrow(/w/i);
   });
 
+  it("rejects crop with negative x/y (SPEC §4.5: 余白はcropで表現しない)", () => {
+    const withCrop = (crop: { x: number; y: number; w: number; h: number }) => ({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "img",
+          type: "image",
+          source: "manual",
+          src: "img/raw/a.png",
+          rect: { x: 0, y: 0, w: 100, h: 100 },
+          crop,
+        },
+      ],
+    });
+    expect(() => parseAnnotation(withCrop({ x: -10, y: 0, w: 100, h: 100 }))).toThrow(/crop/i);
+    expect(() => parseAnnotation(withCrop({ x: 0, y: -10, w: 100, h: 100 }))).toThrow(/crop/i);
+    expect(parseAnnotation(withCrop({ x: 0, y: 0, w: 100, h: 100 })).objects).toHaveLength(1);
+  });
+
   it("rejects invalid color", () => {
     expect(() =>
       parseAnnotation({
