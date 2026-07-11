@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import { renderFigure } from "@mahomanual/core/render";
 import { expandCanvas } from "@mahomanual/core/expand-canvas";
 import {
   annotationThemeCss,
-  DEFAULT_ANNOTATION_COLOR,
-  DEFAULT_ANNOTATION_FONT_SIZE,
-  DEFAULT_CURSOR_COLOR,
   THEME_FIGURE_CSS,
   type AnnotationTheme,
 } from "@mahomanual/core/theme";
 import type {
   AnnotationFile,
   AnnotationObject,
-  CursorIcon,
 } from "@mahomanual/core/schema";
 import {
   addAnnotationImage,
@@ -47,32 +44,32 @@ import {
   IconBadge,
   IconDownload,
   IconFrame,
-  IconGrip,
   IconImage,
   IconLine,
-  IconLock,
   IconMosaic,
-  IconPlus,
   IconPointer,
   IconRedo,
   IconType,
   IconUndo,
-  IconUnlock,
-  IconX,
 } from "./icons.js";
 import {
   Banner,
   Button,
   ButtonLink,
-  ColorInput,
   DirtyBadge,
   IconButton,
-  Kbd,
-  SelectInput,
   Separator,
   TextInput,
-  cx,
 } from "./ui.js";
+import { AnnotationObjectList } from "./annotation-editor/AnnotationObjectList.js";
+import { AnnotationProperties } from "./annotation-editor/AnnotationProperties.js";
+import { CanvasMarginPanel } from "./annotation-editor/CanvasMarginPanel.js";
+import { ImageFilePickerModal } from "./annotation-editor/ImageFilePickerModal.js";
+import {
+  type DraftShape,
+  FRAME_HANDLES,
+  readImageFile,
+} from "./annotation-editor/helpers.js";
 
 // 点ドラッグ時に他の点の x/y へ吸着する距離(%)。
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
@@ -98,126 +95,6 @@ interface AnnotationPayload {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
   theme?: AnnotationTheme;
-}
-
-function readImageFile(file: File): Promise<{ data: string; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
-    reader.onload = () => {
-      const data = reader.result as string;
-      const image = new Image();
-      image.onerror = () => reject(new Error("画像サイズを取得できません"));
-      image.onload = () => resolve({
-        data,
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-      });
-      image.src = data;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-// ドラッグ中の一時形状。figure DOM はドラッグ中 style を直接更新し、
-// state へのコミット(applyLocalChange)は pointerup 時にのみ行う
-interface DraftShape {
-  rect?: RectPct;
-}
-
-const FRAME_HANDLES = [
-  { dir: "nw", fx: 0, fy: 0, cursor: "nwse-resize" },
-  { dir: "n", fx: 0.5, fy: 0, cursor: "ns-resize" },
-  { dir: "ne", fx: 1, fy: 0, cursor: "nesw-resize" },
-  { dir: "e", fx: 1, fy: 0.5, cursor: "ew-resize" },
-  { dir: "se", fx: 1, fy: 1, cursor: "nwse-resize" },
-  { dir: "s", fx: 0.5, fy: 1, cursor: "ns-resize" },
-  { dir: "sw", fx: 0, fy: 1, cursor: "nesw-resize" },
-  { dir: "w", fx: 0, fy: 0.5, cursor: "ew-resize" },
-] as const;
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  testId,
-  step = 0.1,
-  min,
-  onFocus,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  testId?: string;
-  step?: number;
-  min?: number;
-  onFocus?: () => void;
-}) {
-  return (
-    <label className="flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md border border-slate-300 bg-white px-1.5 shadow-xs transition-colors duration-150 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20">
-      {label ? (
-        <span className="w-3 shrink-0 text-[11px] font-medium text-slate-500">{label}</span>
-      ) : null}
-      <input
-        type="number"
-        step={step}
-        min={min}
-        data-testid={testId}
-        className="h-full w-full min-w-0 bg-transparent text-[13px] text-slate-900 outline-none"
-        value={Math.round(value * 100) / 100}
-        onFocus={onFocus}
-        onChange={(event) => {
-          const next = Number.parseFloat(event.target.value);
-          if (!Number.isNaN(next)) {
-            onChange(next);
-          }
-        }}
-      />
-    </label>
-  );
-}
-
-function objectLabel(obj: AnnotationObject): string {
-  switch (obj.type) {
-    case "badge":
-      return `badge ${obj.n}`;
-    case "text":
-      return `text 「${obj.content.slice(0, 8)}${obj.content.length > 8 ? "…" : ""}」`;
-    case "cursor":
-      return `cursor ${obj.icon}`;
-    case "image":
-      return `image ${obj.src.split("/").pop() ?? obj.src}`;
-    case "frame":
-      return "frame";
-    case "mosaic":
-      return `mosaic → ${obj.targetImageId}`;
-    case "line":
-      return "line";
-    case "arrow":
-      return "arrow";
-  }
-}
-
-// オブジェクト一覧・プロパティ見出しで使う種別アイコン
-function objectIcon(type: AnnotationObject["type"], size = 14) {
-  switch (type) {
-    case "badge":
-      return <IconBadge size={size} />;
-    case "text":
-      return <IconType size={size} />;
-    case "cursor":
-      return <IconPointer size={size} />;
-    case "image":
-      return <IconImage size={size} />;
-    case "frame":
-      return <IconFrame size={size} />;
-    case "mosaic":
-      return <IconMosaic size={size} />;
-    case "line":
-      return <IconLine size={size} />;
-    case "arrow":
-      return <IconArrowLine size={size} />;
-  }
 }
 
 export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: AnnotationEditorProps) {
@@ -248,24 +125,19 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     future: AnnotationFile[];
   }>({ past: [], future: [] });
   const copiedIdsRef = useRef<string[]>([]);
-  const addImageInputRef = useRef<HTMLInputElement>(null);
-  const replaceImageInputRef = useRef<HTMLInputElement>(null);
+  const [imagePickerMode, setImagePickerMode] = useState<"add" | "replace" | null>(null);
   const selectedId = selectedIds.at(-1) ?? null;
 
   const figureHtml = useMemo(() => {
     if (!annotation) {
       return "";
     }
-    const taggable = annotation.objects.filter(
-      (obj): obj is MovableObject =>
-        obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame" || obj.type === "mosaic",
-    );
     return injectObjectIds(
       rewriteFigureHtml(
         renderFigure(annotation, { naturalSizes, fence: { width: annotation.canvas.width } }),
         project,
       ),
-      taggable,
+      taggableObjectsInDisplayOrder(annotation.objects),
     );
   }, [annotation, naturalSizes, project]);
 
@@ -448,7 +320,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           ...current,
           objects: removeUnlockedObjects(current.objects, selected),
         }));
-        setSelectedIds((ids) => ids.filter((id) => annotationRef.current?.objects.find((obj) => obj.id === id)?.locked));
+        setSelectedIds((ids) =>
+          ids.filter((id) => {
+            const obj = annotationRef.current?.objects.find((item) => item.id === id);
+            return obj !== undefined && !isEditable(obj);
+          }),
+        );
         return;
       }
       const directions: Record<string, Pt> = {
@@ -557,7 +434,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     const obj = current.objects.find((item) => item.id === objectId);
-    if (!obj || obj.locked) {
+    if (!obj || !isEditable(obj)) {
       return;
     }
     event.preventDefault();
@@ -595,7 +472,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
 
-    if (obj.type === "frame" || obj.type === "image" || obj.type === "mosaic") {
+    if (isRectObject(obj)) {
       const rect0 = obj.rect;
       const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
       const el = target as HTMLElement;
@@ -630,7 +507,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       applyLocalChange((latest) => ({
         ...latest,
         objects: latest.objects.map((item) =>
-          item.id === objectId && (item.type === "line" || item.type === "arrow")
+          item.id === objectId && isLineObject(item)
             ? {
                 ...item,
                 points: [...item.points.slice(0, insertAt), startPct, ...item.points.slice(insertAt)],
@@ -703,7 +580,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
     applyLocalChange((current) => ({
       ...current,
-      objects: current.objects.map((obj) => (obj.id === objectId && !obj.locked ? updater(obj) : obj)),
+      objects: current.objects.map((obj) => (obj.id === objectId && isEditable(obj) ? updater(obj) : obj)),
     }));
   };
 
@@ -766,7 +643,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const addMosaic = () => {
-    const target = [...annotation.objects].reverse().find(
+    const selectedImage = selected?.type === "image" ? selected : null;
+    const target = selectedImage ?? [...annotation.objects].reverse().find(
       (obj): obj is Extract<AnnotationObject, { type: "image" }> => obj.type === "image",
     );
     if (!target) {
@@ -803,7 +681,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const beginRectResize = (event: ReactPointerEvent, dir: string) => {
-    if (!selected || selected.locked || (selected.type !== "frame" && selected.type !== "image" && selected.type !== "mosaic")) {
+    if (!selected || !isEditable(selected) || !isRectObject(selected)) {
       return;
     }
     event.preventDefault();
@@ -833,7 +711,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         applyLocalChange((current) => ({
           ...current,
           objects: current.objects.map((item) =>
-            item.id === objectId && !item.locked && (item.type === "frame" || item.type === "image" || item.type === "mosaic")
+            item.id === objectId && isEditable(item) && isRectObject(item)
               ? { ...item, rect: next }
               : item,
           ),
@@ -843,7 +721,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const beginPointDrag = (event: ReactPointerEvent, index: number) => {
-    if (!selected || selected.locked || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isEditable(selected) || !isLineObject(selected)) {
       return;
     }
     event.preventDefault();
@@ -886,7 +764,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         applyLocalChange((current) => ({
           ...current,
           objects: current.objects.map((item) =>
-            item.id === objectId && (item.type === "line" || item.type === "arrow")
+            item.id === objectId && isLineObject(item)
               ? { ...item, points: next }
               : item,
           ),
@@ -896,13 +774,13 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const addPoint = () => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isLineObject(selected)) {
       return;
     }
     const objectId = selected.id;
     setSelectedPointIndex(selected.points.length);
     updateObject(objectId, (obj) => {
-      if (obj.type !== "line" && obj.type !== "arrow") {
+      if (!isLineObject(obj)) {
         return obj;
       }
       const last = obj.points[obj.points.length - 1] ?? { x: 50, y: 50 };
@@ -911,11 +789,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const removePoint = (index: number) => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isLineObject(selected)) {
       return;
     }
     updateObject(selected.id, (obj) => {
-      if ((obj.type !== "line" && obj.type !== "arrow") || obj.points.length <= 2) {
+      if (!isLineObject(obj) || obj.points.length <= 2) {
         return obj;
       }
       return { ...obj, points: obj.points.filter((_, i) => i !== index) };
@@ -947,14 +825,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!selected || (selected.type !== "frame" && selected.type !== "image" && selected.type !== "mosaic")) {
+    if (!selected || !isRectObject(selected)) {
       return;
     }
     const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
     updateObject(selected.id, (obj) =>
-      obj.type === "frame" || obj.type === "image" || obj.type === "mosaic"
-        ? { ...obj, rect: { ...obj.rect, [key]: clamped } }
-        : obj,
+      isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj,
     );
   };
 
@@ -972,11 +848,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const updatePointValue = (index: number, axis: "x" | "y", value: number) => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isLineObject(selected)) {
       return;
     }
     updateObject(selected.id, (obj) =>
-      obj.type === "line" || obj.type === "arrow"
+      isLineObject(obj)
         ? {
             ...obj,
             points: obj.points.map((point, i) => (i === index ? { ...point, [axis]: value } : point)),
@@ -986,21 +862,17 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const updateLineStyle = (patch: { color?: string; strokeWidth?: number }) => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isLineObject(selected)) {
       return;
     }
-    updateObject(selected.id, (obj) =>
-      obj.type === "line" || obj.type === "arrow" ? { ...obj, ...patch } : obj,
-    );
+    updateObject(selected.id, (obj) => (isLineObject(obj) ? { ...obj, ...patch } : obj));
   };
 
   const updateLineType = (type: "line" | "arrow") => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || !isLineObject(selected)) {
       return;
     }
-    updateObject(selected.id, (obj) =>
-      obj.type === "line" || obj.type === "arrow" ? { ...obj, type } : obj,
-    );
+    updateObject(selected.id, (obj) => (isLineObject(obj) ? { ...obj, type } : obj));
   };
 
   const handleSave = async () => {
@@ -1020,7 +892,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const handleReplaceImage = async (file: File) => {
-    if (!selected || selected.locked || selected.type !== "image") {
+    if (!selected || !isEditable(selected) || selected.type !== "image") {
       return;
     }
     try {
@@ -1085,7 +957,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
     applyLocalChange((current) => {
       const currentDisplay = [...current.objects].reverse();
-      if (currentDisplay[from]?.locked) {
+      if (currentDisplay[from] && !isEditable(currentDisplay[from]!)) {
         return current;
       }
       const displayed = moveItem(currentDisplay, from, to);
@@ -1093,20 +965,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     });
   };
 
-  const activeFrameRect = selected && !selected.locked && (selected.type === "frame" || selected.type === "image" || selected.type === "mosaic")
+  const activeFrameRect = selected && isEditable(selected) && isRectObject(selected)
     ? (draft?.rect ?? selected.rect)
     : null;
   const activeLinePoints =
-    selected && !selected.locked && (selected.type === "line" || selected.type === "arrow")
+    selected && isEditable(selected) && isLineObject(selected)
       ? selected.points
       : null;
 
-  // line/arrow のヒット領域は React 管理のオーバーレイ SVG に描く。
-  // figure の innerHTML へ手動注入すると React の再セットで黙って消えるため
-  const lineObjects = annotation.objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "line" | "arrow" }> =>
-      obj.type === "line" || obj.type === "arrow",
-  );
+  const lineObjects = annotation.objects.filter(isLineObject);
   const toCanvasPoints = (points: Pt[]): string =>
     points
       .map(
@@ -1230,23 +1097,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           <IconButton label="矢印" tip onClick={() => addLine("arrow")}>
             <IconArrowLine />
           </IconButton>
-          <IconButton label="画像" tip data-testid="add-image" onClick={() => addImageInputRef.current?.click()}>
+          <IconButton label="画像" tip data-testid="add-image" onClick={() => setImagePickerMode("add")}>
             <IconImage />
           </IconButton>
-          <input
-            ref={addImageInputRef}
-            data-testid="add-image-input"
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                void handleAddImage(file);
-              }
-              event.target.value = "";
-            }}
-          />
           <IconButton label="モザイク" tip data-testid="add-mosaic" onClick={addMosaic}>
             <IconMosaic />
           </IconButton>
@@ -1329,621 +1182,68 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           </div>
         </div>
         <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white">
-          <section className="border-b border-slate-100 p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <h2 className="text-xs font-semibold text-slate-700">オブジェクト</h2>
-              {selectedIds.length > 1 ? (
-                <span
-                  className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800"
-                  data-testid="selection-count"
-                >
-                  {selectedIds.length}個選択
-                </span>
-              ) : null}
-            </div>
-            <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
-              前面 → 背面の順。⌘/Ctrl/Shift+クリックで複数選択できます。
-            </p>
-            <ul className="space-y-0.5">
-            {[...annotation.objects].reverse().map((obj, displayIndex) => (
-              <li
-                key={obj.id}
-                draggable={!obj.locked}
-                onDragStart={() => {
-                  if (!obj.locked) {
-                    setDragListIndex(displayIndex);
-                  }
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDropListIndex(displayIndex);
-                }}
-                onDragLeave={() => setDropListIndex((current) => (current === displayIndex ? null : current))}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  if (dragListIndex !== null) {
-                    reorderByDisplayIndex(dragListIndex, displayIndex);
-                  }
-                  setDragListIndex(null);
-                  setDropListIndex(null);
-                }}
-                onDragEnd={() => {
-                  setDragListIndex(null);
-                  setDropListIndex(null);
-                }}
-                className={cx(
-                  "relative rounded-md",
-                  dropListIndex === displayIndex && dragListIndex !== displayIndex &&
-                    "border-t-2 border-blue-400",
-                )}
-              >
-                <button
-                  type="button"
-                  data-testid={`object-item-${obj.id}`}
-                  className={cx(
-                    "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-9 text-left text-[13px] transition-colors duration-150",
-                    obj.locked ? "cursor-default" : "cursor-grab",
-                    selectedIds.includes(obj.id)
-                      ? "border-blue-400 bg-blue-50 text-blue-800"
-                      : "border-transparent text-slate-700 hover:bg-slate-100",
-                  )}
-                  onClick={(event) => {
-                    if (event.metaKey || event.ctrlKey || event.shiftKey) {
-                      setSelectedIds((current) =>
-                        current.includes(obj.id)
-                          ? current.filter((id) => id !== obj.id)
-                          : [...current, obj.id],
-                      );
-                    } else {
-                      setSelectedIds([obj.id]);
-                    }
-                  }}
-                >
-                  <span
-                    className={cx(
-                      "shrink-0",
-                      selectedIds.includes(obj.id) ? "text-blue-600" : "text-slate-400",
-                    )}
-                  >
-                    {objectIcon(obj.type)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{objectLabel(obj)}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-slate-500">{obj.id}</span>
-                  <IconGrip
-                    size={12}
-                    className="shrink-0 text-slate-300 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                  />
-                </button>
-                <button
-                  type="button"
-                  data-testid={`object-lock-${obj.id}`}
-                  className={cx(
-                    "absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded transition-colors",
-                    obj.locked
-                      ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                      : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
-                  )}
-                  title={obj.locked ? "ロックを解除" : "オブジェクトをロック"}
-                  aria-label={obj.locked ? `${obj.id}のロックを解除` : `${obj.id}をロック`}
-                  onClick={() => toggleObjectLock(obj.id)}
-                >
-                  {obj.locked ? <IconLock size={12} /> : <IconUnlock size={12} />}
-                </button>
-              </li>
-            ))}
-            </ul>
-          </section>
-          <section className="border-b border-slate-100 p-3">
-            <h2 className="mb-2 text-xs font-semibold text-slate-700">キャンバス余白</h2>
-            <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
-              画像の外側へ注釈を置くための余白を追加します(負値で削除)。既存オブジェクトの見た目の位置は変わりません。
-            </p>
-            <div className="mb-2 grid grid-cols-2 gap-1.5">
-              <NumberField
-                label="上"
-                value={marginDraft.top}
-                step={10}
-                testId="canvas-margin-top"
-                onChange={(value) => setMarginDraft((current) => ({ ...current, top: value }))}
-              />
-              <NumberField
-                label="右"
-                value={marginDraft.right}
-                step={10}
-                testId="canvas-margin-right"
-                onChange={(value) => setMarginDraft((current) => ({ ...current, right: value }))}
-              />
-              <NumberField
-                label="下"
-                value={marginDraft.bottom}
-                step={10}
-                testId="canvas-margin-bottom"
-                onChange={(value) => setMarginDraft((current) => ({ ...current, bottom: value }))}
-              />
-              <NumberField
-                label="左"
-                value={marginDraft.left}
-                step={10}
-                testId="canvas-margin-left"
-                onChange={(value) => setMarginDraft((current) => ({ ...current, left: value }))}
-              />
-            </div>
-            <Button size="sm" data-testid="canvas-margin-apply" onClick={applyCanvasMargin}>
-              適用
-            </Button>
-          </section>
-          <section className="flex-1 p-3">
-          <h2 className="mb-2 text-xs font-semibold text-slate-700">プロパティ</h2>
-          {selected?.locked ? (
-            <p className="mb-3 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
-              このオブジェクトはロックされています。編集するには一覧の鍵を解除してください。
-            </p>
-          ) : null}
-          {!selected ? (
-            <p className="rounded-md bg-slate-50 px-3 py-4 text-xs leading-relaxed text-slate-500">
-              オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
-            </p>
-          ) : null}
-          {selected?.type === "badge" ? (
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">番号 (n)</span>
-                <input
-                  type="number"
-                  min={1}
-                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm shadow-xs transition-colors duration-150 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={selected.n}
-                  onChange={(event) => {
-                    const n = Number.parseInt(event.target.value, 10);
-                    if (Number.isNaN(n) || n < 1) {
-                      return;
-                    }
-                    updateObject(selected.id, (obj) => {
-                      if (obj.type !== "badge") {
-                        return obj;
-                      }
-                      return { ...obj, n };
-                    });
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <ColorInput
-                    data-testid="prop-color"
-                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                    onChange={(event) => {
-                      const color = event.target.value;
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "badge" ? { ...obj, color } : obj,
-                      );
-                    }}
-                  />
-                </label>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-600">直径 (px)</span>
-                  <NumberField
-                    label=""
-                    value={selected.size ?? 22}
-                    step={1}
-                    min={8}
-                    onChange={(v) =>
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "badge" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
-                <NumberField
-                  label=""
-                  value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
-                  step={1}
-                  min={6}
-                  testId="prop-font-size"
-                  onChange={(v) =>
-                    updateObject(selected.id, (obj) =>
-                      obj.type === "badge" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-          ) : null}
-          {selected?.type === "text" ? (
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">テキスト内容</span>
-                <textarea
-                  className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[13px] shadow-xs transition-colors duration-150 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  value={selected.content}
-                  onChange={(event) => {
-                    const content = event.target.value;
-                    updateObject(selected.id, (obj) => {
-                      if (obj.type !== "text") {
-                        return obj;
-                      }
-                      return { ...obj, content };
-                    });
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>
-                  <ColorInput
-                    data-testid="prop-color"
-                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                    onChange={(event) => {
-                      const color = event.target.value;
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "text" ? { ...obj, color } : obj,
-                      );
-                    }}
-                  />
-                </label>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
-                  <NumberField
-                    label=""
-                    value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
-                    step={1}
-                    min={6}
-                    testId="prop-font-size"
-                    onChange={(v) =>
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "text" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          ) : null}
-          {selected?.type === "cursor" ? (
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">カーソル種類</span>
-                <SelectInput
-                  data-testid="cursor-icon"
-                  className="w-full"
-                  value={selected.icon}
-                  onChange={(event) => {
-                    const icon = event.target.value as CursorIcon;
-                    updateObject(selected.id, (obj) =>
-                      obj.type === "cursor" ? { ...obj, icon } : obj,
-                    );
-                  }}
-                >
-                  <option value="pointer">通常 (Pointer)</option>
-                  <option value="move">移動 (Move)</option>
-                  <option value="grab">つかむ (Grab)</option>
-                  <option value="text">テキスト (Text)</option>
-                  <option value="crosshair">十字 (Crosshair)</option>
-                </SelectInput>
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                  <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <ColorInput
-                    data-testid="prop-color"
-                    value={selected.color ?? DEFAULT_CURSOR_COLOR}
-                    onChange={(event) => {
-                      const color = event.target.value;
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "cursor" ? { ...obj, color } : obj,
-                      );
-                    }}
-                  />
-                </label>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-600">サイズ (px)</span>
-                  <NumberField
-                    label=""
-                    value={selected.size ?? 28}
-                    step={1}
-                    min={8}
-                    testId="cursor-size"
-                    onChange={(v) =>
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "cursor" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">
-                SVGはHTMLへ直接埋め込まれるため、単体HTMLでも表示されます。
-              </p>
-            </div>
-          ) : null}
-          {selected?.type === "frame" ? (
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">位置・サイズ (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
-                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
-                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
-                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">線色</span>
-                  <ColorInput
-                    data-testid="prop-color"
-                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                    onChange={(event) => {
-                      const color = event.target.value;
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "frame" ? { ...obj, color } : obj,
-                      );
-                    }}
-                  />
-                </label>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-600">線幅 (px)</span>
-                  <NumberField
-                    label=""
-                    value={selected.strokeWidth ?? 2}
-                    step={1}
-                    min={1}
-                    testId="prop-stroke-width"
-                    onChange={(v) =>
-                      updateObject(selected.id, (obj) =>
-                        obj.type === "frame"
-                          ? { ...obj, strokeWidth: Math.max(1, Math.round(v)) }
-                          : obj,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
-            </div>
-          ) : null}
-          {selected?.type === "image" ? (
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">配置 (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
-                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
-                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
-                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
-                </div>
-              </div>
-              {(() => {
-                const natural = naturalSizes[selected.src];
-                if (!natural) {
-                  return <p className="text-xs text-red-600">画像サイズを取得できません。</p>;
-                }
-                const crop = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
-                return (
-                  <div>
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <span className="text-xs font-medium text-slate-600">クロップ (画像px)</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-1.5 text-[11px]"
-                        onClick={() =>
-                          updateObject(selected.id, (obj) =>
-                            obj.type === "image"
-                              ? { ...obj, crop: { x: 0, y: 0, w: natural.w, h: natural.h } }
-                              : obj,
-                          )
-                        }
-                      >
-                        全体に戻す
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumberField label="x" value={crop.x} step={1} min={0} testId="crop-x" onChange={(v) => updateCrop("x", v)} />
-                      <NumberField label="y" value={crop.y} step={1} min={0} testId="crop-y" onChange={(v) => updateCrop("y", v)} />
-                      <NumberField label="w" value={crop.w} step={1} min={1} testId="crop-w" onChange={(v) => updateCrop("w", v)} />
-                      <NumberField label="h" value={crop.h} step={1} min={1} testId="crop-h" onChange={(v) => updateCrop("h", v)} />
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      元画像 {natural.w} × {natural.h}px
-                    </p>
-                    <Button
-                      size="sm"
-                      className="mt-3 w-full"
-                      onClick={() => replaceImageInputRef.current?.click()}
-                    >
-                      <IconImage size={14} />
-                      画像ファイルを置換
-                    </Button>
-                    <input
-                      ref={replaceImageInputRef}
-                      data-testid="replace-image-input"
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/gif"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          void handleReplaceImage(file);
-                        }
-                        event.target.value = "";
-                      }}
-                    />
-                  </div>
+          <AnnotationObjectList
+            objects={annotation.objects}
+            selectedIds={selectedIds}
+            dragListIndex={dragListIndex}
+            dropListIndex={dropListIndex}
+            onSelect={(id, additive) => {
+              if (additive) {
+                setSelectedIds((current) =>
+                  current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
                 );
-              })()}
-            </div>
-          ) : null}
-          {selected?.type === "mosaic" ? (
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">適用範囲 (%)</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
-                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
-                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
-                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
-                </div>
-              </div>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">対象画像</span>
-                <SelectInput
-                  data-testid="mosaic-target"
-                  className="w-full"
-                  value={selected.targetImageId}
-                  onChange={(event) => {
-                    const targetImageId = event.target.value;
-                    updateObject(selected.id, (obj) =>
-                      obj.type === "mosaic" ? { ...obj, targetImageId } : obj,
-                    );
-                  }}
-                >
-                  {annotation.objects.filter((obj) => obj.type === "image").map((image) => (
-                    <option key={image.id} value={image.id}>{image.id}</option>
-                  ))}
-                </SelectInput>
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">モザイクの粗さ (px)</span>
-                <NumberField
-                  label=""
-                  value={selected.blockSize ?? 12}
-                  step={1}
-                  min={2}
-                  testId="mosaic-block-size"
-                  onChange={(value) => updateObject(selected.id, (obj) =>
-                    obj.type === "mosaic" ? { ...obj, blockSize: Math.max(2, Math.round(value)) } : obj,
-                  )}
-                />
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">
-                納品時に対象画像の画素へ実際に適用されます。元画像はプロジェクト内に非破壊で保持されます。
-              </p>
-            </div>
-          ) : null}
-          {selected && (selected.type === "line" || selected.type === "arrow") ? (
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">線種</span>
-                <SelectInput
-                  data-testid="line-type"
-                  className="w-full"
-                  value={selected.type}
-                  onChange={(event) => updateLineType(event.target.value as "line" | "arrow")}
-                >
-                  <option value="line">Line（線）</option>
-                  <option value="arrow">Arrow（矢印）</option>
-                </SelectInput>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                  <ColorInput
-                    data-testid="prop-color"
-                    value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                    onChange={(event) => updateLineStyle({ color: event.target.value })}
-                  />
-                </label>
-                <div>
-                  <span className="mb-1 block text-xs font-medium text-slate-600">太さ (px)</span>
-                  <NumberField
-                    label=""
-                    value={selected.strokeWidth ?? 2}
-                    step={1}
-                    min={1}
-                    testId="prop-stroke-width"
-                    onChange={(v) => updateLineStyle({ strokeWidth: Math.max(1, Math.round(v)) })}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="mb-1.5 text-xs font-medium text-slate-600">
-                  点({selected.points.length})
-                </div>
-                <ul className="mb-2 space-y-1">
-                  {selected.points.map((point, index) => (
-                    <li
-                      key={index}
-                      data-testid={`point-row-${index}`}
-                      className={cx(
-                        "flex items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150",
-                        selectedPointIndex === index
-                          ? "bg-blue-100 ring-1 ring-blue-300"
-                          : "hover:bg-slate-50",
-                      )}
-                      onClick={() => setSelectedPointIndex(index)}
-                    >
-                      <span className="w-3 shrink-0 text-center text-[11px] text-slate-500">{index + 1}</span>
-                      <NumberField
-                        label="x"
-                        value={point.x}
-                        testId={`prop-point-${index}-x`}
-                        onFocus={() => setSelectedPointIndex(index)}
-                        onChange={(v) => updatePointValue(index, "x", v)}
-                      />
-                      <NumberField
-                        label="y"
-                        value={point.y}
-                        onFocus={() => setSelectedPointIndex(index)}
-                        onChange={(v) => updatePointValue(index, "y", v)}
-                      />
-                      <button
-                        type="button"
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors duration-150 hover:bg-slate-200 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-                        disabled={selected.points.length <= 2}
-                        onClick={() => removePoint(index)}
-                        title="点を削除"
-                        aria-label="点を削除"
-                      >
-                        <IconX size={11} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <Button size="sm" onClick={addPoint}>
-                  <IconPlus size={12} />
-                  点を追加
-                </Button>
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">
-                線上を Option(Alt)+クリックで点を追加できます。点のドラッグは他の点の x/y
-                に自動吸着し、Shift 押下中は隣の点を基準に 45° 刻みでスナップします。
-              </p>
-            </div>
-          ) : null}
-          </section>
-          <footer className="mt-auto border-t border-slate-100 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
-            <Kbd>⌘Z</Kbd> 取り消し ・ <Kbd>⌘C</Kbd>
-            <Kbd>⌘V</Kbd> 複製 ・ <Kbd>Delete</Kbd> 削除 ・ 矢印キーで 0.1% 移動(
-            <Kbd>⇧</Kbd> で 1%)
-          </footer>
+              } else {
+                setSelectedIds([id]);
+              }
+            }}
+            onToggleLock={toggleObjectLock}
+            onReorder={reorderByDisplayIndex}
+            onDragListIndexChange={setDragListIndex}
+            onDropListIndexChange={setDropListIndex}
+          />
+          <CanvasMarginPanel
+            marginDraft={marginDraft}
+            onChange={setMarginDraft}
+            onApply={applyCanvasMargin}
+          />
+          <AnnotationProperties
+            selected={selected}
+            annotation={annotation}
+            naturalSizes={naturalSizes}
+            theme={theme}
+            selectedPointIndex={selectedPointIndex}
+            setSelectedPointIndex={setSelectedPointIndex}
+            updateObject={updateObject}
+            updateAt={updateAt}
+            updateRect={updateRect}
+            updateCrop={updateCrop}
+            updateLineType={updateLineType}
+            updateLineStyle={updateLineStyle}
+            updatePointValue={updatePointValue}
+            addPoint={addPoint}
+            removePoint={removePoint}
+            onOpenReplaceImage={() => setImagePickerMode("replace")}
+          />
         </aside>
       </div>
+      <ImageFilePickerModal
+        open={imagePickerMode === "add"}
+        title="画像を追加"
+        description="キャンバスに新しい画像オブジェクトを追加します。"
+        modalTestId="add-image-modal"
+        fileInputTestId="add-image-input"
+        onClose={() => setImagePickerMode(null)}
+        onSelect={(file) => void handleAddImage(file)}
+      />
+      <ImageFilePickerModal
+        open={imagePickerMode === "replace"}
+        title="画像ファイルを置換"
+        description="選択中の画像オブジェクトのファイルだけを差し替えます。注釈は保持されます。"
+        modalTestId="replace-image-modal"
+        fileInputTestId="replace-image-input"
+        onClose={() => setImagePickerMode(null)}
+        onSelect={(file) => void handleReplaceImage(file)}
+      />
     </div>
   );
 }

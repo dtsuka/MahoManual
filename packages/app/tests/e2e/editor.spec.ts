@@ -93,6 +93,7 @@ test("annotation editor: add, drag and lock a second image", async ({ page, requ
       page.waitForResponse(
         (response) => response.url().endsWith(`/annotations/${annotationId}/images`) && response.request().method() === "POST",
       ),
+      page.getByTestId("add-image").click(),
       page.getByTestId("add-image-input").setInputFiles(
         join(process.cwd(), "../../projects/example/img/raw/1-1.png"),
       ),
@@ -693,6 +694,7 @@ test("annotation editor: selected image can be replaced without losing annotatio
   try {
     const objectCount = await page.locator('[data-testid^="object-item-"]').count();
     await page.getByTestId("object-item-img-main").click();
+    await page.getByTestId("replace-image-button").click();
     await page.getByTestId("replace-image-input").setInputFiles(replacementPath);
 
     await expect(page.getByText("画像を置換しました")).toBeVisible();
