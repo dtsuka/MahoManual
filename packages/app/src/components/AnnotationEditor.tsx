@@ -1224,6 +1224,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           <IconButton label="強調枠" tip onClick={() => addObject("frame")}>
             <IconFrame />
           </IconButton>
+          <IconButton label="罫線" tip onClick={() => addLine("line")}>
+            <IconLine />
+          </IconButton>
+          <IconButton label="矢印" tip onClick={() => addLine("arrow")}>
+            <IconArrowLine />
+          </IconButton>
           <IconButton label="画像" tip data-testid="add-image" onClick={() => addImageInputRef.current?.click()}>
             <IconImage />
           </IconButton>
@@ -1243,12 +1249,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           />
           <IconButton label="モザイク" tip data-testid="add-mosaic" onClick={addMosaic}>
             <IconMosaic />
-          </IconButton>
-          <IconButton label="罫線" tip onClick={() => addLine("line")}>
-            <IconLine />
-          </IconButton>
-          <IconButton label="矢印" tip onClick={() => addLine("arrow")}>
-            <IconArrowLine />
           </IconButton>
         </div>
         <div className="editor-canvas relative flex-1 overflow-auto p-8 pl-16">
