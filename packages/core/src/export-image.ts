@@ -4,7 +4,7 @@ import { imageSize } from "image-size";
 import { chromium } from "playwright";
 import { renderFigure } from "./render.js";
 import type { AnnotationFile } from "./schema.js";
-import { THEME_FIGURE_CSS } from "./theme.js";
+import { THEME_FIGURE_CSS, THEME_FONT_LINKS_HTML } from "./theme.js";
 import { applyMosaicsToImage } from "./mosaic.js";
 
 export async function renderAnnotationPng(
@@ -37,7 +37,7 @@ export async function renderAnnotationPng(
     imageSources,
     fence: { width: annotation.canvas.width },
   });
-  const html = `<!doctype html><html><head><meta charset="utf-8"><style>${THEME_FIGURE_CSS}
+  const html = `<!doctype html><html><head><meta charset="utf-8">${THEME_FONT_LINKS_HTML}<style>${THEME_FIGURE_CSS}
 html,body{margin:0;padding:0;background:transparent;width:${annotation.canvas.width}px;height:${annotation.canvas.height}px;overflow:hidden}
 figure.mm{margin:0!important;max-width:none!important;width:${annotation.canvas.width}px!important;height:${annotation.canvas.height}px!important}</style></head><body>${figure}</body></html>`;
 
@@ -50,8 +50,9 @@ figure.mm{margin:0!important;max-width:none!important;width:${annotation.canvas.
       },
       deviceScaleFactor: 1,
     });
-    await page.setContent(html, { waitUntil: "load" });
+    await page.setContent(html, { waitUntil: "networkidle" });
     await page.waitForFunction(() => [...document.images].every((image) => image.complete));
+    await page.evaluate(() => document.fonts.ready);
     return await page.locator("figure").screenshot({
       type: "png",
       omitBackground: true,

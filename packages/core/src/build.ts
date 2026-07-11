@@ -24,7 +24,7 @@ import { collectImageSources } from "./annotation-objects.js";
 import { readProjectTheme } from "./project.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
 import { parseAnnotation } from "./schema.js";
-import { annotationThemeCss, THEME_CSS } from "./theme.js";
+import { annotationThemeCss, THEME_CSS, THEME_FONT_LINKS_HTML } from "./theme.js";
 import { applyMosaicsToImage } from "./mosaic.js";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 
@@ -424,6 +424,7 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  ${THEME_FONT_LINKS_HTML}
   <style>${THEME_CSS}${themeCss ? `\n${themeCss}` : ""}</style>
 </head>
 <body>

@@ -12,6 +12,7 @@ describe("THEME_FIGURE_CSS", () => {
     expect(THEME_FIGURE_CSS).toContain("--mm-color: #E91E8C");
     expect(THEME_FIGURE_CSS).toContain("--mm-font-size: 14px");
     expect(THEME_FIGURE_CSS).toContain("var(--mm-color)");
+    expect(THEME_FIGURE_CSS).toContain('font-family: "Noto Sans JP", sans-serif');
   });
 
   it("colors text with the default annotation color (not black)", () => {

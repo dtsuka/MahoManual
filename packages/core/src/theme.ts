@@ -10,6 +10,14 @@ export const DEFAULT_ANNOTATION_COLOR = "#E91E8C";
 export const DEFAULT_ANNOTATION_FONT_SIZE = 14;
 export const DEFAULT_CURSOR_COLOR = "#000000";
 
+/** 納品 HTML・注釈・アプリ UI で共通利用するフォントファミリー */
+export const THEME_FONT_FAMILY = '"Noto Sans JP", sans-serif';
+
+/** 納品 HTML / PNG 書き出し用の Google Fonts 読み込み(<head> に挿入) */
+export const THEME_FONT_LINKS_HTML = `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">`;
+
 // 本文タイポグラフィ。納品 HTML と GUI プレビューで共有する。
 // UA 既定に近い余白を明示し、Tailwind Preflight 等で margin が消えても見た目を揃える。
 export const THEME_TYPOGRAPHY_CSS = `h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
@@ -29,7 +37,7 @@ th { background: #f5f5f5; font-weight: bold; }
 hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 .page-break { page-break-before: always; }`;
 
-export const THEME_PAGE_CSS = `body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+export const THEME_PAGE_CSS = `body { font-family: ${THEME_FONT_FAMILY};
        line-height: 1.8; color: #222; max-width: 1080px; margin: auto; padding: 40px 24px; }
 ${THEME_TYPOGRAPHY_CSS}
 @media print {
@@ -40,12 +48,12 @@ ${THEME_TYPOGRAPHY_CSS}
 }`;
 
 export const THEME_FIGURE_CSS = `.mm { --mm-color: ${DEFAULT_ANNOTATION_COLOR}; --mm-font-size: ${DEFAULT_ANNOTATION_FONT_SIZE}px;
-      position: relative; width: 100%; margin: 0; }
+      position: relative; width: 100%; margin: 0; font-family: ${THEME_FONT_FAMILY}; }
 .mm > .mm-obj { position: absolute; }
 .mm-image { overflow: hidden; }
 .mm-image > img { position: absolute; display: block; max-width: none; }
-.mm-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--mm-color); color: #fff;
-            font-weight: bold; font-size: var(--mm-font-size); display: flex; align-items: center;
+.mm-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--mm-color); color: #fff; box-shadow: 0 0 0 1px #fff;
+            font-weight: bold; font-size: var(--mm-font-size); line-height: 1.5; display: flex;
             justify-content: center; transform: translate(-50%,-50%); }
 .mm-text  { transform: translate(-50%,-50%); white-space: pre; color: var(--mm-color); font-size: var(--mm-font-size); }
 .mm-cursor { color: ${DEFAULT_CURSOR_COLOR}; line-height: 0; }
