@@ -51,6 +51,7 @@ import {
   IconImage,
   IconLine,
   IconLock,
+  IconMosaic,
   IconPlus,
   IconPointer,
   IconRedo,
@@ -86,7 +87,7 @@ interface AnnotationEditorProps {
   onRenamed?: (id: string) => void;
 }
 
-type MovableObject = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" }>;
+type MovableObject = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" }>;
 
 interface Pt {
   x: number;
@@ -188,6 +189,8 @@ function objectLabel(obj: AnnotationObject): string {
       return `image ${obj.src.split("/").pop() ?? obj.src}`;
     case "frame":
       return "frame";
+    case "mosaic":
+      return `mosaic → ${obj.targetImageId}`;
     case "line":
       return "line";
     case "arrow":
@@ -208,6 +211,8 @@ function objectIcon(type: AnnotationObject["type"], size = 14) {
       return <IconImage size={size} />;
     case "frame":
       return <IconFrame size={size} />;
+    case "mosaic":
+      return <IconMosaic size={size} />;
     case "line":
       return <IconLine size={size} />;
     case "arrow":
@@ -253,7 +258,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
     const taggable = annotation.objects.filter(
       (obj): obj is MovableObject =>
-        obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
+        obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame" || obj.type === "mosaic",
     );
     return injectObjectIds(
       rewriteFigureHtml(
@@ -590,7 +595,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
 
-    if (obj.type === "frame" || obj.type === "image") {
+    if (obj.type === "frame" || obj.type === "image" || obj.type === "mosaic") {
       const rect0 = obj.rect;
       const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
       const el = target as HTMLElement;
@@ -711,7 +716,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }));
   };
 
-  const addObject = (type: Exclude<MovableObject["type"], "image">) => {
+  const addObject = (type: Exclude<MovableObject["type"], "image" | "mosaic">) => {
     const id = createObjectId(type, annotation.objects);
     let newObject: AnnotationObject;
     switch (type) {
@@ -760,6 +765,27 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     setSelectedIds([id]);
   };
 
+  const addMosaic = () => {
+    const target = [...annotation.objects].reverse().find(
+      (obj): obj is Extract<AnnotationObject, { type: "image" }> => obj.type === "image",
+    );
+    if (!target) {
+      setError("モザイク対象の画像がありません");
+      return;
+    }
+    const id = createObjectId("mosaic", annotation.objects);
+    const mosaic: AnnotationObject = {
+      id,
+      type: "mosaic",
+      source: "manual",
+      targetImageId: target.id,
+      rect: { x: 20, y: 70, w: 25, h: 15 },
+      blockSize: 12,
+    };
+    applyLocalChange((current) => ({ ...current, objects: [...current.objects, mosaic] }));
+    setSelectedIds([id]);
+  };
+
   const addLine = (type: "line" | "arrow") => {
     const id = createObjectId(type, annotation.objects);
     const newObject: AnnotationObject = {
@@ -777,7 +803,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const beginRectResize = (event: ReactPointerEvent, dir: string) => {
-    if (!selected || selected.locked || (selected.type !== "frame" && selected.type !== "image")) {
+    if (!selected || selected.locked || (selected.type !== "frame" && selected.type !== "image" && selected.type !== "mosaic")) {
       return;
     }
     event.preventDefault();
@@ -807,7 +833,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         applyLocalChange((current) => ({
           ...current,
           objects: current.objects.map((item) =>
-            item.id === objectId && !item.locked && (item.type === "frame" || item.type === "image")
+            item.id === objectId && !item.locked && (item.type === "frame" || item.type === "image" || item.type === "mosaic")
               ? { ...item, rect: next }
               : item,
           ),
@@ -921,12 +947,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!selected || (selected.type !== "frame" && selected.type !== "image")) {
+    if (!selected || (selected.type !== "frame" && selected.type !== "image" && selected.type !== "mosaic")) {
       return;
     }
     const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
     updateObject(selected.id, (obj) =>
-      obj.type === "frame" || obj.type === "image"
+      obj.type === "frame" || obj.type === "image" || obj.type === "mosaic"
         ? { ...obj, rect: { ...obj.rect, [key]: clamped } }
         : obj,
     );
@@ -1067,7 +1093,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     });
   };
 
-  const activeFrameRect = selected && !selected.locked && (selected.type === "frame" || selected.type === "image")
+  const activeFrameRect = selected && !selected.locked && (selected.type === "frame" || selected.type === "image" || selected.type === "mosaic")
     ? (draft?.rect ?? selected.rect)
     : null;
   const activeLinePoints =
@@ -1215,6 +1241,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               event.target.value = "";
             }}
           />
+          <IconButton label="モザイク" tip data-testid="add-mosaic" onClick={addMosaic}>
+            <IconMosaic />
+          </IconButton>
           <IconButton label="罫線" tip onClick={() => addLine("line")}>
             <IconLine />
           </IconButton>
@@ -1768,6 +1797,53 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   </div>
                 );
               })()}
+            </div>
+          ) : null}
+          {selected?.type === "mosaic" ? (
+            <div className="space-y-3 text-sm">
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-600">適用範囲 (%)</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <NumberField label="x" value={selected.rect.x} testId="prop-rect-x" onChange={(v) => updateRect("x", v)} />
+                  <NumberField label="y" value={selected.rect.y} testId="prop-rect-y" onChange={(v) => updateRect("y", v)} />
+                  <NumberField label="w" value={selected.rect.w} min={0.5} onChange={(v) => updateRect("w", v)} />
+                  <NumberField label="h" value={selected.rect.h} min={0.5} onChange={(v) => updateRect("h", v)} />
+                </div>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">対象画像</span>
+                <SelectInput
+                  data-testid="mosaic-target"
+                  className="w-full"
+                  value={selected.targetImageId}
+                  onChange={(event) => {
+                    const targetImageId = event.target.value;
+                    updateObject(selected.id, (obj) =>
+                      obj.type === "mosaic" ? { ...obj, targetImageId } : obj,
+                    );
+                  }}
+                >
+                  {annotation.objects.filter((obj) => obj.type === "image").map((image) => (
+                    <option key={image.id} value={image.id}>{image.id}</option>
+                  ))}
+                </SelectInput>
+              </label>
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-600">モザイクの粗さ (px)</span>
+                <NumberField
+                  label=""
+                  value={selected.blockSize ?? 12}
+                  step={1}
+                  min={2}
+                  testId="mosaic-block-size"
+                  onChange={(value) => updateObject(selected.id, (obj) =>
+                    obj.type === "mosaic" ? { ...obj, blockSize: Math.max(2, Math.round(value)) } : obj,
+                  )}
+                />
+              </div>
+              <p className="text-xs leading-relaxed text-slate-500">
+                納品時に対象画像の画素へ実際に適用されます。元画像はプロジェクト内に非破壊で保持されます。
+              </p>
             </div>
           ) : null}
           {selected && (selected.type === "line" || selected.type === "arrow") ? (

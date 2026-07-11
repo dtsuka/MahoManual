@@ -14,6 +14,7 @@ export interface RenderFenceOptions {
 
 export interface RenderOptions {
   naturalSizes: Record<string, { w: number; h: number }>;
+  imageSources?: Record<string, string>;
   fence?: RenderFenceOptions;
 }
 
@@ -37,6 +38,7 @@ function renderImageObject(
   obj: Extract<AnnotationObject, { type: "image" }>,
   naturalSizes: Record<string, { w: number; h: number }>,
   alt: string,
+  renderedSrc?: string,
 ): string {
   const natural = naturalSizes[obj.src];
   if (!natural) {
@@ -49,7 +51,13 @@ function renderImageObject(
   const imgLeft = (-crop.x / crop.w) * 100;
   const imgTop = (-crop.y / crop.h) * 100;
 
-  return `<div class="mm-obj mm-image" style="left:${pct(obj.rect.x)}; top:${pct(obj.rect.y)}; width:${pct(obj.rect.w)}; height:${pct(obj.rect.h)};"><img src="${escapeHtml(obj.src)}" alt="${escapeHtml(alt)}" style="width:${imgWidth}%; height:${imgHeight}%; left:${imgLeft}%; top:${imgTop}%;"></div>`;
+  return `<div class="mm-obj mm-image" style="left:${pct(obj.rect.x)}; top:${pct(obj.rect.y)}; width:${pct(obj.rect.w)}; height:${pct(obj.rect.h)};"><img src="${escapeHtml(renderedSrc ?? obj.src)}" alt="${escapeHtml(alt)}" style="width:${imgWidth}%; height:${imgHeight}%; left:${imgLeft}%; top:${imgTop}%;"></div>`;
+}
+
+function renderMosaicObject(obj: Extract<AnnotationObject, { type: "mosaic" }>): string {
+  const blockSize = obj.blockSize ?? 12;
+  const blur = Math.max(2, blockSize / 3);
+  return `<div class="mm-obj mm-mosaic" style="left:${pct(obj.rect.x)}; top:${pct(obj.rect.y)}; width:${pct(obj.rect.w)}; height:${pct(obj.rect.h)}; --mm-mosaic-size:${blockSize}px; backdrop-filter:blur(${blur}px); background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 1px, rgba(0,0,0,.08) 1px 2px);"></div>`;
 }
 
 function renderBadgeObject(obj: Extract<AnnotationObject, { type: "badge" }>): string {
@@ -177,10 +185,11 @@ function renderObject(
   obj: AnnotationObject,
   naturalSizes: Record<string, { w: number; h: number }>,
   alt: string,
+  imageSources?: Record<string, string>,
 ): string {
   switch (obj.type) {
     case "image":
-      return renderImageObject(obj, naturalSizes, alt);
+      return renderImageObject(obj, naturalSizes, alt, imageSources?.[obj.id]);
     case "badge":
       return renderBadgeObject(obj);
     case "text":
@@ -189,6 +198,8 @@ function renderObject(
       return renderCursorObject(obj);
     case "frame":
       return renderFrameObject(obj);
+    case "mosaic":
+      return "";
     case "line":
     case "arrow":
       return "";
@@ -215,9 +226,21 @@ export function renderFigure(annotation: AnnotationFile, opts: RenderOptions): s
       obj.type === "line" || obj.type === "arrow",
   );
 
-  const parts = annotation.objects
-    .filter((obj) => obj.type !== "line" && obj.type !== "arrow")
-    .map((obj) => renderObject(obj, opts.naturalSizes, alt));
+  const mosaics = annotation.objects.filter(
+    (obj): obj is Extract<AnnotationObject, { type: "mosaic" }> => obj.type === "mosaic",
+  );
+  const parts: string[] = [];
+  for (const obj of annotation.objects) {
+    if (obj.type === "line" || obj.type === "arrow" || obj.type === "mosaic") {
+      continue;
+    }
+    parts.push(renderObject(obj, opts.naturalSizes, alt, opts.imageSources));
+    if (obj.type === "image") {
+      parts.push(...mosaics
+        .filter((mosaic) => mosaic.targetImageId === obj.id)
+        .map(renderMosaicObject));
+    }
+  }
 
   parts.push(renderLinesSvg(lineObjects, canvas));
 

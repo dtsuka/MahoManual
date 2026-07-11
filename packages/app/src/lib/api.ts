@@ -191,8 +191,10 @@ export function createObjectId(type: AnnotationObject["type"], objects: Annotati
             ? "f"
             : type === "line"
               ? "l"
-              : type === "image"
-                ? "img"
+            : type === "image"
+              ? "img"
+              : type === "mosaic"
+                ? "m"
                 : "a";
   let index = objects.filter((obj) => obj.type === type).length + 1;
   let candidate = `${prefix}${index}`;
@@ -218,12 +220,24 @@ export function rewriteFigureHtml(html: string, project: string): string {
 }
 
 export function injectObjectIds(html: string, objects: AnnotationObject[]): string {
-  const taggable = objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" }> =>
-      obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
+  type Taggable = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" }>;
+  const mosaics = objects.filter(
+    (obj): obj is Extract<AnnotationObject, { type: "mosaic" }> => obj.type === "mosaic",
   );
+  const taggable: Taggable[] = [];
+  for (const obj of objects) {
+    if (obj.type === "mosaic") {
+      continue;
+    }
+    if (obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame") {
+      taggable.push(obj);
+      if (obj.type === "image") {
+        taggable.push(...mosaics.filter((mosaic) => mosaic.targetImageId === obj.id));
+      }
+    }
+  }
   let index = 0;
-  return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame)/g, (match, tag, kind) => {
+  return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame|mosaic)/g, (match, tag, kind) => {
     const obj = taggable[index];
     index += 1;
     if (!obj) {

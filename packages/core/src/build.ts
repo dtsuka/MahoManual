@@ -24,6 +24,8 @@ import { readProjectTheme } from "./project.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
 import { parseAnnotation } from "./schema.js";
 import { annotationThemeCss, THEME_CSS } from "./theme.js";
+import { applyMosaicsToImage } from "./mosaic.js";
+import type { AnnotationFile, AnnotationObject } from "./schema.js";
 
 export interface BuildOptions {
   outputDir?: string;
@@ -56,6 +58,8 @@ interface CroppedImageJob {
   source: string;
   output: string;
   crop: PixelCrop;
+  annotation: AnnotationFile;
+  image: Extract<AnnotationObject, { type: "image" }>;
 }
 
 const IMG_SRC_RE = /src="(img\/[^"]+)"/g;
@@ -147,10 +151,15 @@ async function writeCroppedImages(
 ): Promise<void> {
   const uniqueJobs = new Map(jobs.map((job) => [job.output, job]));
   await Promise.all(
-    [...uniqueJobs.values()].map(async ({ source, output, crop }) => {
+    [...uniqueJobs.values()].map(async ({ source, output, crop, annotation, image }) => {
       const destinationPath = join(outputDir, output);
       mkdirSync(dirname(destinationPath), { recursive: true });
-      await sharp(join(projectRoot, source))
+      const mosaicked = await applyMosaicsToImage(
+        readFileSync(join(projectRoot, source)),
+        annotation,
+        image,
+      );
+      await sharp(mosaicked)
         .extract({ left: crop.x, top: crop.y, width: crop.w, height: crop.h })
         .png()
         .toFile(destinationPath);
@@ -203,22 +212,34 @@ function renderAnnotatedImageFence(
 
   if (options.croppedImages) {
     const croppedNaturalSizes: Record<string, { w: number; h: number }> = {};
+    const deliveryObjects: AnnotationObject[] = [];
+    for (const obj of annotation.objects) {
+      if (obj.type === "mosaic") {
+        continue;
+      }
+      if (obj.type !== "image") {
+        deliveryObjects.push(obj);
+        continue;
+      }
+      const crop = toPixelCrop(
+        obj.crop ?? { x: 0, y: 0, w: naturalSizes[obj.src]!.w, h: naturalSizes[obj.src]!.h },
+        naturalSizes[obj.src]!,
+        obj.src,
+      );
+      const output = `img/cropped/${fence.src}/${obj.id}.png`;
+      options.croppedImages.push({
+        source: obj.src,
+        output,
+        crop,
+        annotation,
+        image: obj,
+      });
+      croppedNaturalSizes[output] = { w: crop.w, h: crop.h };
+      deliveryObjects.push({ ...obj, src: output, crop: undefined });
+    }
     renderAnnotation = {
       ...annotation,
-      objects: annotation.objects.map((obj) => {
-        if (obj.type !== "image") {
-          return obj;
-        }
-        const crop = toPixelCrop(
-          obj.crop ?? { x: 0, y: 0, w: naturalSizes[obj.src]!.w, h: naturalSizes[obj.src]!.h },
-          naturalSizes[obj.src]!,
-          obj.src,
-        );
-        const output = `img/cropped/${fence.src}/${obj.id}.png`;
-        options.croppedImages!.push({ source: obj.src, output, crop });
-        croppedNaturalSizes[output] = { w: crop.w, h: crop.h };
-        return { ...obj, src: output, crop: undefined };
-      }),
+      objects: deliveryObjects,
     };
     renderNaturalSizes = croppedNaturalSizes;
   }
@@ -382,6 +403,17 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
   await writeCroppedImages(projectRoot, outputDir, croppedImages);
   const croppedPaths = new Set(croppedImages.map((job) => job.output));
   const copiedImages = images.filter((src) => !croppedPaths.has(src));
+  const protectedSources = new Set(croppedImages
+    .filter((job) => job.annotation.objects.some(
+      (obj) => obj.type === "mosaic" && obj.targetImageId === job.image.id,
+    ))
+    .map((job) => job.source));
+  const unsafePlainReference = copiedImages.find((src) => protectedSources.has(src));
+  if (unsafePlainReference) {
+    throw new Error(
+      `モザイク対象の元画像を通常画像として同時に納品できません: ${unsafePlainReference}`,
+    );
+  }
   copyImages(projectRoot, outputDir, copiedImages);
   removeStaleAnnotatedSources(outputDir, croppedImages, copiedImages);
 

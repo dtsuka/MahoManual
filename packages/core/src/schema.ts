@@ -113,6 +113,13 @@ const frameObjectSchema = baseSchema.extend({
   radius: z.number().gte(0).optional(),
 });
 
+const mosaicObjectSchema = baseSchema.extend({
+  type: z.literal("mosaic"),
+  targetImageId: z.string().min(1),
+  rect: rectSchema,
+  blockSize: z.number().gte(2).optional(),
+});
+
 const linePointsSchema = z.array(pointSchema).min(2);
 
 const lineObjectSchema = baseSchema.extend({
@@ -135,6 +142,7 @@ const annotationObjectSchema = z.discriminatedUnion("type", [
   textObjectSchema,
   cursorObjectSchema,
   frameObjectSchema,
+  mosaicObjectSchema,
   lineObjectSchema,
   arrowObjectSchema,
 ]);
@@ -167,6 +175,16 @@ const annotationFileSchema = z
           message: 'source が "recipe" のオブジェクトには recipeRef が必要です',
           path: ["objects", index, "recipeRef"],
         });
+      }
+      if (obj.type === "mosaic") {
+        const target = data.objects.find((candidate) => candidate.id === obj.targetImageId);
+        if (!target || target.type !== "image") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `targetImageId は同じ注釈内の image を参照してください: ${obj.targetImageId}`,
+            path: ["objects", index, "targetImageId"],
+          });
+        }
       }
     }
   });

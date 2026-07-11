@@ -49,6 +49,7 @@ export function expandCanvas(annotation: AnnotationFile, margin: CanvasMargin): 
     switch (obj.type) {
       case "image":
       case "frame":
+      case "mosaic":
         return { ...obj, rect: mapRect(obj.rect) };
       case "badge":
       case "text":

@@ -99,6 +99,12 @@ body {
   pointer-events: none;
 }
 
+/* モザイクは対象画像の直上に描画するが、選択中だけ操作面を最前面へ出して
+   上にあるバッジや枠にドラッグを遮られないようにする */
+.mm-editor-figure .mm-mosaic.is-selected {
+  z-index: 1;
+}
+
 /* line/arrow は線上のクリックで選択できるようにする(SVG 全面は透過のまま) */
 .mm-editor-figure .mm-lines polyline {
   pointer-events: stroke;

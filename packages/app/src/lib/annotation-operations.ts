@@ -19,6 +19,7 @@ function translateObject(obj: AnnotationObject, dx: number, dy: number): Annotat
       return { ...obj, at: { x: obj.at.x + dx, y: obj.at.y + dy } };
     case "frame":
     case "image":
+    case "mosaic":
       return { ...obj, rect: { ...obj.rect, x: obj.rect.x + dx, y: obj.rect.y + dy } };
     case "line":
     case "arrow":

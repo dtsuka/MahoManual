@@ -166,6 +166,17 @@ export function IconImage(props: IconProps) {
   );
 }
 
+export function IconMosaic(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="2.5" y="2.5" width="4.5" height="4.5" />
+      <rect x="9" y="2.5" width="4.5" height="4.5" />
+      <rect x="2.5" y="9" width="4.5" height="4.5" />
+      <rect x="9" y="9" width="4.5" height="4.5" />
+    </Icon>
+  );
+}
+
 export function IconBook(props: IconProps) {
   return (
     <Icon {...props}>
