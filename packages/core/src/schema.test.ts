@@ -41,6 +41,39 @@ describe("parseAnnotation", () => {
     expect(() => parseAnnotation(valid)).toThrow(/型が不正/);
   });
 
+  it("parses mosaic objects and validates their image target and block size", () => {
+    const base = {
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "img-main",
+          type: "image",
+          source: "manual",
+          src: "img/raw/a.png",
+          rect: { x: 0, y: 0, w: 100, h: 100 },
+        },
+        {
+          id: "m1",
+          type: "mosaic",
+          source: "manual",
+          targetImageId: "img-main",
+          rect: { x: 10, y: 20, w: 30, h: 15 },
+          blockSize: 8,
+        },
+      ],
+    };
+    expect(parseAnnotation(base).objects[1]).toMatchObject({ type: "mosaic", blockSize: 8 });
+    expect(() => parseAnnotation({
+      ...base,
+      objects: base.objects.map((obj) => obj.id === "m1" ? { ...obj, targetImageId: "missing" } : obj),
+    })).toThrow(/targetImageId/);
+    expect(() => parseAnnotation({
+      ...base,
+      objects: base.objects.map((obj) => obj.id === "m1" ? { ...obj, blockSize: 1 } : obj),
+    })).toThrow(/blockSize/);
+  });
+
   it("rejects duplicate object ids", () => {
     expect(() =>
       parseAnnotation({

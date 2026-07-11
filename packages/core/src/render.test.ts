@@ -226,4 +226,39 @@ describe("renderFigure", () => {
     expect(html).toMatch(/data-cursor-icon="pointer"[^>]*color:#000000/);
     expect(html).toMatch(/data-cursor-icon="move"[^>]*color:#123456/);
   });
+
+  it("renders a mosaic preview immediately above its target image", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "m1",
+          type: "mosaic",
+          source: "manual",
+          targetImageId: "img-main",
+          rect: { x: 20, y: 30, w: 40, h: 10 },
+          blockSize: 9,
+        },
+        {
+          id: "img-main",
+          type: "image",
+          source: "manual",
+          src: "img/raw/a.png",
+          rect: { x: 0, y: 0, w: 100, h: 100 },
+        },
+        { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 50, y: 50 } },
+      ],
+    });
+    const html = renderFigure(annotation, {
+      naturalSizes: { "img/raw/a.png": { w: 100, h: 100 } },
+    });
+    const imageIndex = html.indexOf("mm-image");
+    const mosaicIndex = html.indexOf("mm-mosaic");
+    const badgeIndex = html.indexOf("mm-badge");
+    expect(imageIndex).toBeGreaterThan(-1);
+    expect(mosaicIndex).toBeGreaterThan(imageIndex);
+    expect(badgeIndex).toBeGreaterThan(mosaicIndex);
+    expect(html).toContain("--mm-mosaic-size:9px");
+  });
 });

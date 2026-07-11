@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { imageSize } from "image-size";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
+import sharp from "sharp";
 import { buildProject } from "./build.js";
 
 const fixtureProject = join(import.meta.dirname, "../tests/fixtures/projects/demo");
@@ -99,6 +100,48 @@ describe("buildProject", () => {
       expect(existsSync(croppedPath)).toBe(true);
       expect(existsSync(join(outDir, "img/demo.png"))).toBe(false);
       expect(imageSize(readFileSync(croppedPath))).toMatchObject({ width: 100, height: 50 });
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bakes mosaics into cropped delivery images and omits raw pixels and overlay markup", async () => {
+    const root = createTempProject(
+      ["# モザイク", "", "```annotated-image", "src: demo", "```", ""].join("\n"),
+    );
+    const width = 8;
+    const height = 4;
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 3;
+        pixels[offset] = x * 24;
+        pixels[offset + 1] = y * 40;
+        pixels[offset + 2] = 100;
+      }
+    }
+    await sharp(pixels, { raw: { width, height, channels: 3 } }).png().toFile(join(root, "img/demo.png"));
+    writeFileSync(join(root, "annotations/demo.json"), JSON.stringify({
+      version: 1,
+      canvas: { width, height },
+      objects: [
+        { id: "img-main", type: "image", source: "manual", src: "img/demo.png", rect: { x: 0, y: 0, w: 100, h: 100 } },
+        { id: "m1", type: "mosaic", source: "manual", targetImageId: "img-main", rect: { x: 0, y: 0, w: 50, h: 100 }, blockSize: 2 },
+      ],
+    }), "utf8");
+    const outDir = mkdtempSync(join(tmpdir(), "mahomanual-mosaic-"));
+    try {
+      const result = await buildProject(root, { outputDir: outDir });
+      const html = readFileSync(result.htmlPath, "utf8");
+      const delivered = join(outDir, "img/cropped/demo/img-main.png");
+      const { data } = await sharp(delivered).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      const red = (x: number) => data[x * 3];
+      expect(red(0)).toBe(red(1));
+      expect(red(2)).toBe(red(3));
+      expect(red(4)).not.toBe(red(5));
+      expect(html).not.toContain("mm-mosaic");
+      expect(existsSync(join(outDir, "img/demo.png"))).toBe(false);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });

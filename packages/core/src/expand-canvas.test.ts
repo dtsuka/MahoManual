@@ -20,6 +20,7 @@ function baseAnnotation(): AnnotationFile {
       { id: "t1", type: "text", source: "manual", content: "メモ", at: { x: 50, y: 20 }, fontSize: 14 },
       { id: "c1", type: "cursor", source: "manual", icon: "pointer", at: { x: 40, y: 60 }, size: 24 },
       { id: "f1", type: "frame", source: "manual", rect: { x: 10, y: 20, w: 40, h: 30 }, strokeWidth: 2 },
+      { id: "m1", type: "mosaic", source: "manual", targetImageId: "img-main", rect: { x: 20, y: 30, w: 10, h: 8 }, blockSize: 12 },
       {
         id: "l1",
         type: "line",
@@ -82,6 +83,10 @@ describe("expandCanvas", () => {
     expect(frame.rect.y).toBeCloseTo(20, 10);
     expect(frame.rect.w).toBeCloseTo(32, 10); // 40% * 1280 / 1600
     expect(frame.rect.h).toBeCloseTo(30, 10);
+    const mosaic = findObject(result, "m1", "mosaic");
+    expect(mosaic.rect.x).toBeCloseTo((20 * 12.8 + 320) / 16, 10);
+    expect(mosaic.rect.w).toBeCloseTo(8, 10);
+    expect(mosaic.blockSize).toBe(12);
 
     // line/arrow: 全pointsを変換
     const line = findObject(result, "l1", "line");

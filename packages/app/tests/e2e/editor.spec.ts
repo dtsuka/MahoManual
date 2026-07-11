@@ -132,6 +132,43 @@ test("annotation editor: add, drag and lock a second image", async ({ page, requ
   }
 });
 
+test("annotation editor: add and configure a mosaic", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; type: string }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("add-mosaic").click();
+    const mosaicItem = page.getByTestId("object-item-m1");
+    const mosaic = page.locator('[data-mm-id="m1"]');
+    await expect(mosaicItem).toBeVisible();
+    await expect(mosaic).toBeVisible();
+    await expect(page.getByTestId("mosaic-target")).toHaveValue("img-main");
+
+    const xInput = page.getByTestId("prop-rect-x");
+    const beforeDrag = Number(await xInput.inputValue());
+    await mosaic.dragTo(page.locator(".mm-editor-figure figure"), {
+      targetPosition: { x: 180, y: 120 },
+    });
+    await expect.poll(async () => Number(await xInput.inputValue())).not.toBe(beforeDrag);
+    await page.getByTestId("mosaic-block-size").fill("16");
+    await page.getByTestId("mosaic-block-size").blur();
+
+    await page.getByTestId("save-button").click();
+    await expect.poll(() => {
+      const saved = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+        objects: Array<{ id: string; targetImageId?: string; blockSize?: number }>;
+      };
+      return saved.objects.find((obj) => obj.id === "m1");
+    }).toMatchObject({ targetImageId: "img-main", blockSize: 16 });
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("manual editor: preview and figure click opens annotation editor", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await expect(page.getByTestId("md-editor")).toBeVisible();

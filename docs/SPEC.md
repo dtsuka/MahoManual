@@ -95,7 +95,7 @@ interface AnnotationFile {
 // 全オブジェクト共通
 interface Base {
   id: string;                       // ファイル内で一意(重複はバリデーションエラー)
-  type: "image" | "badge" | "text" | "cursor" | "frame" | "line" | "arrow";
+  type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" | "line" | "arrow";
   source: "manual" | "recipe";      // recipe由来は再撮影で更新される(§9.4)
   recipeRef?: string;               // source:"recipe" のとき "<レシピID>#<index>"
   locked?: boolean;                 // trueならGUIでの変更・移動・削除を禁止(省略時false)
@@ -140,6 +140,13 @@ interface FrameObj extends Base {   // 強調枠
   color?: string;
   strokeWidth?: number;             // 既定 2
   radius?: number;                  // 既定 0
+}
+
+interface MosaicObj extends Base {  // 対象画像の画素へ納品時に適用するモザイク
+  type: "mosaic";
+  targetImageId: string;            // 同じ注釈内のimageオブジェクトID
+  rect: Rect;                       // キャンバス上の適用範囲(%)
+  blockSize?: number;               // モザイク1ブロックのキャンバスpx、既定12、2以上
 }
 
 interface LineObj extends Base {    // 罫線(折れ線可)
@@ -454,6 +461,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
 - 複数画像: 既存キャンバスへ画像を追加し、画像オブジェクトをドラッグ・リサイズして横並び・重ね合わせできる。追加画像は縦横比を維持してキャンバス中央へ収まる初期配置とする
 - オブジェクトロック: オブジェクト単位の `locked` を一覧の鍵ボタンで切り替える。ロック中はドラッグ・リサイズ・数値変更・クロップ・置換・レイヤー移動・削除を禁止し、選択と内容確認のみ許可する。新規のベース画像・レシピ画像はロック、追加画像は配置調整のためロック解除を既定とする
+- モザイク: `targetImageId` で対象画像を明示し、矩形範囲と粗さを非破壊データとして保持する。編集画面では効果をプレビューし、HTML/PDF/合成PNG出力時はSharpで対象画素を縮小・最近傍拡大して画像へ実適用する。納品物には対象範囲の未加工画素を含む画像を残さない
 - キャンバス余白: 上下左右のpx指定でcanvasを拡張/縮小(coreの `expandCanvas`)。既存注釈の見た目位置は維持され、画像の外側へ注釈を置けるようになる(§4.5)
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
 - 合成画像出力: 保存済みの画像と全注釈オブジェクトをcoreレンダラーで合成し、canvasと同じピクセル寸法のPNGとしてダウンロード。画像srcはdata URL化し、Playwrightでfigureのみをキャプチャする
@@ -466,6 +474,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 - 状態はすべてプレーンテキスト。DBなし。Git管理前提
 - 元画像は無加工保持、クロップ・注釈は常に非破壊(データで表現)
+- 個人情報を隠すモザイクはプロジェクト内では非破壊、納品画像では画素へ実適用し、CSSオーバーレイだけに依存しない
 - 座標は%、キャンバスとcropはpx(§4.1)
 - 画像の外への注釈はキャンバス余白で表現(§4.5)。cropは純粋な切り抜き(x,y >= 0、負値による余白は不可)
 - 既定色 `#E91E8C`、badge直径22px、strokeWidth 2px。既定はテーマCSSのカスタムプロパティ(--mm-color / --mm-font-size)が持ち、project.yaml の `annotation:` で上書き可

@@ -23,13 +23,21 @@ const objects: AnnotationObject[] = [
     icon: "pointer",
     at: { x: 40, y: 50 },
   },
+  {
+    id: "mosaic-1",
+    type: "mosaic",
+    source: "manual",
+    targetImageId: "img-main",
+    rect: { x: 12, y: 14, w: 20, h: 10 },
+    blockSize: 8,
+  },
 ];
 
 describe("translateObjects", () => {
   it("選択した型の異なるオブジェクトを同じ量だけ移動する", () => {
     const translated = translateObjects(
       objects,
-      new Set(["badge-1", "frame-1", "line-1", "cursor-1"]),
+      new Set(["badge-1", "frame-1", "line-1", "cursor-1", "mosaic-1"]),
       2,
       -3,
     );
@@ -39,6 +47,7 @@ describe("translateObjects", () => {
       points: [{ x: 7, y: 3 }, { x: 17, y: 13 }],
     });
     expect(translated[3]).toMatchObject({ at: { x: 42, y: 47 } });
+    expect(translated[4]).toMatchObject({ rect: { x: 14, y: 11, w: 20, h: 10 } });
   });
 
   it("ロック中のオブジェクトは選択されていても移動しない", () => {
@@ -53,18 +62,18 @@ describe("removeUnlockedObjects", () => {
   it("選択中でもロックされたオブジェクトは削除しない", () => {
     const locked = objects.map((obj) => obj.id === "frame-1" ? { ...obj, locked: true } : obj);
     const result = removeUnlockedObjects(locked, new Set(["badge-1", "frame-1"]));
-    expect(result.map((obj) => obj.id)).toEqual(["frame-1", "line-1", "cursor-1"]);
+    expect(result.map((obj) => obj.id)).toEqual(["frame-1", "line-1", "cursor-1", "mosaic-1"]);
   });
 });
 
 describe("duplicateObjects", () => {
   it("選択オブジェクトを前面へ複製し、一意IDとオフセットを付ける", () => {
     const duplicated = duplicateObjects(objects, ["badge-1", "line-1"], 1);
-    expect(duplicated.objects).toHaveLength(6);
+    expect(duplicated.objects).toHaveLength(7);
     expect(duplicated.selectedIds).toHaveLength(2);
-    expect(new Set(duplicated.objects.map((obj) => obj.id)).size).toBe(6);
-    expect(duplicated.objects[4]).toMatchObject({ type: "badge", at: { x: 11, y: 21 } });
-    expect(duplicated.objects[5]).toMatchObject({
+    expect(new Set(duplicated.objects.map((obj) => obj.id)).size).toBe(7);
+    expect(duplicated.objects[5]).toMatchObject({ type: "badge", at: { x: 11, y: 21 } });
+    expect(duplicated.objects[6]).toMatchObject({
       type: "line",
       points: [{ x: 6, y: 7 }, { x: 16, y: 17 }],
     });
