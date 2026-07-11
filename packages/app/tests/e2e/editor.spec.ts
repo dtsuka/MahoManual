@@ -308,6 +308,80 @@ test("annotation editor: frame can be selected from object list and resized via 
   }
 });
 
+test("annotation editor: objects follow the pointer while dragging and resizing", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const frame = page.locator('[data-mm-id="f-menu"]');
+  const frameBox = await frame.boundingBox();
+  if (!frameBox) {
+    throw new Error("frame has no bounding box");
+  }
+  const frameLeftBefore = await frame.evaluate((element) => Number.parseFloat(element.style.left));
+  await page.mouse.move(frameBox.x + frameBox.width / 2, frameBox.y + frameBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(frameBox.x + frameBox.width / 2 + 30, frameBox.y + frameBox.height / 2 + 20);
+  await expect.poll(() => frame.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBeGreaterThan(frameLeftBefore);
+  await page.mouse.up();
+
+  await page.getByTestId("object-item-f-menu").click();
+  const handle = page.getByTestId("frame-handle-se");
+  const handleBox = await handle.boundingBox();
+  if (!handleBox) {
+    throw new Error("resize handle has no bounding box");
+  }
+  const frameWidthBefore = await frame.evaluate((element) => Number.parseFloat(element.style.width));
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x + handleBox.width / 2 + 30, handleBox.y + handleBox.height / 2 + 20);
+  await expect.poll(() => frame.evaluate((element) => Number.parseFloat(element.style.width)))
+    .toBeGreaterThan(frameWidthBefore);
+  await page.mouse.up();
+
+  await page.reload();
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  const badge = page.locator('[data-mm-id="b1"]');
+  const badgeBox = await badge.boundingBox();
+  if (!badgeBox) {
+    throw new Error("badge has no bounding box");
+  }
+  const badgeLeftBefore = await badge.evaluate((element) => Number.parseFloat(element.style.left));
+  await page.mouse.move(badgeBox.x + badgeBox.width / 2, badgeBox.y + badgeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(badgeBox.x + badgeBox.width / 2 + 30, badgeBox.y + badgeBox.height / 2 + 20);
+  await expect.poll(() => badge.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBeGreaterThan(badgeLeftBefore);
+  await page.mouse.up();
+});
+
+test("annotation editor: every selected object follows a group drag", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  await page.getByTestId("object-item-b1").click();
+  await page.getByTestId("object-item-b2").click({ modifiers: ["ControlOrMeta"] });
+  await expect(page.getByTestId("selection-count")).toHaveText("2個選択");
+
+  const first = page.locator('[data-mm-id="b1"]');
+  const second = page.locator('[data-mm-id="b2"]');
+  const firstLeftBefore = await first.evaluate((element) => Number.parseFloat(element.style.left));
+  const secondLeftBefore = await second.evaluate((element) => Number.parseFloat(element.style.left));
+  const secondBox = await second.boundingBox();
+  if (!secondBox) {
+    throw new Error("badge has no bounding box");
+  }
+
+  await page.mouse.move(secondBox.x + secondBox.width / 2, secondBox.y + secondBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(secondBox.x + secondBox.width / 2 + 30, secondBox.y + secondBox.height / 2 + 20);
+  await expect.poll(() => first.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBeGreaterThan(firstLeftBefore);
+  await expect.poll(() => second.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBeGreaterThan(secondLeftBefore);
+  await page.mouse.up();
+});
+
 test("annotation editor: arrow points can be edited by dragging point handles", async ({
   page,
   request,
