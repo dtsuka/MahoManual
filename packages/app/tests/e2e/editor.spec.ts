@@ -79,6 +79,59 @@ test("annotation editor: add badge, drag, save, external reload", async ({ page,
   });
 });
 
+test("annotation editor: add, drag and lock a second image", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const imagePath = join(process.cwd(), "../../projects/example/img/raw/1-1-img2.png");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; rect?: { x: number; y: number; w: number; h: number } }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    const [addResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) => response.url().endsWith(`/annotations/${annotationId}/images`) && response.request().method() === "POST",
+      ),
+      page.getByTestId("add-image-input").setInputFiles(
+        join(process.cwd(), "../../projects/example/img/raw/1-1.png"),
+      ),
+    ]);
+    expect(addResponse.status()).toBe(201);
+
+    const imageItem = page.getByTestId("object-item-img2");
+    await expect(imageItem).toBeVisible();
+    const image = page.locator('[data-mm-id="img2"]');
+    await expect(image).toBeVisible();
+    const xInput = page.getByTestId("prop-rect-x");
+    const beforeDrag = Number(await xInput.inputValue());
+    await image.dragTo(page.locator(".mm-editor-figure figure"), {
+      targetPosition: { x: 100, y: 100 },
+    });
+    await expect.poll(async () => Number(await xInput.inputValue())).not.toBe(beforeDrag);
+
+    await page.getByTestId("object-lock-img2").click();
+    const lockedX = Number(await xInput.inputValue());
+    await image.dragTo(page.locator(".mm-editor-figure figure"), {
+      targetPosition: { x: 200, y: 120 },
+    });
+    expect(Number(await xInput.inputValue())).toBe(lockedX);
+    await page.keyboard.press("Delete");
+    await expect(imageItem).toBeVisible();
+
+    await page.getByTestId("save-button").click();
+    await expect.poll(() => {
+      const saved = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+        objects: Array<{ id: string; locked?: boolean }>;
+      };
+      return saved.objects.find((obj) => obj.id === "img2")?.locked;
+    }).toBe(true);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+    rmSync(imagePath, { force: true });
+  }
+});
+
 test("manual editor: preview and figure click opens annotation editor", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await expect(page.getByTestId("md-editor")).toBeVisible();

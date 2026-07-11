@@ -266,6 +266,50 @@ describe("Hono API", () => {
     expect(readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8")).toBe(beforeJson);
   });
 
+  it("POST /api/projects/:project/annotations/:id/images adds another image", async () => {
+    const pngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const before = JSON.parse(
+      readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8"),
+    ) as { canvas: { width: number; height: number }; objects: Array<{ id: string }> };
+    const response = await app.request(
+      `/api/projects/${testProject}/annotations/test-1/images`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectId: "img-extra",
+          data: `data:image/png;base64,${pngBase64}`,
+          width: 400,
+          height: 200,
+        }),
+      },
+    );
+    expect(response.status).toBe(201);
+    const payload = (await response.json()) as {
+      annotation: {
+        canvas: { width: number; height: number };
+        objects: Array<{
+          id: string;
+          type: string;
+          src?: string;
+          locked?: boolean;
+          rect?: { x: number; y: number; w: number; h: number };
+        }>;
+      };
+    };
+    expect(payload.annotation.canvas).toEqual(before.canvas);
+    expect(payload.annotation.objects).toHaveLength(before.objects.length + 1);
+    expect(payload.annotation.objects.at(-1)).toMatchObject({
+      id: "img-extra",
+      type: "image",
+      src: "img/raw/test-1-img-extra.png",
+      locked: false,
+      rect: { x: 25, y: 33.333333333333336, w: 50, h: 33.33333333333333 },
+    });
+    expect(existsSync(join(testProjectRoot, "img/raw/test-1-img-extra.png"))).toBe(true);
+  });
+
   it("PUT /api/projects/:project/annotations/:id/images/:objectId replaces image and preserves annotations", async () => {
     const pngBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

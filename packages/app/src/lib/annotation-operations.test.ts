@@ -3,6 +3,7 @@ import type { AnnotationObject } from "@mahomanual/core/schema";
 import {
   clampCrop,
   duplicateObjects,
+  removeUnlockedObjects,
   translateObjects,
 } from "./annotation-operations.js";
 
@@ -38,6 +39,21 @@ describe("translateObjects", () => {
       points: [{ x: 7, y: 3 }, { x: 17, y: 13 }],
     });
     expect(translated[3]).toMatchObject({ at: { x: 42, y: 47 } });
+  });
+
+  it("ロック中のオブジェクトは選択されていても移動しない", () => {
+    const locked = objects.map((obj) => obj.id === "frame-1" ? { ...obj, locked: true } : obj);
+    const translated = translateObjects(locked, new Set(["badge-1", "frame-1"]), 2, -3);
+    expect(translated[0]).toMatchObject({ at: { x: 12, y: 17 } });
+    expect(translated[1]).toEqual(locked[1]);
+  });
+});
+
+describe("removeUnlockedObjects", () => {
+  it("選択中でもロックされたオブジェクトは削除しない", () => {
+    const locked = objects.map((obj) => obj.id === "frame-1" ? { ...obj, locked: true } : obj);
+    const result = removeUnlockedObjects(locked, new Set(["badge-1", "frame-1"]));
+    expect(result.map((obj) => obj.id)).toEqual(["frame-1", "line-1", "cursor-1"]);
   });
 });
 

@@ -98,6 +98,7 @@ interface Base {
   type: "image" | "badge" | "text" | "cursor" | "frame" | "line" | "arrow";
   source: "manual" | "recipe";      // recipe由来は再撮影で更新される(§9.4)
   recipeRef?: string;               // source:"recipe" のとき "<レシピID>#<index>"
+  locked?: boolean;                 // trueならGUIでの変更・移動・削除を禁止(省略時false)
 }
 
 interface ImageObj extends Base {   // キャンバスに複数配置可(2カラム合成等)
@@ -451,6 +452,8 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - プロジェクトページ / マニュアル編集ページ: 画像をbase64埋め込みした単一HTMLと、A4・背景印刷有効のPDFをGUIからダウンロードできる
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- 複数画像: 既存キャンバスへ画像を追加し、画像オブジェクトをドラッグ・リサイズして横並び・重ね合わせできる。追加画像は縦横比を維持してキャンバス中央へ収まる初期配置とする
+- オブジェクトロック: オブジェクト単位の `locked` を一覧の鍵ボタンで切り替える。ロック中はドラッグ・リサイズ・数値変更・クロップ・置換・レイヤー移動・削除を禁止し、選択と内容確認のみ許可する。新規のベース画像・レシピ画像はロック、追加画像は配置調整のためロック解除を既定とする
 - キャンバス余白: 上下左右のpx指定でcanvasを拡張/縮小(coreの `expandCanvas`)。既存注釈の見た目位置は維持され、画像の外側へ注釈を置けるようになる(§4.5)
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
 - 合成画像出力: 保存済みの画像と全注釈オブジェクトをcoreレンダラーで合成し、canvasと同じピクセル寸法のPNGとしてダウンロード。画像srcはdata URL化し、Playwrightでfigureのみをキャプチャする

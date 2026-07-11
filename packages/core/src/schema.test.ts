@@ -30,6 +30,17 @@ describe("parseAnnotation", () => {
     expect(result.objects).toEqual([]);
   });
 
+  it("parses optional object lock and rejects non-boolean values", () => {
+    const valid = loadFixture("valid-basic.json") as {
+      objects: Array<Record<string, unknown>>;
+    };
+    valid.objects[0]!.locked = true;
+    expect(parseAnnotation(valid).objects[0]).toMatchObject({ locked: true });
+
+    valid.objects[0]!.locked = "yes";
+    expect(() => parseAnnotation(valid)).toThrow(/型が不正/);
+  });
+
   it("rejects duplicate object ids", () => {
     expect(() =>
       parseAnnotation({
