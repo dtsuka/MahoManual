@@ -53,9 +53,11 @@ const rectSchema = z.object({
   h: z.number().gt(0),
 });
 
+// SPEC §4.5: cropは純粋な切り抜き。負値による余白の表現は禁止(余白はexpandCanvas)
+const cropNonNegative = "crop の x,y は0以上で指定してください(画像の外側の余白は SPEC §4.5 のキャンバス余白を使用)";
 const cropSchema = z.object({
-  x: z.number(),
-  y: z.number(),
+  x: z.number().gte(0, cropNonNegative),
+  y: z.number().gte(0, cropNonNegative),
   w: z.number().gt(0),
   h: z.number().gt(0),
 });

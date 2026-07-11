@@ -149,9 +149,9 @@
 
 ### 6-1. core: expandCanvas(純関数)
 
-- [ ] test: 左320px追加(canvas 1280×960→1600×960)で image rect {0,0,100,100} が {20,0,80,100} になり、badge at / frame rect / line points の%座標が再計算されて見た目の位置が維持される(上余白はy側) / crop・size・fontSize等のpx値は不変 / 負のmarginで縮小できる / 結果のcanvas寸法が0以下になるmarginはエラー
-- [ ] test: cropスキーマが x<0 / y<0 を拒否する(余白をcropで表現することの禁止)
-- [ ] 実装: `packages/core/src/expand-canvas.ts`(`expandCanvas(annotation, margin)`)、schema.tsのcrop x,yに `.gte(0)`
+- [x] test: 左320px追加(canvas 1280×960→1600×960)で image rect {0,0,100,100} が {20,0,80,100} になり、badge at / frame rect / line points の%座標が再計算されて見た目の位置が維持される(上余白はy側) / crop・size・fontSize等のpx値は不変 / 負のmarginで縮小できる / 結果のcanvas寸法が0以下になるmarginはエラー
+- [x] test: cropスキーマが x<0 / y<0 を拒否する(余白をcropで表現することの禁止)
+- [x] 実装: `packages/core/src/expand-canvas.ts`(`expandCanvas(annotation, margin)`)、schema.tsのcrop x,yに `.gte(0)`
 
 ### 6-2. MCP: expand_canvas ツール
 

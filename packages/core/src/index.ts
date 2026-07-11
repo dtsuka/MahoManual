@@ -17,6 +17,7 @@ export {
   type RectPct,
   type Region,
 } from "./capture-math.js";
+export { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
 export { mergeAnnotations } from "./merge-annotations.js";
 export { renderAnnotationPng } from "./export-image.js";
 export {
