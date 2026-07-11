@@ -174,6 +174,52 @@ describe("MahoManual MCP server", () => {
     }
   });
 
+  it("expands canvas margin via expand_canvas (SPEC §4.5)", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-mcp-margin-"));
+    cpSync(demoProject, projectRoot, { recursive: true });
+    try {
+      const client = await connectClient();
+      try {
+        const expanded = await client.callTool({
+          name: "expand_canvas",
+          arguments: { project: projectRoot, id: "demo", margin: { left: 320 } },
+        });
+        expect(expanded.isError).not.toBe(true);
+        const result = JSON.parse(textContent(expanded)) as {
+          canvas: { width: number; height: number };
+          objects: Array<{
+            id: string;
+            rect?: { x: number; w: number };
+            at?: { x: number; y: number };
+          }>;
+        };
+        expect(result.canvas).toEqual({ width: 1600, height: 960 });
+        const image = result.objects.find((obj) => obj.id === "img-main");
+        expect(image?.rect?.x).toBeCloseTo(20, 10);
+        expect(image?.rect?.w).toBeCloseTo(80, 10);
+        const badge = result.objects.find((obj) => obj.id === "b1");
+        expect(badge?.at?.x).toBeCloseTo(33.84, 10);
+        expect(badge?.at?.y).toBeCloseTo(16, 10);
+
+        const saved = JSON.parse(
+          readFileSync(join(projectRoot, "annotations", "demo.json"), "utf8"),
+        ) as { canvas: { width: number; height: number } };
+        expect(saved.canvas).toEqual({ width: 1600, height: 960 });
+
+        const invalid = await client.callTool({
+          name: "expand_canvas",
+          arguments: { project: projectRoot, id: "demo", margin: { left: -2000 } },
+        });
+        expect(invalid.isError).toBe(true);
+        expect(textContent(invalid)).toMatch(/canvas/i);
+      } finally {
+        await client.close();
+      }
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("builds HTML and exports PDF", async () => {
     const client = await connectClient();
     try {
