@@ -74,8 +74,10 @@ annotation:                         # 注釈テーマの上書き(任意)
 |---|---|---|
 | `canvas.width / height` | px | キャンバスの設計座標。アスペクト比の基準・SVGのviewBox。撮影時はCSS px |
 | オブジェクトの `rect` / `at` / `points` | %(0-100) | キャンバスに対する相対位置。**範囲制限なし**(キャンバス外への配置を許容、線がはみ出す場合など) |
-| `image.crop` | px | **画像ファイルの実ピクセル**(Retina撮影なら2倍解像度のピクセル値) |
+| `image.crop` | px | **画像ファイルの実ピクセル**(Retina撮影なら2倍解像度のピクセル値)。x,y >= 0(切り抜き専用、負値は不可) |
 | `size` / `fontSize` / `strokeWidth` | px | 表示px(バッジ・文字は表示サイズ固定で可読性を維持) |
+
+canvasは画像の配置範囲より大きくてよい。画像の端の外に注釈を置きたい場合はcanvasを拡張して余白を作る(§4.5)。cropのマイナス値で余白を表現することは禁止する。
 
 ### 4.2 スキーマ
 
@@ -102,7 +104,7 @@ interface ImageObj extends Base {   // キャンバスに複数配置可(2カラ
   type: "image";
   src: string;                      // プロジェクトルート相対(例 "img/raw/facility-add.png")
   rect: Rect;                       // キャンバス上の配置(%)
-  crop?: { x: number; y: number; w: number; h: number };  // 省略時は画像全体
+  crop?: { x: number; y: number; w: number; h: number };  // 省略時は画像全体。x,y >= 0(余白は§4.5)
 }
 
 interface BadgeObj extends Base {   // 丸数字
@@ -202,6 +204,30 @@ interface ArrowObj extends LineObj { type: "arrow" }   // 終端(最後の点)�
   ]
 }
 ```
+
+### 4.5 キャンバス余白(画像の外側への注釈配置)
+
+画像の端の外に注釈を置きたい場合(例: 画像左端がCMSメニューで、そのさらに左に丸数字を置く)は、**canvasを画像より大きくし、imageのrectをオフセットする**。余白はレイアウトとして表現し、画像画素・cropには含めない(納品PNGにも余白画素は入らない)。
+
+左に320pxの余白を作る例(元: canvas 1280×960 に全面配置):
+
+```json
+{
+  "version": 1,
+  "canvas": { "width": 1600, "height": 960 },
+  "objects": [
+    { "id": "img-main", "type": "image", "source": "manual",
+      "src": "img/raw/menu.png",
+      "rect": { "x": 20, "y": 0, "w": 80, "h": 100 } },
+    { "id": "b1", "type": "badge", "source": "manual", "n": 1, "at": { "x": 10, "y": 16 } }
+  ]
+}
+```
+
+canvas寸法が変わると既存オブジェクトの%座標が指す位置がズレるため、余白の追加・削除は必ず `expandCanvas(annotation, margin)`(core純関数)で行う。canvasを拡張し、全オブジェクトの%座標・rect・pointsを再計算して見た目上の位置を維持する(crop・size・fontSize等のpx値は不変)。GUI(§11)、MCPの `expand_canvas`(§10)、レシピの `screenshot.margin`(§9.1)はすべてこの関数を使う。
+
+- margin: `{ top?, right?, bottom?, left? }`、単位はCSS px(canvas座標)
+- 負値は余白の削除(縮小)。結果のcanvas寸法が0以下になる場合はエラー
 
 ## 5. Markdown記法
 
@@ -350,6 +376,7 @@ steps:                          # 任意。撮影前の操作(上から順に実
   - fill: { selector: "#tag-name", value: "アイケアハウス小樽" }  # 入力
 screenshot:
   target: fullPage              # fullPage | selector(CSSセレクタ文字列)| clip {x,y,w,h}
+  margin: { left: 60 }          # 任意。撮影領域の外側に確保する余白CSS px(top/right/bottom/left、§4.5)
 output: "1-1"                   # img/1-1.png と annotations/1-1.json を生成/更新
 annotate:                       # 任意。上から順にbadgeは自動採番(1,2,…)
   - type: badge
@@ -367,7 +394,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 2. URLへ遷移 → steps実行 → スクショを `img/raw/<output>.png` に保存
 3. 撮影領域(fullPage=ページ全体 / selector・clip=その矩形)を基準に、各annotate対象の `boundingBox()`(CSS px)を%へ変換:
    `x% = (box.x - region.x) / region.width * 100`
-4. `annotations/<output>.json` を生成/マージ(§9.4)。canvasは撮影領域のCSS px寸法。imageオブジェクトのcropは実ピクセル(CSS pxの2倍)で全領域を指定
+4. `annotations/<output>.json` を生成/マージ(§9.4)。canvasは撮影領域のCSS px寸法。imageオブジェクトのcropは実ピクセル(CSS pxの2倍)で全領域を指定。`screenshot.margin` 指定時は生成結果に `expandCanvas`(§4.5)を適用してからマージする(canvas=領域+余白、rect・注釈%座標は余白込みで再計算。スクショ自体は領域のみで余白画素を含まない)
 5. 表示用 `img/<output>.png` は raw のコピー(GUIでクロップ変更してもrawが原本)
 
 ### 9.3 注釈の自動配置規則
@@ -403,6 +430,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 | `update_annotation` | project, id, objectId, patch | オブジェクト部分更新 |
 | `remove_annotation` | project, id, objectId | オブジェクト削除 |
 | `set_crop` | project, id, objectId, crop | imageオブジェクトのcrop変更 |
+| `expand_canvas` | project, id, margin | キャンバス余白の追加・削除(§4.5。canvas拡張+全オブジェクトの%座標再計算) |
 | `renumber_badges` | project, id | badge採番の振り直し |
 | `build_html` | project, singleFile? | 納品HTML生成、出力パスを返す |
 | `export_pdf` | project | PDF生成、出力パスを返す |
@@ -423,6 +451,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - プロジェクトページ / マニュアル編集ページ: 画像をbase64埋め込みした単一HTMLと、A4・背景印刷有効のPDFをGUIからダウンロードできる
 - **編集画面のfigure DOMは §6 の出力HTMLと同一構造**(coreのレンダラーをそのままブラウザで使う)。これがWYSIWYG一致の核
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
+- キャンバス余白: 上下左右のpx指定でcanvasを拡張/縮小(coreの `expandCanvas`)。既存注釈の見た目位置は維持され、画像の外側へ注釈を置けるようになる(§4.5)
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
 - 合成画像出力: 保存済みの画像と全注釈オブジェクトをcoreレンダラーで合成し、canvasと同じピクセル寸法のPNGとしてダウンロード。画像srcはdata URL化し、Playwrightでfigureのみをキャプチャする
 - スクショ取り込み: クリップボードペースト(Clipboard API)→ `img/raw/` へ保存 → 注釈JSON雛形生成
@@ -435,6 +464,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - 状態はすべてプレーンテキスト。DBなし。Git管理前提
 - 元画像は無加工保持、クロップ・注釈は常に非破壊(データで表現)
 - 座標は%、キャンバスとcropはpx(§4.1)
+- 画像の外への注釈はキャンバス余白で表現(§4.5)。cropは純粋な切り抜き(x,y >= 0、負値による余白は不可)
 - 既定色 `#E91E8C`、badge直径22px、strokeWidth 2px。既定はテーマCSSのカスタムプロパティ(--mm-color / --mm-font-size)が持ち、project.yaml の `annotation:` で上書き可
 - 利用者は1人。認証・マルチユーザー機能は作らない(YAGNI)
 - coreが唯一のロジック置き場。cli/mcp/appに業務ロジックを書かない

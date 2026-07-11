@@ -143,6 +143,36 @@
 
 ---
 
+## Phase 6 — キャンバス余白(画像外への注釈配置、SPEC §4.5)
+
+画像端の外側(例: 左端メニューのさらに左)へ注釈を置けるよう、canvasを拡張して余白を作る。余白はレイアウトで表現し、画像画素・cropには含めない。
+
+### 6-1. core: expandCanvas(純関数)
+
+- [ ] test: 左320px追加(canvas 1280×960→1600×960)で image rect {0,0,100,100} が {20,0,80,100} になり、badge at / frame rect / line points の%座標が再計算されて見た目の位置が維持される(上余白はy側) / crop・size・fontSize等のpx値は不変 / 負のmarginで縮小できる / 結果のcanvas寸法が0以下になるmarginはエラー
+- [ ] test: cropスキーマが x<0 / y<0 を拒否する(余白をcropで表現することの禁止)
+- [ ] 実装: `packages/core/src/expand-canvas.ts`(`expandCanvas(annotation, margin)`)、schema.tsのcrop x,yに `.gte(0)`
+
+### 6-2. MCP: expand_canvas ツール
+
+- [ ] test: InMemoryトランスポートで expand_canvas 実行→注釈JSONのcanvasと全オブジェクト座標が更新される / 不正margin(canvas寸法が0以下)はエラーメッセージを返す
+- [ ] 実装: project.tsに `expandCanvasFile(projectRoot, id, margin)`、mcp/server.tsにツール追加
+
+### 6-3. レシピ: screenshot.margin
+
+- [ ] test: margin付きレシピのparse成功 / 不正margin(数値以外)はエラー
+- [ ] test(e2e): margin付きレシピでcapture → canvasが領域+margin寸法、imageのrectがオフセット、badge%座標が余白込み、スクショPNG自体は領域のみ
+- [ ] 実装: schema.ts(screenshotにmargin追加)、capture.ts(生成結果にexpandCanvasを適用してからマージ)
+
+### 6-4. GUI: 余白追加UI
+
+- [ ] test(e2e): 余白を追加→既存オブジェクトの表示位置(px)が維持される→保存でJSONのcanvas・座標が更新される
+- [ ] 実装: AnnotationEditorにキャンバス余白UI(上/右/下/左のpx入力、coreのexpandCanvasを使用)
+
+**受け入れ基準**: 画像左端の要素のさらに左へbadgeを置いたマニュアルを、GUI・MCP・レシピのいずれからでも作成でき、HTML/PDF納品に余白が反映される。
+
+---
+
 ## 実装時の注意
 
 - ロジックはすべて `packages/core` に置く。cli / mcp / app は薄いラッパー(SPEC §2)
