@@ -160,9 +160,9 @@
 
 ### 6-3. レシピ: screenshot.margin
 
-- [ ] test: margin付きレシピのparse成功 / 不正margin(数値以外)はエラー
-- [ ] test(e2e): margin付きレシピでcapture → canvasが領域+margin寸法、imageのrectがオフセット、badge%座標が余白込み、スクショPNG自体は領域のみ
-- [ ] 実装: schema.ts(screenshotにmargin追加)、capture.ts(生成結果にexpandCanvasを適用してからマージ)
+- [x] test: margin付きレシピのparse成功 / 不正margin(数値以外)はエラー
+- [x] test(e2e): margin付きレシピでcapture → canvasが領域+margin寸法、imageのrectがオフセット、badge%座標が余白込み、スクショPNG自体は領域のみ
+- [x] 実装: schema.ts(screenshotにmargin追加)、capture.ts(生成結果にexpandCanvasを適用してからマージ)
 
 ### 6-4. GUI: 余白追加UI
 

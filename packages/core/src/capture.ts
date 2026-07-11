@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { parse as parseYaml } from "yaml";
 import { badgePointFromBox, frameRectFromBox, type Region } from "./capture-math.js";
+import { expandCanvas } from "./expand-canvas.js";
 import { mergeAnnotations } from "./merge-annotations.js";
 import {
   parseAnnotation,
@@ -233,11 +234,16 @@ export async function runCapture(
       })),
     );
 
-    const captured: AnnotationFile = {
+    const regionCaptured: AnnotationFile = {
       version: 1,
       canvas: { width: Math.round(region.w), height: Math.round(region.h) },
       objects: buildAnnotationObjects(recipeId, output, region, annotateItems, boxes),
     };
+    // SPEC §9.2: margin指定時はキャンバス余白を適用してからマージする
+    // (スクショPNGは領域のみ。余白はレイアウトとして表現される)
+    const captured = recipe.screenshot.margin
+      ? expandCanvas(regionCaptured, recipe.screenshot.margin)
+      : regionCaptured;
 
     const existingPath = annotationPath;
     const existing = existsSync(existingPath)

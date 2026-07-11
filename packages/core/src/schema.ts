@@ -236,6 +236,14 @@ const annotateFrameSchema = z.object({
 
 const annotateItemSchema = z.discriminatedUnion("type", [annotateBadgeSchema, annotateFrameSchema]);
 
+// SPEC §4.5 / §9.1: 撮影領域の外側に確保するキャンバス余白(CSS px)
+const screenshotMarginSchema = z.object({
+  top: z.number().optional(),
+  right: z.number().optional(),
+  bottom: z.number().optional(),
+  left: z.number().optional(),
+});
+
 const captureRecipeSchema = z.object({
   title: z.string().optional(),
   url: z.string().min(1, "url は必須です"),
@@ -248,6 +256,7 @@ const captureRecipeSchema = z.object({
   steps: z.array(recipeStepSchema).optional(),
   screenshot: z.object({
     target: screenshotTargetSchema,
+    margin: screenshotMarginSchema.optional(),
   }),
   output: z.string().min(1),
   annotate: z.array(annotateItemSchema).optional(),
