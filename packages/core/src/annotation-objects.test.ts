@@ -3,7 +3,7 @@ import type { AnnotationObject } from "./schema.js";
 import {
   applyDefaultImageLocks,
   collectImageSources,
-  isAddedImageSrc,
+  isAddedImage,
   isBaseImage,
   mosaicsForImage,
   taggableObjectsInDisplayOrder,
@@ -43,12 +43,39 @@ describe("taggableObjectsInDisplayOrder", () => {
   });
 });
 
-describe("isAddedImageSrc", () => {
+describe("isAddedImage", () => {
   it("detects images added via addPastedImageObject naming", () => {
-    expect(isAddedImageSrc("img/raw/1-1-img2.png", "1-1")).toBe(true);
-    expect(isAddedImageSrc("img/raw/test-1-img-extra.png", "test-1")).toBe(true);
-    expect(isAddedImageSrc("img/raw/1-1.png", "1-1")).toBe(false);
-    expect(isAddedImageSrc("img/raw/tall-page.png", "two-column")).toBe(false);
+    expect(isAddedImage({
+      id: "img2",
+      type: "image",
+      source: "manual",
+      src: "img/raw/1-1-img2.png",
+      rect: { x: 0, y: 0, w: 10, h: 10 },
+    }, "1-1")).toBe(true);
+    expect(isAddedImage({
+      id: "img-extra",
+      type: "image",
+      source: "manual",
+      src: "img/raw/test-1-img-extra.png",
+      rect: { x: 0, y: 0, w: 10, h: 10 },
+    }, "test-1")).toBe(true);
+    expect(isAddedImage({
+      id: "img-main",
+      type: "image",
+      source: "manual",
+      src: "img/raw/1-1.png",
+      rect: { x: 0, y: 0, w: 100, h: 100 },
+    }, "1-1")).toBe(false);
+  });
+
+  it("does not treat composite layout filenames as added images", () => {
+    expect(isAddedImage({
+      id: "img-left",
+      type: "image",
+      source: "manual",
+      src: "img/raw/1-2-column-left.png",
+      rect: { x: 0, y: 0, w: 50, h: 100 },
+    }, "1-2")).toBe(false);
   });
 });
 
@@ -122,5 +149,23 @@ describe("applyDefaultImageLocks", () => {
     }, "1-1");
 
     expect(result.objects[0]).toMatchObject({ locked: false });
+  });
+
+  it("locks composite layout images that only share an annotation id prefix", () => {
+    const result = applyDefaultImageLocks({
+      version: 1,
+      canvas: { width: 800, height: 600 },
+      objects: [
+        {
+          id: "img-left",
+          type: "image",
+          source: "manual",
+          src: "img/raw/1-2-column-left.png",
+          rect: { x: 0, y: 0, w: 50, h: 100 },
+        },
+      ],
+    }, "1-2");
+
+    expect(result.objects[0]).toMatchObject({ id: "img-left", locked: true });
   });
 });

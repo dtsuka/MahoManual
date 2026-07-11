@@ -1,7 +1,7 @@
 export {
   applyDefaultImageLocks,
   collectImageSources,
-  isAddedImageSrc,
+  isAddedImage,
   isBaseImage,
   isEditable,
   isLineObject,

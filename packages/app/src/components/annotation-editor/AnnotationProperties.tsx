@@ -71,6 +71,8 @@ export function AnnotationProperties({
   removePoint,
   onOpenReplaceImage,
 }: AnnotationPropertiesProps) {
+  const editableSelected = selected && isEditable(selected) ? selected : null;
+
   return (
     <>
       <section className="flex-1 p-3">
@@ -85,7 +87,7 @@ export function AnnotationProperties({
             オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
           </p>
         ) : null}
-        {selected?.type === "badge" ? (
+        {editableSelected?.type === "badge" ? (
           <div className="space-y-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">番号 (n)</span>
@@ -93,13 +95,13 @@ export function AnnotationProperties({
                 type="number"
                 min={1}
                 className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm shadow-xs transition-colors duration-150 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={selected.n}
+                value={editableSelected.n}
                 onChange={(event) => {
                   const n = Number.parseInt(event.target.value, 10);
                   if (Number.isNaN(n) || n < 1) {
                     return;
                   }
-                  updateObject(selected.id, (obj) => {
+                  updateObject(editableSelected.id, (obj) => {
                     if (obj.type !== "badge") {
                       return obj;
                     }
@@ -111,8 +113,8 @@ export function AnnotationProperties({
             <div>
               <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
               <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -120,10 +122,10 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                 <ColorInput
                   data-testid="prop-color"
-                  value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                   onChange={(event) => {
                     const color = event.target.value;
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "badge" ? { ...obj, color } : obj,
                     );
                   }}
@@ -133,11 +135,11 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">直径 (px)</span>
                 <NumberField
                   label=""
-                  value={selected.size ?? 22}
+                  value={editableSelected.size ?? 22}
                   step={1}
                   min={8}
                   onChange={(v) =>
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "badge" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
                     )
                   }
@@ -148,12 +150,12 @@ export function AnnotationProperties({
               <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
               <NumberField
                 label=""
-                value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
+                value={editableSelected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
                 step={1}
                 min={6}
                 testId="prop-font-size"
                 onChange={(v) =>
-                  updateObject(selected.id, (obj) =>
+                  updateObject(editableSelected.id, (obj) =>
                     obj.type === "badge" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
                   )
                 }
@@ -161,16 +163,16 @@ export function AnnotationProperties({
             </div>
           </div>
         ) : null}
-        {selected?.type === "text" ? (
+        {editableSelected?.type === "text" ? (
           <div className="space-y-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">テキスト内容</span>
               <textarea
                 className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[13px] shadow-xs transition-colors duration-150 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={selected.content}
+                value={editableSelected.content}
                 onChange={(event) => {
                   const content = event.target.value;
-                  updateObject(selected.id, (obj) => {
+                  updateObject(editableSelected.id, (obj) => {
                     if (obj.type !== "text") {
                       return obj;
                     }
@@ -182,8 +184,8 @@ export function AnnotationProperties({
             <div>
               <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
               <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -191,10 +193,10 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>
                 <ColorInput
                   data-testid="prop-color"
-                  value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                   onChange={(event) => {
                     const color = event.target.value;
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "text" ? { ...obj, color } : obj,
                     );
                   }}
@@ -204,12 +206,12 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
                 <NumberField
                   label=""
-                  value={selected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
+                  value={editableSelected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
                   step={1}
                   min={6}
                   testId="prop-font-size"
                   onChange={(v) =>
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "text" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
                     )
                   }
@@ -218,17 +220,17 @@ export function AnnotationProperties({
             </div>
           </div>
         ) : null}
-        {selected?.type === "cursor" ? (
+        {editableSelected?.type === "cursor" ? (
           <div className="space-y-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">カーソル種類</span>
               <SelectInput
                 data-testid="cursor-icon"
                 className="w-full"
-                value={selected.icon}
+                value={editableSelected.icon}
                 onChange={(event) => {
                   const icon = event.target.value as CursorIcon;
-                  updateObject(selected.id, (obj) =>
+                  updateObject(editableSelected.id, (obj) =>
                     obj.type === "cursor" ? { ...obj, icon } : obj,
                   );
                 }}
@@ -243,8 +245,8 @@ export function AnnotationProperties({
             <div>
               <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
               <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={selected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={selected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
+                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
+                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -252,10 +254,10 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                 <ColorInput
                   data-testid="prop-color"
-                  value={selected.color ?? DEFAULT_CURSOR_COLOR}
+                  value={editableSelected.color ?? DEFAULT_CURSOR_COLOR}
                   onChange={(event) => {
                     const color = event.target.value;
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "cursor" ? { ...obj, color } : obj,
                     );
                   }}
@@ -265,12 +267,12 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">サイズ (px)</span>
                 <NumberField
                   label=""
-                  value={selected.size ?? 28}
+                  value={editableSelected.size ?? 28}
                   step={1}
                   min={8}
                   testId="cursor-size"
                   onChange={(v) =>
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "cursor" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
                     )
                   }
@@ -282,18 +284,18 @@ export function AnnotationProperties({
             </p>
           </div>
         ) : null}
-        {selected?.type === "frame" ? (
+        {editableSelected?.type === "frame" ? (
           <div className="space-y-3 text-sm">
-            <RectPositionFields rect={selected.rect} label="位置・サイズ (%)" onChange={updateRect} />
+            <RectPositionFields rect={editableSelected.rect} label="位置・サイズ (%)" onChange={updateRect} />
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">線色</span>
                 <ColorInput
                   data-testid="prop-color"
-                  value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                   onChange={(event) => {
                     const color = event.target.value;
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "frame" ? { ...obj, color } : obj,
                     );
                   }}
@@ -303,12 +305,12 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">線幅 (px)</span>
                 <NumberField
                   label=""
-                  value={selected.strokeWidth ?? 2}
+                  value={editableSelected.strokeWidth ?? 2}
                   step={1}
                   min={1}
                   testId="prop-stroke-width"
                   onChange={(v) =>
-                    updateObject(selected.id, (obj) =>
+                    updateObject(editableSelected.id, (obj) =>
                       obj.type === "frame"
                         ? { ...obj, strokeWidth: Math.max(1, Math.round(v)) }
                         : obj,
@@ -320,15 +322,15 @@ export function AnnotationProperties({
             <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
           </div>
         ) : null}
-        {selected?.type === "image" ? (
+        {editableSelected?.type === "image" ? (
           <div className="space-y-3 text-sm">
-            <RectPositionFields rect={selected.rect} label="配置 (%)" onChange={updateRect} />
+            <RectPositionFields rect={editableSelected.rect} label="配置 (%)" onChange={updateRect} />
             {(() => {
-              const natural = naturalSizes[selected.src];
+              const natural = naturalSizes[editableSelected.src];
               if (!natural) {
                 return <p className="text-xs text-red-600">画像サイズを取得できません。</p>;
               }
-              const crop = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+              const crop = editableSelected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
               return (
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
@@ -338,7 +340,7 @@ export function AnnotationProperties({
                       variant="ghost"
                       className="h-6 px-1.5 text-[11px]"
                       onClick={() =>
-                        updateObject(selected.id, (obj) =>
+                        updateObject(editableSelected.id, (obj) =>
                           obj.type === "image"
                             ? { ...obj, crop: { x: 0, y: 0, w: natural.w, h: natural.h } }
                             : obj,
@@ -371,18 +373,18 @@ export function AnnotationProperties({
             })()}
           </div>
         ) : null}
-        {selected?.type === "mosaic" ? (
+        {editableSelected?.type === "mosaic" ? (
           <div className="space-y-3 text-sm">
-            <RectPositionFields rect={selected.rect} label="適用範囲 (%)" onChange={updateRect} />
+            <RectPositionFields rect={editableSelected.rect} label="適用範囲 (%)" onChange={updateRect} />
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">対象画像</span>
               <SelectInput
                 data-testid="mosaic-target"
                 className="w-full"
-                value={selected.targetImageId}
+                value={editableSelected.targetImageId}
                 onChange={(event) => {
                   const targetImageId = event.target.value;
-                  updateObject(selected.id, (obj) =>
+                  updateObject(editableSelected.id, (obj) =>
                     obj.type === "mosaic" ? { ...obj, targetImageId } : obj,
                   );
                 }}
@@ -396,11 +398,11 @@ export function AnnotationProperties({
               <span className="mb-1 block text-xs font-medium text-slate-600">モザイクの粗さ (px)</span>
               <NumberField
                 label=""
-                value={selected.blockSize ?? 12}
+                value={editableSelected.blockSize ?? 12}
                 step={1}
                 min={2}
                 testId="mosaic-block-size"
-                onChange={(value) => updateObject(selected.id, (obj) =>
+                onChange={(value) => updateObject(editableSelected.id, (obj) =>
                   obj.type === "mosaic" ? { ...obj, blockSize: Math.max(2, Math.round(value)) } : obj,
                 )}
               />
@@ -410,27 +412,27 @@ export function AnnotationProperties({
             </p>
           </div>
         ) : null}
-        {selected && isLineObject(selected) ? (
+        {editableSelected && isLineObject(editableSelected) ? (
           <div className="space-y-3 text-sm">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-600">線種</span>
               <SelectInput
                 data-testid="line-type"
                 className="w-full"
-                value={selected.type}
+                value={editableSelected.type}
                 onChange={(event) => updateLineType(event.target.value as "line" | "arrow")}
               >
                 <option value="line">Line（線）</option>
                 <option value="arrow">Arrow（矢印）</option>
               </SelectInput>
             </label>
-            {selected.type === "arrow" ? (
+            {editableSelected.type === "arrow" ? (
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">矢印の向き</span>
                 <SelectInput
                   data-testid="arrow-heads"
                   className="w-full"
-                  value={selected.arrowHeads ?? "end"}
+                  value={editableSelected.arrowHeads ?? "end"}
                   onChange={(event) => updateArrowHeads(event.target.value as "start" | "end" | "both")}
                 >
                   <option value="end">終点</option>
@@ -444,7 +446,7 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
                 <ColorInput
                   data-testid="prop-color"
-                  value={selected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
                   onChange={(event) => updateLineStyle({ color: event.target.value })}
                 />
               </label>
@@ -452,7 +454,7 @@ export function AnnotationProperties({
                 <span className="mb-1 block text-xs font-medium text-slate-600">太さ (px)</span>
                 <NumberField
                   label=""
-                  value={selected.strokeWidth ?? 2}
+                  value={editableSelected.strokeWidth ?? 2}
                   step={1}
                   min={1}
                   testId="prop-stroke-width"
@@ -462,10 +464,10 @@ export function AnnotationProperties({
             </div>
             <div>
               <div className="mb-1.5 text-xs font-medium text-slate-600">
-                点({selected.points.length})
+                点({editableSelected.points.length})
               </div>
               <ul className="mb-2 space-y-1">
-                {selected.points.map((point, index) => (
+                {editableSelected.points.map((point, index) => (
                   <li
                     key={index}
                     data-testid={`point-row-${index}`}
@@ -494,7 +496,7 @@ export function AnnotationProperties({
                     <button
                       type="button"
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors duration-150 hover:bg-slate-200 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={selected.points.length <= 2}
+                      disabled={editableSelected.points.length <= 2}
                       onClick={() => removePoint(index)}
                       title="点を削除"
                       aria-label="点を削除"

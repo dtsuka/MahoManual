@@ -52,11 +52,10 @@ export function isLineObject(obj: AnnotationObject): obj is LineObject {
 }
 
 /** 注釈への追加画像(配置調整用)。src は img/raw/{annotationId}-{objectId}.png 形式 */
-export function isAddedImageSrc(src: string, annotationId: string): boolean {
-  const basename = src.split("/").pop() ?? "";
+export function isAddedImage(obj: ImageObject, annotationId: string): boolean {
+  const basename = obj.src.split("/").pop() ?? "";
   const name = basename.replace(/\.[^.]+$/, "");
-  const prefix = `${annotationId}-`;
-  return name.startsWith(prefix) && name.length > prefix.length;
+  return name === `${annotationId}-${obj.id}`;
 }
 
 /** ベース画像・レシピ画像。追加画像以外の image は既定でロック対象 */
@@ -70,7 +69,7 @@ export function isBaseImage(obj: ImageObject, annotationId: string): boolean {
   if (obj.src === `img/raw/${annotationId}.png`) {
     return true;
   }
-  return !isAddedImageSrc(obj.src, annotationId);
+  return !isAddedImage(obj, annotationId);
 }
 
 export function applyDefaultImageLocks(

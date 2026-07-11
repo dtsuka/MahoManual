@@ -1153,9 +1153,17 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                 return;
               }
               const target = element.closest<HTMLElement>("[data-mm-id]");
-              const id = target?.dataset.mmId;
-              if (!id) {
+              if (!target) {
                 setSelectedIds([]);
+                return;
+              }
+              const id = target.dataset.mmId;
+              if (!id) {
+                return;
+              }
+              const obj = annotation.objects.find((item) => item.id === id);
+              // 編集可能オブジェクトの選択は pointerDown で処理。ロック中のみ click で選択する
+              if (!obj || isEditable(obj)) {
                 return;
               }
               if (event.metaKey || event.ctrlKey || event.shiftKey) {
