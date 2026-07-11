@@ -67,6 +67,43 @@ describe("renderFigure", () => {
     expect(lineMatch?.[0]).not.toContain("marker-end");
   });
 
+  it("renders arrow heads at start, end, or both", () => {
+    const base = {
+      version: 1 as const,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "a1",
+          type: "arrow" as const,
+          source: "manual" as const,
+          points: [
+            { x: 0, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        },
+      ],
+    };
+
+    const endOnly = renderFigure(parseAnnotation(base), { naturalSizes: {} });
+    expect(endOnly).toContain('marker-end="url(#mm-arrow-a1)"');
+    expect(endOnly).not.toContain("marker-start");
+
+    const startOnly = renderFigure(
+      parseAnnotation({ ...base, objects: [{ ...base.objects[0]!, arrowHeads: "start" }] }),
+      { naturalSizes: {} },
+    );
+    expect(startOnly).toContain('marker-start="url(#mm-arrow-a1-start)"');
+    expect(startOnly).toContain('orient="auto-start-reverse"');
+    expect(startOnly).not.toContain("marker-end");
+
+    const both = renderFigure(
+      parseAnnotation({ ...base, objects: [{ ...base.objects[0]!, arrowHeads: "both" }] }),
+      { naturalSizes: {} },
+    );
+    expect(both).toContain('marker-start="url(#mm-arrow-a1-start)"');
+    expect(both).toContain('marker-end="url(#mm-arrow-a1)"');
+  });
+
   it("tags polylines with data-mm-id so the GUI can select lines/arrows", () => {
     const annotation = parseAnnotation({
       version: 1,

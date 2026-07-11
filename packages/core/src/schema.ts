@@ -129,11 +129,15 @@ const lineObjectSchema = baseSchema.extend({
   strokeWidth: z.number().gt(0).optional(),
 });
 
+export const arrowHeadsSchema = z.enum(["start", "end", "both"]);
+export type ArrowHeads = z.infer<typeof arrowHeadsSchema>;
+
 const arrowObjectSchema = baseSchema.extend({
   type: z.literal("arrow"),
   points: linePointsSchema,
   color: colorSchema.optional(),
   strokeWidth: z.number().gt(0).optional(),
+  arrowHeads: arrowHeadsSchema.optional(),
 });
 
 const annotationObjectSchema = z.discriminatedUnion("type", [

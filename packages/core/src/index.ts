@@ -70,12 +70,14 @@ export {
   type ProjectInfo,
 } from "./project.js";
 export {
+  arrowHeadsSchema,
   formatIssues,
   parseAnnotation,
   parseRecipe,
   type AnnotateItem,
   type AnnotationFile,
   type AnnotationObject,
+  type ArrowHeads,
   type CaptureRecipe,
   type CursorIcon,
   type RecipeStep,

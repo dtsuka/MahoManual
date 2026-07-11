@@ -23,6 +23,7 @@ interface AnnotationPropertiesProps {
   updateCrop: (key: "x" | "y" | "w" | "h", value: number) => void;
   updateLineType: (type: "line" | "arrow") => void;
   updateLineStyle: (patch: { color?: string; strokeWidth?: number }) => void;
+  updateArrowHeads: (arrowHeads: "start" | "end" | "both") => void;
   updatePointValue: (index: number, key: "x" | "y", value: number) => void;
   addPoint: () => void;
   removePoint: (index: number) => void;
@@ -64,6 +65,7 @@ export function AnnotationProperties({
   updateCrop,
   updateLineType,
   updateLineStyle,
+  updateArrowHeads,
   updatePointValue,
   addPoint,
   removePoint,
@@ -422,6 +424,21 @@ export function AnnotationProperties({
                 <option value="arrow">Arrow（矢印）</option>
               </SelectInput>
             </label>
+            {selected.type === "arrow" ? (
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">矢印の向き</span>
+                <SelectInput
+                  data-testid="arrow-heads"
+                  className="w-full"
+                  value={selected.arrowHeads ?? "end"}
+                  onChange={(event) => updateArrowHeads(event.target.value as "start" | "end" | "both")}
+                >
+                  <option value="end">終点</option>
+                  <option value="start">始点</option>
+                  <option value="both">両方</option>
+                </SelectInput>
+              </label>
+            ) : null}
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">色</span>

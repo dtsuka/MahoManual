@@ -41,6 +41,30 @@ describe("parseAnnotation", () => {
     expect(() => parseAnnotation(valid)).toThrow(/型が不正/);
   });
 
+  it("parses optional arrow heads and rejects invalid values", () => {
+    const arrow = {
+      version: 1,
+      canvas: { width: 100, height: 100 },
+      objects: [
+        {
+          id: "a1",
+          type: "arrow",
+          source: "manual",
+          points: [{ x: 0, y: 0 }, { x: 50, y: 50 }],
+        },
+      ],
+    };
+    expect(parseAnnotation(arrow).objects[0]).toMatchObject({ type: "arrow" });
+    expect(parseAnnotation({
+      ...arrow,
+      objects: [{ ...arrow.objects[0]!, arrowHeads: "both" }],
+    }).objects[0]).toMatchObject({ arrowHeads: "both" });
+    expect(() => parseAnnotation({
+      ...arrow,
+      objects: [{ ...arrow.objects[0]!, arrowHeads: "middle" }],
+    })).toThrow(/arrowHeads/);
+  });
+
   it("parses mosaic objects and validates their image target and block size", () => {
     const base = {
       version: 1,

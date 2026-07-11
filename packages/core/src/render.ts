@@ -1,5 +1,5 @@
 import { mosaicsForImage } from "./annotation-objects.js";
-import type { AnnotationFile, AnnotationObject } from "./schema.js";
+import type { AnnotationFile, AnnotationObject, ArrowHeads } from "./schema.js";
 import { DEFAULT_CURSOR_COLOR } from "./theme.js";
 
 // 既定の色・サイズはテーマ CSS(CSS カスタムプロパティ)が持つ。
@@ -137,6 +137,36 @@ function renderFrameObject(obj: Extract<AnnotationObject, { type: "frame" }>): s
   return `<span class="mm-obj mm-frame" style="${styles.join("; ")};"></span>`;
 }
 
+function resolveArrowHeads(obj: Extract<AnnotationObject, { type: "arrow" }>): ArrowHeads {
+  return obj.arrowHeads ?? "end";
+}
+
+function buildArrowMarkerAttrs(
+  objectId: string,
+  heads: ArrowHeads,
+  defs: string[],
+  markerFill: string,
+): string {
+  const attrs: string[] = [];
+
+  if (heads === "start" || heads === "both") {
+    const startId = `mm-arrow-${objectId}-start`;
+    defs.push(
+      `<marker id="${startId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto-start-reverse"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
+    );
+    attrs.push(`marker-start="url(#${startId})"`);
+  }
+  if (heads === "end" || heads === "both") {
+    const endId = `mm-arrow-${objectId}`;
+    defs.push(
+      `<marker id="${endId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
+    );
+    attrs.push(`marker-end="url(#${endId})"`);
+  }
+
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
+
 function renderLinesSvg(
   lineObjects: Array<Extract<AnnotationObject, { type: "line" | "arrow" }>>,
   canvas: AnnotationFile["canvas"],
@@ -166,12 +196,8 @@ function renderLinesSvg(
 
     let markerAttr = "";
     if (obj.type === "arrow") {
-      const markerId = `mm-arrow-${obj.id}`;
       const markerFill = obj.color ? ` style="fill:${obj.color}"` : "";
-      defs.push(
-        `<marker id="${markerId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
-      );
-      markerAttr = ` marker-end="url(#${markerId})"`;
+      markerAttr = buildArrowMarkerAttrs(obj.id, resolveArrowHeads(obj), defs, markerFill);
     }
 
     polylines.push(

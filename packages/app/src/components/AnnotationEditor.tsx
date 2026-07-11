@@ -666,16 +666,28 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   const addLine = (type: "line" | "arrow") => {
     const id = createObjectId(type, annotation.objects);
-    const newObject: AnnotationObject = {
-      id,
-      type,
-      source: "manual",
-      points: [
-        { x: 20, y: 80 },
-        { x: 50, y: 80 },
-        { x: 50, y: 20 },
-      ],
-    };
+    const newObject: AnnotationObject = type === "arrow"
+      ? {
+          id,
+          type,
+          source: "manual",
+          arrowHeads: "end",
+          points: [
+            { x: 20, y: 80 },
+            { x: 50, y: 80 },
+            { x: 50, y: 20 },
+          ],
+        }
+      : {
+          id,
+          type,
+          source: "manual",
+          points: [
+            { x: 20, y: 80 },
+            { x: 50, y: 80 },
+            { x: 50, y: 20 },
+          ],
+        };
     applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
     setSelectedIds([id]);
   };
@@ -872,7 +884,32 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (!selected || !isLineObject(selected)) {
       return;
     }
-    updateObject(selected.id, (obj) => (isLineObject(obj) ? { ...obj, type } : obj));
+    updateObject(selected.id, (obj) => {
+      if (!isLineObject(obj)) {
+        return obj;
+      }
+      if (type === "arrow") {
+        return {
+          ...obj,
+          type: "arrow",
+          arrowHeads: obj.type === "arrow" ? (obj.arrowHeads ?? "end") : "end",
+        };
+      }
+      if (obj.type === "arrow") {
+        const { arrowHeads: _arrowHeads, ...line } = obj;
+        return { ...line, type: "line" };
+      }
+      return obj;
+    });
+  };
+
+  const updateArrowHeads = (arrowHeads: "start" | "end" | "both") => {
+    if (!selected || selected.type !== "arrow") {
+      return;
+    }
+    updateObject(selected.id, (obj) =>
+      obj.type === "arrow" ? { ...obj, arrowHeads } : obj,
+    );
   };
 
   const handleSave = async () => {
@@ -1219,6 +1256,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             updateCrop={updateCrop}
             updateLineType={updateLineType}
             updateLineStyle={updateLineStyle}
+            updateArrowHeads={updateArrowHeads}
             updatePointValue={updatePointValue}
             addPoint={addPoint}
             removePoint={removePoint}

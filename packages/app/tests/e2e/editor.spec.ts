@@ -425,6 +425,25 @@ test("annotation editor: line and arrow types can be switched without changing p
   await expect(polyline).toHaveAttribute("points", originalPoints!);
 });
 
+test("annotation editor: arrow heads can be set to start, end, or both", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await page.getByTestId("object-item-a1").click();
+  const polyline = page.locator('.mm-editor-figure polyline[data-mm-id="a1"]');
+
+  await page.getByTestId("arrow-heads").selectOption("start");
+  await expect(polyline).toHaveAttribute("marker-start", /mm-arrow-a1-start/);
+  await expect(polyline).not.toHaveAttribute("marker-end");
+
+  await page.getByTestId("arrow-heads").selectOption("both");
+  await expect(polyline).toHaveAttribute("marker-start", /mm-arrow-a1-start/);
+  await expect(polyline).toHaveAttribute("marker-end", /mm-arrow-a1/);
+
+  await page.getByTestId("arrow-heads").selectOption("end");
+  await expect(polyline).toHaveAttribute("marker-end", /mm-arrow-a1/);
+  await expect(polyline).not.toHaveAttribute("marker-start");
+});
+
 test("annotation editor: line can be selected by clicking near the stroke", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
