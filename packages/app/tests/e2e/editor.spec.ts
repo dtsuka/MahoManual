@@ -772,3 +772,73 @@ test("annotation editor: tool palette shows tool-name tooltips", async ({ page }
   await badgeTool.hover();
   await expect.poll(tipOpacity, { timeout: 2000 }).toBe("1");
 });
+
+test("annotation editor: canvas margin expands canvas keeping object positions (SPEC §4.5)", async ({
+  page,
+}) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const originalJson = readFileSync(annotationPath, "utf8");
+  try {
+    await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+    await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+    const before = JSON.parse(originalJson) as {
+      canvas: { width: number; height: number };
+      objects: Array<{ id: string; at?: { x: number; y: number } }>;
+    };
+    const beforeBadge = before.objects.find((obj) => obj.id === "b1");
+
+    // 適用前: バッジ中心の画像(ラッパー)に対する相対位置を記録
+    const badge = page.locator('.mm-editor-figure [data-mm-id="b1"]');
+    const image = page.locator(".mm-editor-figure .mm-image").first();
+    const ratioOf = async () => {
+      const badgeBox = await badge.boundingBox();
+      const imageBox = await image.boundingBox();
+      if (!badgeBox || !imageBox) {
+        throw new Error("boundingBox unavailable");
+      }
+      return {
+        x: (badgeBox.x + badgeBox.width / 2 - imageBox.x) / imageBox.width,
+        y: (badgeBox.y + badgeBox.height / 2 - imageBox.y) / imageBox.height,
+      };
+    };
+    const beforeRatio = await ratioOf();
+
+    await page.getByTestId("canvas-margin-left").fill("100");
+    await page.getByTestId("canvas-margin-top").fill("50");
+    await page.getByTestId("canvas-margin-apply").click();
+
+    // 画像に対するバッジの相対位置は変わらない(見た目の位置が維持される)
+    const afterRatio = await ratioOf();
+    expect(Math.abs(afterRatio.x - beforeRatio.x)).toBeLessThan(0.01);
+    expect(Math.abs(afterRatio.y - beforeRatio.y)).toBeLessThan(0.01);
+
+    // 保存でJSONのcanvasと%座標が更新される
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) &&
+          response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
+
+    const saved = JSON.parse(readFileSync(annotationPath, "utf8")) as typeof before;
+    expect(saved.canvas.width).toBe(before.canvas.width + 100);
+    expect(saved.canvas.height).toBe(before.canvas.height + 50);
+    const savedBadge = saved.objects.find((obj) => obj.id === "b1");
+    const expectedX =
+      ((((beforeBadge?.at?.x ?? 0) / 100) * before.canvas.width + 100) /
+        (before.canvas.width + 100)) *
+      100;
+    const expectedY =
+      ((((beforeBadge?.at?.y ?? 0) / 100) * before.canvas.height + 50) /
+        (before.canvas.height + 50)) *
+      100;
+    expect(savedBadge?.at?.x ?? 0).toBeCloseTo(expectedX, 6);
+    expect(savedBadge?.at?.y ?? 0).toBeCloseTo(expectedY, 6);
+  } finally {
+    writeFileSync(annotationPath, originalJson, "utf8");
+  }
+});
