@@ -1,5 +1,5 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { minimalSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +25,10 @@ import {
   formatTocMarker,
   insertEditorText,
 } from "../lib/manual-insert.js";
+import {
+  extractAnnotatedFigures,
+  livePreview,
+} from "../lib/live-preview.js";
 import {
   IconArrowLeft,
   IconDownload,
@@ -61,6 +65,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const [insertError, setInsertError] = useState<string | null>(null);
   const [insertBusy, setInsertBusy] = useState(false);
   const [showImagePanel, setShowImagePanel] = useState(false);
+  const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -73,6 +78,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const previewSeqRef = useRef(0);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const livePreviewCompartmentRef = useRef(new Compartment());
 
   const refreshAnnotations = async () => {
     const manual = await fetchManual(project);
@@ -158,13 +164,13 @@ export function ManualEditor({ project }: ManualEditorProps) {
           minimalSetup,
           markdown(),
           EditorView.lineWrapping,
+          livePreviewCompartmentRef.current.of([]),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) {
               return;
             }
             const value = update.state.doc.toString();
             markdownRef.current = value;
-            setMarkdownText(value);
             if (!applyingExternalRef.current) {
               markDirty(true);
             }
@@ -177,6 +183,24 @@ export function ManualEditor({ project }: ManualEditorProps) {
     viewRef.current = view;
     return () => view.destroy();
   }, [project, markdownText === null]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+    const extension = livePreviewEnabled
+      ? livePreview({
+          figures: extractAnnotatedFigures(previewHtml),
+          onOpenAnnotation: (annotationId) => {
+            navigate(`/projects/${project}/annotations/${encodeURIComponent(annotationId)}`);
+          },
+        })
+      : [];
+    view.dispatch({
+      effects: livePreviewCompartmentRef.current.reconfigure(extension),
+    });
+  }, [livePreviewEnabled, previewHtml, project, navigate]);
 
   useEffect(() => {
     return subscribeProjectWatch(project, (event) => {
@@ -307,6 +331,15 @@ export function ManualEditor({ project }: ManualEditorProps) {
           <Button size="sm" data-testid="insert-toc" onClick={handleInsertToc}>
             <IconList size={14} />
             目次挿入
+          </Button>
+          <Button
+            size="sm"
+            variant={livePreviewEnabled ? "primary" : "secondary"}
+            data-testid="live-preview-toggle"
+            aria-pressed={livePreviewEnabled}
+            onClick={() => setLivePreviewEnabled((current) => !current)}
+          >
+            ライブプレビュー
           </Button>
           <Button
             size="sm"
@@ -443,7 +476,12 @@ export function ManualEditor({ project }: ManualEditorProps) {
           <div className="flex h-7 shrink-0 items-center border-b border-slate-100 bg-white px-4 text-[11px] font-medium text-slate-500">
             Markdown
           </div>
-          <div ref={editorHostRef} className="min-h-0 flex-1 overflow-hidden" data-testid="md-editor" />
+          <div
+            ref={editorHostRef}
+            className="min-h-0 flex-1 overflow-hidden"
+            data-testid="md-editor"
+            data-live-preview={livePreviewEnabled}
+          />
         </section>
         <section className="flex min-h-0 flex-col bg-slate-100">
           <div className="flex h-7 shrink-0 items-center border-b border-slate-200/70 bg-slate-100 px-4 text-[11px] font-medium text-slate-500">

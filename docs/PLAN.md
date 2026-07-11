@@ -196,9 +196,9 @@ Markdownテキストを正本として維持したまま、CodeMirror 6のDecora
 
 - [x] test: annotated-imageフェンスの検出 — 複数フェンスとチルダフェンスを検出し、別のコードフェンス内にある記法例やsrcなしフェンスは無視する
 - [x] test(e2e): ライブプレビュー切替→見出し装飾とannotated-imageのfigure表示 / Markdownソース表示への復帰 / figureクリックで注釈エディタへ遷移
-- [ ] 実装: CodeMirror StateField/ViewPluginによるMarkdown装飾。カーソルを含むブロックは記法を表示し、入力中のReact再レンダリングを発生させない
-- [ ] 実装: annotated-imageフェンスをcoreプレビューと同じfigure DOMのブロックWidgetとして表示し、フェンスソースを再表示できる操作を提供
-- [ ] 実装: ツールバーにライブプレビュー切替を追加。従来のソース編集・右ペインプレビュー・保存・挿入操作との互換性を維持
+- [x] 実装: CodeMirror StateField/ViewPluginによるMarkdown装飾。カーソルを含むブロックは記法を表示し、入力中のReact再レンダリングを発生させない
+- [x] 実装: annotated-imageフェンスをcoreプレビューと同じfigure DOMのブロックWidgetとして表示し、フェンスソースを再表示できる操作を提供
+- [x] 実装: ツールバーにライブプレビュー切替を追加。従来のソース編集・右ペインプレビュー・保存・挿入操作との互換性を維持
 
 **受け入れ基準**: Markdownソースを変換・再生成せず、ライブプレビュー内で本文を編集でき、独自画像フェンスと既存の注釈編集導線が機能する。
 

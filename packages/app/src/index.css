@@ -202,6 +202,101 @@ body {
   border-left-color: #2563eb;
 }
 
+/* Markdownの文字列を保持したまま、Decorationで納品物に近い見た目を作る */
+.cm-live-heading {
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  font-weight: 700;
+  color: #172033;
+}
+
+.cm-live-heading-1 {
+  font-size: 1.75em;
+  line-height: 1.45;
+}
+
+.cm-live-heading-2 {
+  margin-top: 0.65em;
+  font-size: 1.4em;
+  line-height: 1.5;
+  border-bottom: 1px solid #dbe2ea;
+}
+
+.cm-live-heading-3,
+.cm-live-heading-4,
+.cm-live-heading-5,
+.cm-live-heading-6 {
+  font-size: 1.12em;
+  line-height: 1.6;
+}
+
+.cm-live-strong {
+  font-weight: 700;
+}
+
+.cm-live-emphasis {
+  font-style: italic;
+}
+
+.cm-live-inline-code {
+  border-radius: 4px;
+  background: #f1f5f9;
+  padding: 0.08em 0.3em;
+  color: #be123c;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.cm-live-figure {
+  box-sizing: border-box;
+  margin: 14px 20px 20px;
+  border: 1px solid #dbe2ea;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+}
+
+.cm-live-figure-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #64748b;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cm-live-figure-toolbar button {
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 4px 7px;
+  color: #2563eb;
+  cursor: pointer;
+  font: inherit;
+}
+
+.cm-live-figure-toolbar button:hover {
+  background: #dbeafe;
+}
+
+.cm-live-figure-body {
+  padding: 18px;
+  background: white;
+}
+
+.cm-live-figure-body figure {
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.cm-live-figure-body figure:hover {
+  outline: 2px solid #93c5fd;
+}
+
 /* md プレビューペイン: 本文タイポグラフィは ManualEditor が THEME_TYPOGRAPHY_CSS を注入 */
 .preview-pane {
   font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
