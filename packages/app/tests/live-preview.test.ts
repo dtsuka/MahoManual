@@ -1,7 +1,10 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorState } from "@codemirror/state";
 import { describe, expect, it } from "vitest";
-import { findAnnotatedImageFences } from "../src/lib/live-preview.js";
+import {
+  findAnnotatedImageFences,
+  findFenceForVerticalMove,
+} from "../src/lib/live-preview.js";
 
 function stateFor(source: string): EditorState {
   return EditorState.create({ doc: source, extensions: [markdown()] });
@@ -47,5 +50,34 @@ describe("findAnnotatedImageFences", () => {
     const source = "```annotated-image\nwidth: 800\n```";
 
     expect(findAnnotatedImageFences(stateFor(source))).toEqual([]);
+  });
+});
+
+describe("findFenceForVerticalMove", () => {
+  const source = [
+    "# Before",
+    "",
+    "```annotated-image",
+    "src: demo",
+    "```",
+    "",
+    "After",
+  ].join("\n");
+
+  function stateAtLine(lineNumber: number): EditorState {
+    const state = stateFor(source);
+    return state.update({ selection: { anchor: state.doc.line(lineNumber).from } }).state;
+  }
+
+  it("finds the image fence immediately above the cursor", () => {
+    expect(findFenceForVerticalMove(stateAtLine(6), -1)?.annotationId).toBe("demo");
+  });
+
+  it("finds the image fence immediately below the cursor", () => {
+    expect(findFenceForVerticalMove(stateAtLine(2), 1)?.annotationId).toBe("demo");
+  });
+
+  it("does not intercept vertical movement away from an image fence", () => {
+    expect(findFenceForVerticalMove(stateAtLine(7), -1)).toBeNull();
   });
 });

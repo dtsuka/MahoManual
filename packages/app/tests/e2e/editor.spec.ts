@@ -192,6 +192,33 @@ test("manual editor: live preview renders markdown and annotated images inside C
   await expect(page.locator(".cm-content")).not.toContainText("```annotated-image");
 });
 
+test("manual editor: ArrowUp enters image source without jumping over the block widget", async ({
+  page,
+}) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.getByTestId("live-preview-toggle").click();
+
+  const figure = page.locator('.cm-live-figure[data-mm-annotation="1-1"]');
+  await expect(figure).toBeVisible();
+  await expect
+    .poll(() =>
+      figure.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.marginTop, style.marginBottom];
+      }),
+    )
+    .toEqual(["0px", "0px"]);
+
+  await page
+    .getByTestId("md-editor")
+    .getByText("左メニューの求人情報 > 施設情報から追加できます。", { exact: true })
+    .click();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowUp");
+
+  await expect(page.locator(".cm-content")).toContainText("```annotated-image");
+});
+
 test("manual editor: live preview can reveal source and return to source mode", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await page.getByTestId("live-preview-toggle").click();
