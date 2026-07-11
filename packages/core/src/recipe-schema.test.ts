@@ -33,4 +33,19 @@ describe("parseRecipe", () => {
       parseRecipe("url: /\noutput: x\nscreenshot:\n  target: {}\n"),
     ).toThrow(/target/i);
   });
+
+  it("parses screenshot.margin (SPEC §4.5)", () => {
+    const recipe = parseRecipe(
+      "url: /\noutput: x\nscreenshot:\n  target: fullPage\n  margin: { left: 60, top: 10 }\n",
+    );
+    expect(recipe.screenshot.margin).toEqual({ left: 60, top: 10 });
+  });
+
+  it("rejects non-numeric screenshot.margin", () => {
+    expect(() =>
+      parseRecipe(
+        "url: /\noutput: x\nscreenshot:\n  target: fullPage\n  margin: { left: wide }\n",
+      ),
+    ).toThrow(/margin/i);
+  });
 });

@@ -129,6 +129,79 @@ annotate:
     }
   }, 30000);
 
+  it("applies screenshot.margin: canvas expands, rect offsets, png stays region-only (SPEC §4.5)", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-capture-margin-"));
+    try {
+      writeProjectYaml(projectRoot, baseUrl);
+
+      const base = await runCapture(
+        projectRoot,
+        parseRecipe(`
+url: /
+viewport: { width: 1280, height: 900 }
+screenshot:
+  target: { x: 220, y: 0, w: 400, h: 300 }
+output: "cap-margin-base"
+annotate:
+  - type: badge
+    selector: "#tag-name"
+`),
+        { recipeId: "cap-margin-base", pageUrl: `${baseUrl}/` },
+      );
+
+      const withMargin = await runCapture(
+        projectRoot,
+        parseRecipe(`
+url: /
+viewport: { width: 1280, height: 900 }
+screenshot:
+  target: { x: 220, y: 0, w: 400, h: 300 }
+  margin: { left: 100, top: 50 }
+output: "cap-margin"
+annotate:
+  - type: badge
+    selector: "#tag-name"
+`),
+        { recipeId: "cap-margin", pageUrl: `${baseUrl}/` },
+      );
+
+      const baseAnnotation = parseAnnotation(
+        JSON.parse(readFileSync(base.annotationPath, "utf8")),
+      );
+      const annotation = parseAnnotation(
+        JSON.parse(readFileSync(withMargin.annotationPath, "utf8")),
+      );
+      const size = imageSize(readFileSync(withMargin.rawImagePath));
+
+      // canvasは領域+余白、スクショPNGは領域のみ(余白画素を含まない)
+      expect(annotation.canvas).toEqual({ width: 500, height: 350 });
+      expect(size.width).toBe(800);
+      expect(size.height).toBe(600);
+
+      // imageは余白分オフセットして配置、cropは領域全体のまま
+      const imageObj = annotation.objects.find((o) => o.type === "image");
+      expect(imageObj?.rect.x).toBeCloseTo(20, 6);
+      expect(imageObj?.rect.y).toBeCloseTo((50 / 350) * 100, 6);
+      expect(imageObj?.rect.w).toBeCloseTo(80, 6);
+      expect(imageObj?.rect.h).toBeCloseTo((300 / 350) * 100, 6);
+      expect(imageObj?.crop).toEqual({ x: 0, y: 0, w: 800, h: 600 });
+
+      // 注釈の%座標は余白込みで再計算される(余白なし撮影と同じ実位置)
+      const baseBadge = baseAnnotation.objects.find((o) => o.type === "badge");
+      const badge = annotation.objects.find((o) => o.type === "badge");
+      expect(badge?.at.x).toBeCloseTo(
+        ((((baseBadge?.at.x ?? 0) / 100) * 400 + 100) / 500) * 100,
+        6,
+      );
+      expect(badge?.at.y).toBeCloseTo(
+        ((((baseBadge?.at.y ?? 0) / 100) * 300 + 50) / 350) * 100,
+        6,
+      );
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  }, 30000);
+
   it("captures clip target: canvas equals clip rect and image matches", async () => {
     const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-capture-clip-"));
     try {
