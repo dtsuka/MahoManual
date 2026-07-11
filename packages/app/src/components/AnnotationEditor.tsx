@@ -109,6 +109,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [dirty, setDirty] = useState(false);
   const [, setHistoryVersion] = useState(0);
   const [draft, setDraft] = useState<DraftShape | null>(null);
+  const [interactionObjects, setInteractionObjects] = useState<AnnotationObject[] | null>(null);
   const [marginDraft, setMarginDraft] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
   const [dragListIndex, setDragListIndex] = useState<number | null>(null);
@@ -132,14 +133,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (!annotation) {
       return "";
     }
+    const renderedAnnotation = interactionObjects
+      ? { ...annotation, objects: interactionObjects }
+      : annotation;
     return injectObjectIds(
       rewriteFigureHtml(
-        renderFigure(annotation, { naturalSizes, fence: { width: annotation.canvas.width } }),
+        renderFigure(renderedAnnotation, {
+          naturalSizes,
+          fence: { width: annotation.canvas.width },
+        }),
         project,
       ),
-      taggableObjectsInDisplayOrder(annotation.objects),
+      taggableObjectsInDisplayOrder(renderedAnnotation.objects),
     );
-  }, [annotation, naturalSizes, project]);
+  }, [annotation, interactionObjects, naturalSizes, project]);
 
   const fetchPayload = async (): Promise<AnnotationPayload> => {
     const response = await fetch(
@@ -450,13 +457,14 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (obj.type === "badge" || obj.type === "text" || obj.type === "cursor") {
       // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
       const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
-      const el = target as HTMLElement;
       startPointerDrag(event, {
         onMove: (pct) => {
-          el.style.left = `${pct.x + grab.x}%`;
-          el.style.top = `${pct.y + grab.y}%`;
+          const dx = pct.x + grab.x - obj.at.x;
+          const dy = pct.y + grab.y - obj.at.y;
+          setInteractionObjects(translateObjects(current.objects, new Set(dragIds), dx, dy));
         },
         onEnd: (pct, moved) => {
+          setInteractionObjects(null);
           if (!moved) {
             return;
           }
@@ -475,16 +483,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (isRectObject(obj)) {
       const rect0 = obj.rect;
       const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
-      const el = target as HTMLElement;
       const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
       startPointerDrag(event, {
         onMove: (pct) => {
           const next = rectFor(pct);
-          el.style.left = `${next.x}%`;
-          el.style.top = `${next.y}%`;
+          setInteractionObjects(translateObjects(
+            current.objects,
+            new Set(dragIds),
+            next.x - rect0.x,
+            next.y - rect0.y,
+          ));
           setDraft({ rect: next });
         },
         onEnd: (pct, moved) => {
+          setInteractionObjects(null);
           setDraft(null);
           if (!moved) {
             return;
@@ -527,11 +539,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       }));
     startPointerDrag(event, {
       onMove: (pct) => {
-        const next = pointsFor(pct);
-        setPolylinePoints(objectId, next);
-        setPointHandlePositions(next);
+        setInteractionObjects(translateObjects(
+          current.objects,
+          new Set(dragIds),
+          pct.x - startPct.x,
+          pct.y - startPct.y,
+        ));
       },
       onEnd: (pct, moved) => {
+        setInteractionObjects(null);
         if (!moved) {
           return;
         }
@@ -701,20 +717,19 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     const objectId = selected.id;
     const rect0 = selected.rect;
     const startPct = pctFromClient(event.clientX, event.clientY);
-    const el = figureRef.current?.querySelector<HTMLElement>(`[data-mm-id="${objectId}"]`);
     const rectFor = (pct: Pt): RectPct => resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y);
     startPointerDrag(event, {
       onMove: (pct) => {
         const next = rectFor(pct);
-        if (el) {
-          el.style.left = `${next.x}%`;
-          el.style.top = `${next.y}%`;
-          el.style.width = `${next.w}%`;
-          el.style.height = `${next.h}%`;
-        }
+        setInteractionObjects(annotation.objects.map((item) =>
+          item.id === objectId && isEditable(item) && isRectObject(item)
+            ? { ...item, rect: next }
+            : item,
+        ));
         setDraft({ rect: next });
       },
       onEnd: (pct, moved) => {
+        setInteractionObjects(null);
         setDraft(null);
         if (!moved) {
           return;
@@ -1002,15 +1017,16 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     });
   };
 
-  const activeFrameRect = selected && isEditable(selected) && isRectObject(selected)
-    ? (draft?.rect ?? selected.rect)
+  const interactionSelected = interactionObjects?.find((obj) => obj.id === selectedId) ?? selected;
+  const activeFrameRect = interactionSelected && isEditable(interactionSelected) && isRectObject(interactionSelected)
+    ? (draft?.rect ?? interactionSelected.rect)
     : null;
   const activeLinePoints =
-    selected && isEditable(selected) && isLineObject(selected)
-      ? selected.points
+    interactionSelected && isEditable(interactionSelected) && isLineObject(interactionSelected)
+      ? interactionSelected.points
       : null;
 
-  const lineObjects = annotation.objects.filter(isLineObject);
+  const lineObjects = (interactionObjects ?? annotation.objects).filter(isLineObject);
   const toCanvasPoints = (points: Pt[]): string =>
     points
       .map(

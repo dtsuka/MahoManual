@@ -341,7 +341,8 @@ test("annotation editor: objects follow the pointer while dragging and resizing"
 
   await page.reload();
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
-  const badge = page.locator('[data-mm-id="b1"]');
+  const badge = page.locator('[data-mm-id="b9"]');
+  await expect(badge).toBeVisible();
   const badgeBox = await badge.boundingBox();
   if (!badgeBox) {
     throw new Error("badge has no bounding box");
@@ -359,12 +360,12 @@ test("annotation editor: every selected object follows a group drag", async ({ p
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
-  await page.getByTestId("object-item-b1").click();
-  await page.getByTestId("object-item-b2").click({ modifiers: ["ControlOrMeta"] });
+  await page.getByTestId("object-item-b9").click();
+  await page.getByTestId("object-item-b10").click({ modifiers: ["ControlOrMeta"] });
   await expect(page.getByTestId("selection-count")).toHaveText("2個選択");
 
-  const first = page.locator('[data-mm-id="b1"]');
-  const second = page.locator('[data-mm-id="b2"]');
+  const first = page.locator('[data-mm-id="b9"]');
+  const second = page.locator('[data-mm-id="b10"]');
   const firstLeftBefore = await first.evaluate((element) => Number.parseFloat(element.style.left));
   const secondLeftBefore = await second.evaluate((element) => Number.parseFloat(element.style.left));
   const secondBox = await second.boundingBox();
