@@ -15,6 +15,7 @@
     "./theme": "./src/theme.ts",
     "./capture": "./src/capture.ts",
     "./capture-math": "./src/capture-math.ts",
+    "./expand-canvas": "./src/expand-canvas.ts",
     "./merge-annotations": "./src/merge-annotations.ts"
   },
   "scripts": {

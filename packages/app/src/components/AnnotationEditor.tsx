@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { renderFigure } from "@mahomanual/core/render";
+import { expandCanvas } from "@mahomanual/core/expand-canvas";
 import {
   annotationThemeCss,
   DEFAULT_ANNOTATION_COLOR,
@@ -222,6 +223,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [dirty, setDirty] = useState(false);
   const [, setHistoryVersion] = useState(0);
   const [draft, setDraft] = useState<DraftShape | null>(null);
+  const [marginDraft, setMarginDraft] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
   const [dragListIndex, setDragListIndex] = useState<number | null>(null);
   const [dropListIndex, setDropListIndex] = useState<number | null>(null);
@@ -338,6 +340,21 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       future: historyRef.current.future.slice(1),
     };
     restoreHistoryAnnotation(next);
+  };
+
+  // SPEC §4.5: キャンバス余白。全オブジェクトの%座標を再計算して見た目位置を維持する
+  const applyCanvasMargin = () => {
+    const { top, right, bottom, left } = marginDraft;
+    if (!top && !right && !bottom && !left) {
+      return;
+    }
+    try {
+      applyLocalChange((current) => expandCanvas(current, marginDraft));
+      setMarginDraft({ top: 0, right: 0, bottom: 0, left: 0 });
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "余白の適用に失敗しました");
+    }
   };
 
   useEffect(() => {
@@ -1306,6 +1323,45 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               </li>
             ))}
             </ul>
+          </section>
+          <section className="border-b border-slate-100 p-3">
+            <h2 className="mb-2 text-xs font-semibold text-slate-700">キャンバス余白</h2>
+            <p className="mb-2 text-[11px] leading-relaxed text-slate-500">
+              画像の外側へ注釈を置くための余白を追加します(負値で削除)。既存オブジェクトの見た目の位置は変わりません。
+            </p>
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
+              <NumberField
+                label="上"
+                value={marginDraft.top}
+                step={10}
+                testId="canvas-margin-top"
+                onChange={(value) => setMarginDraft((current) => ({ ...current, top: value }))}
+              />
+              <NumberField
+                label="右"
+                value={marginDraft.right}
+                step={10}
+                testId="canvas-margin-right"
+                onChange={(value) => setMarginDraft((current) => ({ ...current, right: value }))}
+              />
+              <NumberField
+                label="下"
+                value={marginDraft.bottom}
+                step={10}
+                testId="canvas-margin-bottom"
+                onChange={(value) => setMarginDraft((current) => ({ ...current, bottom: value }))}
+              />
+              <NumberField
+                label="左"
+                value={marginDraft.left}
+                step={10}
+                testId="canvas-margin-left"
+                onChange={(value) => setMarginDraft((current) => ({ ...current, left: value }))}
+              />
+            </div>
+            <Button size="sm" data-testid="canvas-margin-apply" onClick={applyCanvasMargin}>
+              適用
+            </Button>
           </section>
           <section className="flex-1 p-3">
           <h2 className="mb-2 text-xs font-semibold text-slate-700">プロパティ</h2>

@@ -166,8 +166,8 @@
 
 ### 6-4. GUI: 余白追加UI
 
-- [ ] test(e2e): 余白を追加→既存オブジェクトの表示位置(px)が維持される→保存でJSONのcanvas・座標が更新される
-- [ ] 実装: AnnotationEditorにキャンバス余白UI(上/右/下/左のpx入力、coreのexpandCanvasを使用)
+- [x] test(e2e): 余白を追加→既存オブジェクトの表示位置(px)が維持される→保存でJSONのcanvas・座標が更新される
+- [x] 実装: AnnotationEditorにキャンバス余白UI(上/右/下/左のpx入力、coreのexpandCanvasを使用)
 
 **受け入れ基準**: 画像左端の要素のさらに左へbadgeを置いたマニュアルを、GUI・MCP・レシピのいずれからでも作成でき、HTML/PDF納品に余白が反映される。
 

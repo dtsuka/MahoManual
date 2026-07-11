@@ -791,6 +791,8 @@ test("annotation editor: canvas margin expands canvas keeping object positions (
     // 適用前: バッジ中心の画像(ラッパー)に対する相対位置を記録
     const badge = page.locator('.mm-editor-figure [data-mm-id="b1"]');
     const image = page.locator(".mm-editor-figure .mm-image").first();
+    await expect(badge).toBeVisible();
+    await expect(image).toBeVisible();
     const ratioOf = async () => {
       const badgeBox = await badge.boundingBox();
       const imageBox = await image.boundingBox();
