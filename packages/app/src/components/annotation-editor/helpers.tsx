@@ -1,5 +1,4 @@
 import type { AnnotationObject } from "@mahomanual/core/schema";
-import type { RectPct } from "../../lib/geometry.js";
 import {
   IconArrowLine,
   IconBadge,
@@ -130,8 +129,4 @@ export function objectIcon(type: AnnotationObject["type"], size = 14) {
       return _exhaustive;
     }
   }
-}
-
-export interface DraftShape {
-  rect?: RectPct;
 }

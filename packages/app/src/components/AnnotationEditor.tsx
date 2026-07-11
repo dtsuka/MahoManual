@@ -66,7 +66,6 @@ import { AnnotationProperties } from "./annotation-editor/AnnotationProperties.j
 import { CanvasMarginPanel } from "./annotation-editor/CanvasMarginPanel.js";
 import { ImageFilePickerModal } from "./annotation-editor/ImageFilePickerModal.js";
 import {
-  type DraftShape,
   FRAME_HANDLES,
   readImageFile,
 } from "./annotation-editor/helpers.js";
@@ -108,7 +107,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [error, setError] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [, setHistoryVersion] = useState(0);
-  const [draft, setDraft] = useState<DraftShape | null>(null);
   const [interactionObjects, setInteractionObjects] = useState<AnnotationObject[] | null>(null);
   const [marginDraft, setMarginDraft] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
@@ -275,7 +273,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   }, [project, annotationId]);
 
   useEffect(() => {
-    setDraft(null);
     setSelectedPointIndex(null);
   }, [selectedId]);
 
@@ -398,35 +395,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     window.addEventListener("pointerup", onPointerUp);
   };
 
-  // 本体と透明ヒットエリアの両方の polyline を同時に更新する
-  const setPolylinePoints = (objectId: string, points: Pt[]) => {
-    const canvas = annotationRef.current?.canvas;
-    const root = figureRef.current;
-    if (!canvas || !root) {
-      return;
-    }
-    const value = points
-      .map((point) => `${(point.x / 100) * canvas.width},${(point.y / 100) * canvas.height}`)
-      .join(" ");
-    root
-      .querySelectorAll(`polyline[data-mm-id="${objectId}"]`)
-      .forEach((element) => element.setAttribute("points", value));
-  };
-
-  const setPointHandlePositions = (points: Pt[]) => {
-    const root = wrapRef.current;
-    if (!root) {
-      return;
-    }
-    root.querySelectorAll<HTMLElement>('[data-testid^="point-handle-"]').forEach((handle, index) => {
-      const point = points[index];
-      if (point) {
-        handle.style.left = `${point.x}%`;
-        handle.style.top = `${point.y}%`;
-      }
-    });
-  };
-
   // figure 上のドラッグはイベント委任で受ける。
   // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
   // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
@@ -493,11 +461,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             next.x - rect0.x,
             next.y - rect0.y,
           ));
-          setDraft({ rect: next });
         },
         onEnd: (pct, moved) => {
           setInteractionObjects(null);
-          setDraft(null);
           if (!moved) {
             return;
           }
@@ -682,62 +648,51 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   const addLine = (type: "line" | "arrow") => {
     const id = createObjectId(type, annotation.objects);
+    const points = [
+      { x: 20, y: 80 },
+      { x: 50, y: 80 },
+      { x: 50, y: 20 },
+    ];
     const newObject: AnnotationObject = type === "arrow"
-      ? {
-          id,
-          type,
-          source: "manual",
-          arrowHeads: "end",
-          points: [
-            { x: 20, y: 80 },
-            { x: 50, y: 80 },
-            { x: 50, y: 20 },
-          ],
-        }
-      : {
-          id,
-          type,
-          source: "manual",
-          points: [
-            { x: 20, y: 80 },
-            { x: 50, y: 80 },
-            { x: 50, y: 20 },
-          ],
-        };
+      ? { id, type, source: "manual", arrowHeads: "end", points }
+      : { id, type, source: "manual", points };
     applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
     setSelectedIds([id]);
   };
 
   const beginRectResize = (event: ReactPointerEvent, dir: string) => {
-    if (!selected || !isEditable(selected) || !isRectObject(selected)) {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const selectedObject = current.objects.find((obj) => obj.id === selectedId);
+    if (!selectedObject || !isEditable(selectedObject) || !isRectObject(selectedObject)) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    const objectId = selected.id;
-    const rect0 = selected.rect;
+    const objectId = selectedObject.id;
+    const rect0 = selectedObject.rect;
     const startPct = pctFromClient(event.clientX, event.clientY);
     const rectFor = (pct: Pt): RectPct => resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y);
     startPointerDrag(event, {
       onMove: (pct) => {
         const next = rectFor(pct);
-        setInteractionObjects(annotation.objects.map((item) =>
+        setInteractionObjects(current.objects.map((item) =>
           item.id === objectId && isEditable(item) && isRectObject(item)
             ? { ...item, rect: next }
             : item,
         ));
-        setDraft({ rect: next });
       },
       onEnd: (pct, moved) => {
         setInteractionObjects(null);
-        setDraft(null);
         if (!moved) {
           return;
         }
         const next = rectFor(pct);
-        applyLocalChange((current) => ({
-          ...current,
-          objects: current.objects.map((item) =>
+        applyLocalChange((latest) => ({
+          ...latest,
+          objects: latest.objects.map((item) =>
             item.id === objectId && isEditable(item) && isRectObject(item)
               ? { ...item, rect: next }
               : item,
@@ -748,14 +703,19 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const beginPointDrag = (event: ReactPointerEvent, index: number) => {
-    if (!selected || !isEditable(selected) || !isLineObject(selected)) {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const selectedObject = current.objects.find((obj) => obj.id === selectedId);
+    if (!selectedObject || !isEditable(selectedObject) || !isLineObject(selectedObject)) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
     setSelectedPointIndex(index);
-    const objectId = selected.id;
-    const points0 = selected.points;
+    const objectId = selectedObject.id;
+    const points0 = selectedObject.points;
     const startPct = pctFromClient(event.clientX, event.clientY);
     const grab = {
       x: points0[index]!.x - startPct.x,
@@ -780,17 +740,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     startPointerDrag(event, {
       onMove: (pct, moveEvent) => {
         const next = pointsFor(snap(pct, moveEvent.shiftKey));
-        setPolylinePoints(objectId, next);
-        setPointHandlePositions(next);
+        setInteractionObjects(
+          current.objects.map((item) =>
+            item.id === objectId && isLineObject(item)
+              ? { ...item, points: next }
+              : item,
+          ),
+        );
       },
       onEnd: (pct, moved, endEvent) => {
+        setInteractionObjects(null);
         if (!moved) {
           return;
         }
         const next = pointsFor(snap(pct, endEvent.shiftKey));
-        applyLocalChange((current) => ({
-          ...current,
-          objects: current.objects.map((item) =>
+        applyLocalChange((latest) => ({
+          ...latest,
+          objects: latest.objects.map((item) =>
             item.id === objectId && isLineObject(item)
               ? { ...item, points: next }
               : item,
@@ -1019,7 +985,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   const interactionSelected = interactionObjects?.find((obj) => obj.id === selectedId) ?? selected;
   const activeFrameRect = interactionSelected && isEditable(interactionSelected) && isRectObject(interactionSelected)
-    ? (draft?.rect ?? interactionSelected.rect)
+    ? interactionSelected.rect
     : null;
   const activeLinePoints =
     interactionSelected && isEditable(interactionSelected) && isLineObject(interactionSelected)
@@ -1289,22 +1255,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         </aside>
       </div>
       <ImageFilePickerModal
-        open={imagePickerMode === "add"}
-        title="画像を追加"
-        description="キャンバスに新しい画像オブジェクトを追加します。"
-        modalTestId="add-image-modal"
-        fileInputTestId="add-image-input"
+        open={imagePickerMode !== null}
+        title={imagePickerMode === "replace" ? "画像ファイルを置換" : "画像を追加"}
+        description={
+          imagePickerMode === "replace"
+            ? "選択中の画像オブジェクトのファイルだけを差し替えます。注釈は保持されます。"
+            : "キャンバスに新しい画像オブジェクトを追加します。"
+        }
+        modalTestId={imagePickerMode === "replace" ? "replace-image-modal" : "add-image-modal"}
+        fileInputTestId={imagePickerMode === "replace" ? "replace-image-input" : "add-image-input"}
         onClose={() => setImagePickerMode(null)}
-        onSelect={(file) => void handleAddImage(file)}
-      />
-      <ImageFilePickerModal
-        open={imagePickerMode === "replace"}
-        title="画像ファイルを置換"
-        description="選択中の画像オブジェクトのファイルだけを差し替えます。注釈は保持されます。"
-        modalTestId="replace-image-modal"
-        fileInputTestId="replace-image-input"
-        onClose={() => setImagePickerMode(null)}
-        onSelect={(file) => void handleReplaceImage(file)}
+        onSelect={(file) => {
+          if (imagePickerMode === "replace") {
+            void handleReplaceImage(file);
+          } else {
+            void handleAddImage(file);
+          }
+        }}
       />
     </div>
   );
