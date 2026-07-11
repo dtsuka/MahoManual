@@ -1,9 +1,17 @@
 import { syntaxTree } from "@codemirror/language";
-import { StateField, type EditorState, type Extension, type Range } from "@codemirror/state";
+import {
+  Prec,
+  StateField,
+  type EditorState,
+  type Extension,
+  type Range,
+} from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
+  type Command,
   WidgetType,
 } from "@codemirror/view";
 
@@ -49,6 +57,31 @@ export function findAnnotatedImageFences(state: EditorState): AnnotatedImageFenc
   });
 
   return fences;
+}
+
+export function findFenceForVerticalMove(
+  state: EditorState,
+  direction: -1 | 1,
+): AnnotatedImageFence | null {
+  const selection = state.selection.main;
+  if (!selection.empty) {
+    return null;
+  }
+  const cursorLine = state.doc.lineAt(selection.head);
+  for (const fence of findAnnotatedImageFences(state)) {
+    if (direction < 0) {
+      const closingLine = state.doc.lineAt(fence.to);
+      if (cursorLine.number === closingLine.number + 1) {
+        return fence;
+      }
+    } else {
+      const openingLine = state.doc.lineAt(fence.from);
+      if (cursorLine.number === openingLine.number - 1) {
+        return fence;
+      }
+    }
+  }
+  return null;
 }
 
 export function extractAnnotatedFigures(html: string): Map<string, string> {
@@ -129,7 +162,10 @@ class AnnotatedImageWidget extends WidgetType {
       this.onOpenAnnotation(this.fence.annotationId);
     });
 
-    container.append(toolbar, body);
+    const card = document.createElement("div");
+    card.className = "cm-live-figure-card";
+    card.append(toolbar, body);
+    container.append(card);
     return container;
   }
 
@@ -204,6 +240,58 @@ function buildDecorations(state: EditorState, options: LivePreviewOptions): Deco
   return Decoration.set(ranges, true);
 }
 
+function moveIntoImageFence(direction: -1 | 1): Command {
+  return (view) => {
+    const selection = view.state.selection.main;
+    if (!selection.empty) {
+      return false;
+    }
+    const fences = findAnnotatedImageFences(view.state);
+    const activeFence = fences.find(
+      (fence) => selection.head >= fence.from && selection.head <= fence.to,
+    );
+    if (activeFence) {
+      // Widgetからソースへ切り替えた直後はCodeMirrorの高さ計測が変わるため、
+      // 標準のピクセル基準移動ではなくMarkdown上の隣接行へ移動する。
+      const currentLine = view.state.doc.lineAt(selection.head);
+      const targetLineNumber = currentLine.number + direction;
+      if (targetLineNumber < 1 || targetLineNumber > view.state.doc.lines) {
+        return false;
+      }
+      const targetLine = view.state.doc.line(targetLineNumber);
+      const column = selection.head - currentLine.from;
+      view.dispatch({
+        selection: { anchor: targetLine.from + Math.min(column, targetLine.length) },
+        scrollIntoView: true,
+      });
+      return true;
+    }
+    const directFence = findFenceForVerticalMove(view.state, direction);
+    const defaultTarget = view.moveVertically(selection, direction > 0);
+    // Block replacementを標準移動が飛び越える場合だけフェンスへ入る。
+    // それ以外はfalseを返し、通常のCodeMirrorキーマップに処理を任せる。
+    const crossedFences = fences.filter((fence) =>
+      direction < 0
+        ? selection.head > fence.to && defaultTarget.head <= fence.from
+        : selection.head < fence.from && defaultTarget.head >= fence.to,
+    );
+    const fence =
+      directFence ??
+      (direction < 0
+        ? crossedFences[crossedFences.length - 1]
+        : crossedFences[0]);
+    if (!fence) {
+      return false;
+    }
+    const anchor = direction < 0 ? fence.to : fence.from;
+    view.dispatch({
+      selection: { anchor },
+      scrollIntoView: true,
+    });
+    return true;
+  };
+}
+
 export function livePreview(options: LivePreviewOptions): Extension {
   const field = StateField.define<DecorationSet>({
     create(state) {
@@ -217,5 +305,13 @@ export function livePreview(options: LivePreviewOptions): Extension {
     },
     provide: (value) => EditorView.decorations.from(value),
   });
-  return field;
+  return [
+    field,
+    Prec.highest(
+      keymap.of([
+        { key: "ArrowUp", run: moveIntoImageFence(-1) },
+        { key: "ArrowDown", run: moveIntoImageFence(1) },
+      ]),
+    ),
+  ];
 }

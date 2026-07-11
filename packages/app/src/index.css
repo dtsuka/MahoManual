@@ -254,12 +254,18 @@ body {
 
 .cm-live-figure {
   box-sizing: border-box;
-  margin: 14px 20px 20px;
+  /* Block Widgetの垂直marginはCodeMirrorの座標計算を狂わせるため内部paddingで空ける */
+  margin: 0 20px;
+  padding: 14px 0 20px;
+  background: transparent;
+  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+}
+
+.cm-live-figure-card {
   border: 1px solid #dbe2ea;
   border-radius: 8px;
   background: #f8fafc;
   overflow: hidden;
-  font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
 }
 
 .cm-live-figure-toolbar {
