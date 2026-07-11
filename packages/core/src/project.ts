@@ -19,6 +19,7 @@ import {
   parseRecipe,
   type CaptureRecipe,
 } from "./schema.js";
+import { applyDefaultImageLocks } from "./annotation-objects.js";
 
 export function renumberBadges(annotation: AnnotationFile): AnnotationFile {
   let counter = 1;
@@ -190,7 +191,8 @@ export function readAnnotationFile(projectRoot: string, id: string): AnnotationF
   if (!existsSync(path)) {
     throw new Error(`注釈ファイルが見つかりません: ${id}`);
   }
-  return parseAnnotation(JSON.parse(readFileSync(path, "utf8")));
+  const annotation = parseAnnotation(JSON.parse(readFileSync(path, "utf8")));
+  return applyDefaultImageLocks(annotation, id);
 }
 
 export function writeAnnotationFile(projectRoot: string, id: string, annotation: AnnotationFile): void {

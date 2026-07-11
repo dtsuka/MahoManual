@@ -646,6 +646,7 @@ test("annotation editor: keyboard move, copy/paste, multi-select and crop editin
     await expect(page.getByTestId("selection-count")).toHaveText("2個選択");
 
     await page.getByTestId("object-item-img-main").click();
+    await page.getByTestId("object-lock-img-main").click();
     await page.getByTestId("crop-x").fill("10");
     await page.getByTestId("crop-y").fill("20");
     await page.getByTestId("crop-w").fill("800");
@@ -694,6 +695,7 @@ test("annotation editor: selected image can be replaced without losing annotatio
   try {
     const objectCount = await page.locator('[data-testid^="object-item-"]').count();
     await page.getByTestId("object-item-img-main").click();
+    await page.getByTestId("object-lock-img-main").click();
     await page.getByTestId("replace-image-button").click();
     await page.getByTestId("replace-image-input").setInputFiles(replacementPath);
 

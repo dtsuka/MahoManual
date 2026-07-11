@@ -114,8 +114,14 @@ describe("Hono API", () => {
   it("GET /api/projects/:project/annotations/:id returns annotation", async () => {
     const response = await app.request(`/api/projects/${testProject}/annotations/test-1`);
     expect(response.status).toBe(200);
-    const payload = (await response.json()) as { annotation: { version: number } };
+    const payload = (await response.json()) as {
+      annotation: {
+        version: number;
+        objects: Array<{ id: string; locked?: boolean }>;
+      };
+    };
     expect(payload.annotation.version).toBe(1);
+    expect(payload.annotation.objects[0]).toMatchObject({ id: "img-main", locked: true });
   });
 
   it("GET /api/projects/:project/annotations/:id/image.png downloads a composed PNG", async () => {
