@@ -155,8 +155,8 @@
 
 ### 6-2. MCP: expand_canvas ツール
 
-- [ ] test: InMemoryトランスポートで expand_canvas 実行→注釈JSONのcanvasと全オブジェクト座標が更新される / 不正margin(canvas寸法が0以下)はエラーメッセージを返す
-- [ ] 実装: project.tsに `expandCanvasFile(projectRoot, id, margin)`、mcp/server.tsにツール追加
+- [x] test: InMemoryトランスポートで expand_canvas 実行→注釈JSONのcanvasと全オブジェクト座標が更新される / 不正margin(canvas寸法が0以下)はエラーメッセージを返す
+- [x] 実装: project.tsに `expandCanvasFile(projectRoot, id, margin)`、mcp/server.tsにツール追加
 
 ### 6-3. レシピ: screenshot.margin
 

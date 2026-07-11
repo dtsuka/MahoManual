@@ -32,6 +32,7 @@ export {
   countUnicodeBadges,
   createManualProject,
   createAnnotationSkeleton,
+  expandCanvasFile,
   exportManualPdf,
   listManuals,
   listRecipeFiles,

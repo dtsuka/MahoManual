@@ -1,6 +1,7 @@
 import {
   addAnnotationObject,
   buildManualHtml,
+  expandCanvasFile,
   exportManualPdf,
   listManuals,
   readAnnotationFile,
@@ -145,6 +146,31 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
       runTool(() => {
         const projectRoot = resolveProjectPath(projectsDir, project);
         return setCrop(projectRoot, id, objectId, crop);
+      }),
+  );
+
+  server.registerTool(
+    "expand_canvas",
+    {
+      description:
+        "キャンバス余白を追加/削除します(SPEC §4.5)。canvasを拡張し全オブジェクトの%座標を再計算して見た目位置を維持します。画像の端の外側に注釈を置きたいときに使います",
+      inputSchema: {
+        project: z.string().describe("プロジェクト名またはパス"),
+        id: z.string().describe("注釈 ID"),
+        margin: z
+          .object({
+            top: z.number().optional(),
+            right: z.number().optional(),
+            bottom: z.number().optional(),
+            left: z.number().optional(),
+          })
+          .describe("上下左右の余白CSS px(負値で削除。結果のcanvas寸法は正であること)"),
+      },
+    },
+    async ({ project, id, margin }) =>
+      runTool(() => {
+        const projectRoot = resolveProjectPath(projectsDir, project);
+        return expandCanvasFile(projectRoot, id, margin);
       }),
   );
 

@@ -12,6 +12,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { YAMLMap, parseDocument, parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
+import { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
 import {
   annotationObjectSchema,
   parseAnnotation,
@@ -335,6 +336,17 @@ export function setCrop(
     throw new Error(`object is not image: ${objectId}`);
   }
   return updateAnnotationObject(projectRoot, id, objectId, { crop });
+}
+
+export function expandCanvasFile(
+  projectRoot: string,
+  id: string,
+  margin: CanvasMargin,
+): AnnotationFile {
+  const annotation = readAnnotationFile(projectRoot, id);
+  const next = expandCanvas(annotation, margin);
+  writeAnnotationFile(projectRoot, id, next);
+  return next;
 }
 
 export function renumberBadgesFile(projectRoot: string, id: string): AnnotationFile {
