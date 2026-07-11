@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import {
   buildPreviewHtml,
+  collectImageSources,
   getNaturalSizes,
   parseAnnotation,
   renderAnnotationPng,
@@ -32,14 +33,6 @@ import { createWatchHandler } from "./watch.js";
 
 import type { AnnotationFile } from "@mahomanual/core";
 
-function collectImageSources(annotation: AnnotationFile): string[] {
-  return annotation.objects
-    .filter((obj): obj is Extract<(typeof annotation.objects)[number], { type: "image" }> => obj.type === "image")
-    .map((obj) => obj.src);
-}
-
-// プロジェクト名・注釈ID・画像ID はファイル名の1セグメントに限定する
-// (パス区切りや .. によるプロジェクト外への読み書きを防ぐ)
 function isSafeName(name: string): boolean {
   return name.length > 0 && !name.includes("/") && !name.includes("\\") && !name.includes("..");
 }

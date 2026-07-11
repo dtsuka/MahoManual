@@ -1,3 +1,4 @@
+import { mosaicsForImage } from "./annotation-objects.js";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import { DEFAULT_CURSOR_COLOR } from "./theme.js";
 
@@ -226,9 +227,6 @@ export function renderFigure(annotation: AnnotationFile, opts: RenderOptions): s
       obj.type === "line" || obj.type === "arrow",
   );
 
-  const mosaics = annotation.objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "mosaic" }> => obj.type === "mosaic",
-  );
   const parts: string[] = [];
   for (const obj of annotation.objects) {
     if (obj.type === "line" || obj.type === "arrow" || obj.type === "mosaic") {
@@ -236,9 +234,7 @@ export function renderFigure(annotation: AnnotationFile, opts: RenderOptions): s
     }
     parts.push(renderObject(obj, opts.naturalSizes, alt, opts.imageSources));
     if (obj.type === "image") {
-      parts.push(...mosaics
-        .filter((mosaic) => mosaic.targetImageId === obj.id)
-        .map(renderMosaicObject));
+      parts.push(...mosaicsForImage(annotation.objects, obj.id).map(renderMosaicObject));
     }
   }
 

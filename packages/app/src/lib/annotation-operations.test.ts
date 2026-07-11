@@ -78,6 +78,15 @@ describe("duplicateObjects", () => {
       points: [{ x: 6, y: 7 }, { x: 16, y: 17 }],
     });
   });
+
+  it("ロック中のオブジェクトは複製しない", () => {
+    const locked = objects.map((obj) => obj.id === "frame-1" ? { ...obj, locked: true } : obj);
+    const duplicated = duplicateObjects(locked, ["badge-1", "frame-1"], 1);
+    expect(duplicated.objects).toHaveLength(6);
+    expect(duplicated.selectedIds).toHaveLength(1);
+    expect(duplicated.objects.filter((obj) => obj.type === "badge")).toHaveLength(2);
+    expect(duplicated.objects.some((obj) => obj.id === "frame-1")).toBe(true);
+  });
 });
 
 describe("clampCrop", () => {

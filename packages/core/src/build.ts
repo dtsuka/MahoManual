@@ -20,6 +20,7 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import { parse as parseYaml } from "yaml";
+import { collectImageSources } from "./annotation-objects.js";
 import { readProjectTheme } from "./project.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
 import { parseAnnotation } from "./schema.js";
@@ -72,12 +73,6 @@ function loadAnnotation(projectRoot: string, annotationId: string) {
   }
   const json = JSON.parse(readFileSync(annotationPath, "utf8"));
   return parseAnnotation(json);
-}
-
-function collectImageSources(annotation: ReturnType<typeof parseAnnotation>): string[] {
-  return annotation.objects
-    .filter((obj): obj is Extract<(typeof annotation.objects)[number], { type: "image" }> => obj.type === "image")
-    .map((obj) => obj.src);
 }
 
 function resolveNaturalSizes(

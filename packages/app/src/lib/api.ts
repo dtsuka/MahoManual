@@ -1,4 +1,5 @@
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
+import { taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import type { AnnotationTheme } from "@mahomanual/core/theme";
 
 export interface ProjectInfo {
@@ -220,22 +221,7 @@ export function rewriteFigureHtml(html: string, project: string): string {
 }
 
 export function injectObjectIds(html: string, objects: AnnotationObject[]): string {
-  type Taggable = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" }>;
-  const mosaics = objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "mosaic" }> => obj.type === "mosaic",
-  );
-  const taggable: Taggable[] = [];
-  for (const obj of objects) {
-    if (obj.type === "mosaic") {
-      continue;
-    }
-    if (obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame") {
-      taggable.push(obj);
-      if (obj.type === "image") {
-        taggable.push(...mosaics.filter((mosaic) => mosaic.targetImageId === obj.id));
-      }
-    }
-  }
+  const taggable = taggableObjectsInDisplayOrder(objects);
   let index = 0;
   return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame|mosaic)/g, (match, tag, kind) => {
     const obj = taggable[index];

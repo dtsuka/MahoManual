@@ -1,4 +1,5 @@
 import type { AnnotationObject } from "@mahomanual/core/schema";
+import { isEditable } from "@mahomanual/core/annotation-objects";
 import { createObjectId } from "./api.js";
 
 interface Size {
@@ -27,6 +28,10 @@ function translateObject(obj: AnnotationObject, dx: number, dy: number): Annotat
         ...obj,
         points: obj.points.map((point) => ({ x: point.x + dx, y: point.y + dy })),
       };
+    default: {
+      const _exhaustive: never = obj;
+      return _exhaustive;
+    }
   }
 }
 
@@ -36,14 +41,14 @@ export function translateObjects(
   dx: number,
   dy: number,
 ): AnnotationObject[] {
-  return objects.map((obj) => selectedIds.has(obj.id) && !obj.locked ? translateObject(obj, dx, dy) : obj);
+  return objects.map((obj) => selectedIds.has(obj.id) && isEditable(obj) ? translateObject(obj, dx, dy) : obj);
 }
 
 export function removeUnlockedObjects(
   objects: AnnotationObject[],
   selectedIds: ReadonlySet<string>,
 ): AnnotationObject[] {
-  return objects.filter((obj) => !selectedIds.has(obj.id) || obj.locked);
+  return objects.filter((obj) => !selectedIds.has(obj.id) || !isEditable(obj));
 }
 
 export function duplicateObjects(
@@ -55,7 +60,7 @@ export function duplicateObjects(
   const copies: AnnotationObject[] = [];
   const all = [...objects];
   for (const obj of objects) {
-    if (!selected.has(obj.id)) {
+    if (!selected.has(obj.id) || !isEditable(obj)) {
       continue;
     }
     const id = createObjectId(obj.type, all);

@@ -1,4 +1,17 @@
 export {
+  collectImageSources,
+  isEditable,
+  isLineObject,
+  isRectObject,
+  mosaicsForImage,
+  taggableObjectsInDisplayOrder,
+  type ImageObject,
+  type LineObject,
+  type MosaicObject,
+  type RectObject,
+  type TaggableObject,
+} from "./annotation-objects.js";
+export {
   buildPreviewHtml,
   buildProject,
   getNaturalSizes,
