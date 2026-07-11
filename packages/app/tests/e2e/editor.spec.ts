@@ -140,6 +140,47 @@ test("manual editor: preview and figure click opens annotation editor", async ({
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 });
 
+test("manual editor: live preview renders markdown and annotated images inside CodeMirror", async ({
+  page,
+}) => {
+  await page.goto(`/projects/${testProject}/manual`);
+
+  await page.getByTestId("live-preview-toggle").click();
+
+  await expect(page.getByTestId("md-editor")).toHaveAttribute("data-live-preview", "true");
+  await expect(page.locator(".cm-live-heading-1")).toContainText("アイケア様");
+  await expect(
+    page.locator('.cm-live-figure[data-mm-annotation="1-1"]'),
+  ).toBeVisible();
+  await expect(page.locator(".cm-content")).not.toContainText("```annotated-image");
+});
+
+test("manual editor: live preview can reveal source and return to source mode", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.getByTestId("live-preview-toggle").click();
+
+  await page
+    .locator('.cm-live-figure[data-mm-annotation="1-1"]')
+    .getByRole("button", { name: "Markdownを編集" })
+    .click();
+  await expect(page.locator(".cm-content")).toContainText("```annotated-image");
+
+  await page.getByTestId("live-preview-toggle").click();
+  await expect(page.getByTestId("md-editor")).toHaveAttribute("data-live-preview", "false");
+  await expect(page.locator(".cm-content")).toContainText("```annotated-image");
+});
+
+test("manual editor: clicking an annotated image in live preview opens its editor", async ({
+  page,
+}) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.getByTestId("live-preview-toggle").click();
+
+  await page.locator('.cm-live-figure[data-mm-annotation="1-1"] figure').click();
+
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+});
+
 test("manual editor: back from annotation editor restores the markdown editor", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await expect(page.locator(".cm-content")).toContainText("アイケア様");
