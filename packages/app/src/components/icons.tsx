@@ -214,6 +214,24 @@ export function IconGrip(props: IconProps) {
   );
 }
 
+export function IconLock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
+      <path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7" />
+    </Icon>
+  );
+}
+
+export function IconUnlock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="7" width="9" height="6.5" rx="1" />
+      <path d="M10.5 7V5.5a2.5 2.5 0 0 0-4.7-1.2" />
+    </Icon>
+  );
+}
+
 export function IconX(props: IconProps) {
   return (
     <Icon {...props}>

@@ -457,6 +457,7 @@ export function createAnnotationSkeleton(
         id: "img-main",
         type: "image",
         source: "manual",
+        locked: true,
         src: imageSrc,
         rect: { x: 0, y: 0, w: 100, h: 100 },
       },
@@ -464,6 +465,66 @@ export function createAnnotationSkeleton(
   };
   writeAnnotationFile(projectRoot, id, annotation);
   return annotation;
+}
+
+export function addPastedImageObject(
+  projectRoot: string,
+  annotationId: string,
+  objectId: string,
+  buffer: Buffer,
+  natural: { width: number; height: number },
+): AnnotationFile {
+  if (natural.width <= 0 || natural.height <= 0) {
+    throw new Error("画像サイズは1px以上である必要があります");
+  }
+  const annotation = readAnnotationFile(projectRoot, annotationId);
+  if (annotation.objects.some((obj) => obj.id === objectId)) {
+    throw new Error(`オブジェクトIDが既に存在します: ${objectId}`);
+  }
+
+  const maxWidth = annotation.canvas.width * 0.5;
+  const maxHeight = annotation.canvas.height * 0.5;
+  const scale = Math.min(1, maxWidth / natural.width, maxHeight / natural.height);
+  const displayWidth = natural.width * scale;
+  const displayHeight = natural.height * scale;
+  const widthPct = (displayWidth / annotation.canvas.width) * 100;
+  const heightPct = (displayHeight / annotation.canvas.height) * 100;
+  const src = `img/raw/${annotationId}-${objectId}.png`;
+  const imagePath = join(projectRoot, src);
+  if (existsSync(imagePath)) {
+    throw new Error(`画像ファイルが既に存在します: ${src}`);
+  }
+
+  const next = parseAnnotation({
+    ...annotation,
+    objects: [
+      ...annotation.objects,
+      {
+        id: objectId,
+        type: "image",
+        source: "manual",
+        locked: false,
+        src,
+        rect: {
+          x: (100 - widthPct) / 2,
+          y: (100 - heightPct) / 2,
+          w: widthPct,
+          h: heightPct,
+        },
+        crop: { x: 0, y: 0, w: natural.width, h: natural.height },
+      },
+    ],
+  });
+
+  mkdirSync(dirname(imagePath), { recursive: true });
+  writeFileSync(imagePath, buffer);
+  try {
+    writeAnnotationFile(projectRoot, annotationId, next);
+  } catch (error) {
+    unlinkSync(imagePath);
+    throw error;
+  }
+  return next;
 }
 
 export function savePastedImage(

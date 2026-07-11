@@ -16,6 +16,7 @@ import type {
   CursorIcon,
 } from "@mahomanual/core/schema";
 import {
+  addAnnotationImage,
   createObjectId,
   injectObjectIds,
   nextBadgeNumber,
@@ -37,6 +38,7 @@ import {
 import {
   clampCrop,
   duplicateObjects,
+  removeUnlockedObjects,
   translateObjects,
 } from "../lib/annotation-operations.js";
 import {
@@ -48,11 +50,13 @@ import {
   IconGrip,
   IconImage,
   IconLine,
+  IconLock,
   IconPlus,
   IconPointer,
   IconRedo,
   IconType,
   IconUndo,
+  IconUnlock,
   IconX,
 } from "./icons.js";
 import {
@@ -82,7 +86,7 @@ interface AnnotationEditorProps {
   onRenamed?: (id: string) => void;
 }
 
-type MovableObject = Extract<AnnotationObject, { type: "badge" | "text" | "cursor" | "frame" }>;
+type MovableObject = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" }>;
 
 interface Pt {
   x: number;
@@ -239,6 +243,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     future: AnnotationFile[];
   }>({ past: [], future: [] });
   const copiedIdsRef = useRef<string[]>([]);
+  const addImageInputRef = useRef<HTMLInputElement>(null);
   const replaceImageInputRef = useRef<HTMLInputElement>(null);
   const selectedId = selectedIds.at(-1) ?? null;
 
@@ -248,7 +253,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
     const taggable = annotation.objects.filter(
       (obj): obj is MovableObject =>
-        obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
+        obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
     );
     return injectObjectIds(
       rewriteFigureHtml(
@@ -436,9 +441,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         event.preventDefault();
         applyLocalChange((current) => ({
           ...current,
-          objects: current.objects.filter((obj) => !selected.has(obj.id)),
+          objects: removeUnlockedObjects(current.objects, selected),
         }));
-        setSelectedIds([]);
+        setSelectedIds((ids) => ids.filter((id) => annotationRef.current?.objects.find((obj) => obj.id === id)?.locked));
         return;
       }
       const directions: Record<string, Pt> = {
@@ -547,7 +552,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     const obj = current.objects.find((item) => item.id === objectId);
-    if (!obj || obj.type === "image") {
+    if (!obj || obj.locked) {
       return;
     }
     event.preventDefault();
@@ -585,7 +590,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
 
-    if (obj.type === "frame") {
+    if (obj.type === "frame" || obj.type === "image") {
       const rect0 = obj.rect;
       const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
       const el = target as HTMLElement;
@@ -693,11 +698,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
     applyLocalChange((current) => ({
       ...current,
-      objects: current.objects.map((obj) => (obj.id === objectId ? updater(obj) : obj)),
+      objects: current.objects.map((obj) => (obj.id === objectId && !obj.locked ? updater(obj) : obj)),
     }));
   };
 
-  const addObject = (type: MovableObject["type"]) => {
+  const toggleObjectLock = (objectId: string) => {
+    applyLocalChange((current) => ({
+      ...current,
+      objects: current.objects.map((obj) =>
+        obj.id === objectId ? { ...obj, locked: !obj.locked } : obj,
+      ),
+    }));
+  };
+
+  const addObject = (type: Exclude<MovableObject["type"], "image">) => {
     const id = createObjectId(type, annotation.objects);
     let newObject: AnnotationObject;
     switch (type) {
@@ -762,8 +776,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     setSelectedIds([id]);
   };
 
-  const beginFrameResize = (event: ReactPointerEvent, dir: string) => {
-    if (!selected || selected.type !== "frame") {
+  const beginRectResize = (event: ReactPointerEvent, dir: string) => {
+    if (!selected || selected.locked || (selected.type !== "frame" && selected.type !== "image")) {
       return;
     }
     event.preventDefault();
@@ -793,7 +807,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         applyLocalChange((current) => ({
           ...current,
           objects: current.objects.map((item) =>
-            item.id === objectId && item.type === "frame" ? { ...item, rect: next } : item,
+            item.id === objectId && !item.locked && (item.type === "frame" || item.type === "image")
+              ? { ...item, rect: next }
+              : item,
           ),
         }));
       },
@@ -801,7 +817,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const beginPointDrag = (event: ReactPointerEvent, index: number) => {
-    if (!selected || (selected.type !== "line" && selected.type !== "arrow")) {
+    if (!selected || selected.locked || (selected.type !== "line" && selected.type !== "arrow")) {
       return;
     }
     event.preventDefault();
@@ -978,7 +994,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   const handleReplaceImage = async (file: File) => {
-    if (!selected || selected.type !== "image") {
+    if (!selected || selected.locked || selected.type !== "image") {
       return;
     }
     try {
@@ -997,6 +1013,27 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "画像の置換に失敗しました");
+    }
+  };
+
+  const handleAddImage = async (file: File) => {
+    try {
+      const image = await readImageFile(file);
+      const objectId = createObjectId("image", annotationRef.current?.objects ?? annotation.objects);
+      const payload = await addAnnotationImage(
+        project,
+        annotationId,
+        objectId,
+        image.data,
+        image.width,
+        image.height,
+      );
+      applyPayload({ ...payload, theme });
+      setSelectedIds([objectId]);
+      setStatus("画像を追加しました");
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "画像の追加に失敗しました");
     }
   };
 
@@ -1021,14 +1058,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     applyLocalChange((current) => {
-      const displayed = moveItem([...current.objects].reverse(), from, to);
+      const currentDisplay = [...current.objects].reverse();
+      if (currentDisplay[from]?.locked) {
+        return current;
+      }
+      const displayed = moveItem(currentDisplay, from, to);
       return { ...current, objects: displayed.reverse() };
     });
   };
 
-  const activeFrameRect = selected?.type === "frame" ? (draft?.rect ?? selected.rect) : null;
+  const activeFrameRect = selected && !selected.locked && (selected.type === "frame" || selected.type === "image")
+    ? (draft?.rect ?? selected.rect)
+    : null;
   const activeLinePoints =
-    selected && (selected.type === "line" || selected.type === "arrow")
+    selected && !selected.locked && (selected.type === "line" || selected.type === "arrow")
       ? selected.points
       : null;
 
@@ -1155,6 +1198,23 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           <IconButton label="強調枠" tip onClick={() => addObject("frame")}>
             <IconFrame />
           </IconButton>
+          <IconButton label="画像" tip data-testid="add-image" onClick={() => addImageInputRef.current?.click()}>
+            <IconImage />
+          </IconButton>
+          <input
+            ref={addImageInputRef}
+            data-testid="add-image-input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void handleAddImage(file);
+              }
+              event.target.value = "";
+            }}
+          />
           <IconButton label="罫線" tip onClick={() => addLine("line")}>
             <IconLine />
           </IconButton>
@@ -1219,7 +1279,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                         top: `${activeFrameRect.y + activeFrameRect.h * handle.fy}%`,
                         cursor: handle.cursor,
                       }}
-                      onPointerDown={(event) => beginFrameResize(event, handle.dir)}
+                      onPointerDown={(event) => beginRectResize(event, handle.dir)}
                     />
                   ))
                 : null}
@@ -1259,8 +1319,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             {[...annotation.objects].reverse().map((obj, displayIndex) => (
               <li
                 key={obj.id}
-                draggable
-                onDragStart={() => setDragListIndex(displayIndex)}
+                draggable={!obj.locked}
+                onDragStart={() => {
+                  if (!obj.locked) {
+                    setDragListIndex(displayIndex);
+                  }
+                }}
                 onDragOver={(event) => {
                   event.preventDefault();
                   setDropListIndex(displayIndex);
@@ -1279,7 +1343,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   setDropListIndex(null);
                 }}
                 className={cx(
-                  "rounded-md",
+                  "relative rounded-md",
                   dropListIndex === displayIndex && dragListIndex !== displayIndex &&
                     "border-t-2 border-blue-400",
                 )}
@@ -1288,7 +1352,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                   type="button"
                   data-testid={`object-item-${obj.id}`}
                   className={cx(
-                    "group flex w-full cursor-grab items-center gap-2 rounded-md border px-2 py-1.5 text-left text-[13px] transition-colors duration-150",
+                    "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-9 text-left text-[13px] transition-colors duration-150",
+                    obj.locked ? "cursor-default" : "cursor-grab",
                     selectedIds.includes(obj.id)
                       ? "border-blue-400 bg-blue-50 text-blue-800"
                       : "border-transparent text-slate-700 hover:bg-slate-100",
@@ -1319,6 +1384,21 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     size={12}
                     className="shrink-0 text-slate-300 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
                   />
+                </button>
+                <button
+                  type="button"
+                  data-testid={`object-lock-${obj.id}`}
+                  className={cx(
+                    "absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded transition-colors",
+                    obj.locked
+                      ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                      : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                  )}
+                  title={obj.locked ? "ロックを解除" : "オブジェクトをロック"}
+                  aria-label={obj.locked ? `${obj.id}のロックを解除` : `${obj.id}をロック`}
+                  onClick={() => toggleObjectLock(obj.id)}
+                >
+                  {obj.locked ? <IconLock size={12} /> : <IconUnlock size={12} />}
                 </button>
               </li>
             ))}
@@ -1365,6 +1445,11 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           </section>
           <section className="flex-1 p-3">
           <h2 className="mb-2 text-xs font-semibold text-slate-700">プロパティ</h2>
+          {selected?.locked ? (
+            <p className="mb-3 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+              このオブジェクトはロックされています。編集するには一覧の鍵を解除してください。
+            </p>
+          ) : null}
           {!selected ? (
             <p className="rounded-md bg-slate-50 px-3 py-4 text-xs leading-relaxed text-slate-500">
               オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。

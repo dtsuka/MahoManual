@@ -12,6 +12,7 @@ import {
 import {
   countAnnotationBadges,
   countUnicodeBadges,
+  addPastedImageObject,
   createManualProject,
   listManuals,
   readAnnotationFile,
@@ -358,6 +359,45 @@ export function createApp() {
       });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "save failed" }, 400);
+    }
+  });
+
+  app.post("/api/projects/:project/annotations/:id/images", async (c) => {
+    const project = c.req.param("project");
+    const id = c.req.param("id");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    const body = await c.req.json<{
+      objectId?: string;
+      data?: string;
+      width?: number;
+      height?: number;
+    }>();
+    if (!body.objectId || !isSafeName(id) || !isSafeName(body.objectId)) {
+      return c.json({ error: "不正なIDです" }, 400);
+    }
+    const match = body.data?.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/s);
+    if (!match) {
+      return c.json({ error: "画像データが不正です" }, 400);
+    }
+    const buffer = Buffer.from(match[2]!, "base64");
+    const detected = imageSize(buffer);
+    const width = body.width ?? detected.width;
+    const height = body.height ?? detected.height;
+    if (!width || !height) {
+      return c.json({ error: "画像サイズを取得できません" }, 400);
+    }
+    try {
+      const annotation = addPastedImageObject(root, id, body.objectId, buffer, { width, height });
+      return c.json({
+        annotation,
+        naturalSizes: getNaturalSizes(root, collectImageSources(annotation)),
+        theme: readProjectTheme(root),
+      }, 201);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "画像追加に失敗しました" }, 400);
     }
   });
 

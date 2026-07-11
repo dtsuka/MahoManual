@@ -139,6 +139,24 @@ export function pasteImage(
   });
 }
 
+export function addAnnotationImage(
+  project: string,
+  annotationId: string,
+  objectId: string,
+  data: string,
+  width: number,
+  height: number,
+): Promise<AnnotationResponse> {
+  return request(
+    `/api/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(annotationId)}/images`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ objectId, data, width, height }),
+    },
+  );
+}
+
 export function replaceAnnotationImage(
   project: string,
   annotationId: string,
@@ -201,11 +219,11 @@ export function rewriteFigureHtml(html: string, project: string): string {
 
 export function injectObjectIds(html: string, objects: AnnotationObject[]): string {
   const taggable = objects.filter(
-    (obj): obj is Extract<AnnotationObject, { type: "badge" | "text" | "cursor" | "frame" }> =>
-      obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
+    (obj): obj is Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" }> =>
+      obj.type === "image" || obj.type === "badge" || obj.type === "text" || obj.type === "cursor" || obj.type === "frame",
   );
   let index = 0;
-  return html.replace(/<(span|div) class="mm-obj mm-(badge|text|cursor|frame)/g, (match, tag, kind) => {
+  return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame)/g, (match, tag, kind) => {
     const obj = taggable[index];
     index += 1;
     if (!obj) {

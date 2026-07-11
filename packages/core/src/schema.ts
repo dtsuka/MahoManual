@@ -66,6 +66,7 @@ const baseSchema = z.object({
   id: z.string().min(1),
   source: z.enum(["manual", "recipe"]),
   recipeRef: z.string().optional(),
+  locked: z.boolean().optional(),
 });
 
 const imageObjectSchema = baseSchema.extend({

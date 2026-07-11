@@ -27,6 +27,7 @@ export {
 export { exportPdf, type ExportPdfOptions } from "./pdf.js";
 export {
   addAnnotationObject,
+  addPastedImageObject,
   buildManualHtml,
   countAnnotationBadges,
   countUnicodeBadges,

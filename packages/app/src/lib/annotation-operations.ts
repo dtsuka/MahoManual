@@ -35,7 +35,14 @@ export function translateObjects(
   dx: number,
   dy: number,
 ): AnnotationObject[] {
-  return objects.map((obj) => selectedIds.has(obj.id) ? translateObject(obj, dx, dy) : obj);
+  return objects.map((obj) => selectedIds.has(obj.id) && !obj.locked ? translateObject(obj, dx, dy) : obj);
+}
+
+export function removeUnlockedObjects(
+  objects: AnnotationObject[],
+  selectedIds: ReadonlySet<string>,
+): AnnotationObject[] {
+  return objects.filter((obj) => !selectedIds.has(obj.id) || obj.locked);
 }
 
 export function duplicateObjects(

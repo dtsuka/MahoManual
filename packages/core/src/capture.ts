@@ -135,6 +135,7 @@ function buildAnnotationObjects(
       type: "image",
       source: "recipe",
       recipeRef: `${recipeId}#image`,
+      locked: true,
       src: `img/raw/${output}.png`,
       rect: { x: 0, y: 0, w: 100, h: 100 },
       crop: {
