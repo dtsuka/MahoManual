@@ -5,6 +5,9 @@ import { join } from "node:path";
 const testProject = "example";
 const annotationId = "1-1";
 
+// example/1-1.json を複数テストが共有するため、並列実行での汚染を防ぐ
+test.describe.configure({ mode: "serial" });
+
 test("annotation editor: add badge, drag, save, external reload", async ({ page, request }) => {
   await page.goto("/");
   await page.getByTestId(`project-${testProject}`).click();
@@ -89,6 +92,7 @@ test("annotation editor: add, drag and lock a second image", async ({ page, requ
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
   try {
+    rmSync(imagePath, { force: true });
     const [addResponse] = await Promise.all([
       page.waitForResponse(
         (response) => response.url().endsWith(`/annotations/${annotationId}/images`) && response.request().method() === "POST",
@@ -112,15 +116,24 @@ test("annotation editor: add, drag and lock a second image", async ({ page, requ
     await expect.poll(async () => Number(await xInput.inputValue())).not.toBe(beforeDrag);
 
     await page.getByTestId("object-lock-img2").click();
-    const lockedX = Number(await xInput.inputValue());
+    await expect(page.getByText("このオブジェクトはロックされています")).toBeVisible();
+    const rectLeft = (element: HTMLElement) => Number.parseFloat(element.style.left);
+    const lockedX = await image.evaluate(rectLeft);
     await image.dragTo(page.locator(".mm-editor-figure figure"), {
       targetPosition: { x: 200, y: 120 },
     });
-    expect(Number(await xInput.inputValue())).toBe(lockedX);
+    expect(await image.evaluate(rectLeft)).toBe(lockedX);
     await page.keyboard.press("Delete");
     await expect(imageItem).toBeVisible();
 
-    await page.getByTestId("save-button").click();
+    const [saveResponse] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+      ),
+      page.getByTestId("save-button").click(),
+    ]);
+    expect(saveResponse.ok()).toBeTruthy();
     await expect.poll(() => {
       const saved = JSON.parse(readFileSync(annotationPath, "utf8")) as {
         objects: Array<{ id: string; locked?: boolean }>;
@@ -142,9 +155,13 @@ test("annotation editor: add and configure a mosaic", async ({ page, request }) 
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
   try {
+    const mosaicCountBefore = before.objects.filter((obj) => obj.type === "mosaic").length;
     await page.getByTestId("add-mosaic").click();
-    const mosaicItem = page.getByTestId("object-item-m1");
-    const mosaic = page.locator('[data-mm-id="m1"]');
+    const mosaicItems = page.locator('[data-testid^="object-item-m"]');
+    await expect(mosaicItems).toHaveCount(mosaicCountBefore + 1);
+    const mosaicItem = mosaicItems.last();
+    const mosaicId = (await mosaicItem.getAttribute("data-testid"))!.replace("object-item-", "");
+    const mosaic = page.locator(`[data-mm-id="${mosaicId}"]`);
     await expect(mosaicItem).toBeVisible();
     await expect(mosaic).toBeVisible();
     await expect(page.getByTestId("mosaic-target")).toHaveValue("img-main");
@@ -163,7 +180,7 @@ test("annotation editor: add and configure a mosaic", async ({ page, request }) 
       const saved = JSON.parse(readFileSync(annotationPath, "utf8")) as {
         objects: Array<{ id: string; targetImageId?: string; blockSize?: number }>;
       };
-      return saved.objects.find((obj) => obj.id === "m1");
+      return saved.objects.find((obj) => obj.id === mosaicId);
     }).toMatchObject({ targetImageId: "img-main", blockSize: 16 });
   } finally {
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
