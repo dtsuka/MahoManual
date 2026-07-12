@@ -349,6 +349,9 @@ function AnnotationRoute() {
       project={project}
       annotationId={id}
       onBack={() => navigate(-1)}
+      onNavigateToAnnotation={(nextId) =>
+        navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`)
+      }
       onRenamed={(nextId) =>
         navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`, { replace: true })
       }

@@ -904,7 +904,7 @@ test("annotation editor: badge color and font size can be edited from the side p
   }
 });
 
-test("annotation editor: external change while dirty shows banner instead of discarding edits", async ({
+test("annotation editor: external change while dirty auto-merges non-conflicting edits", async ({
   page,
   request,
 }) => {
@@ -916,12 +916,14 @@ test("annotation editor: external change while dirty shows banner instead of dis
   ) as { objects: Array<{ id: string }> };
 
   try {
+    const initialCount = await page.locator('[data-testid^="object-item-"]').count();
+
     // ローカル編集(未保存 = dirty)
     await page.getByTestId("add-badge").click();
     await clickCanvas(page, 50, 50);
     await expect(page.locator("text=未保存")).toBeVisible();
 
-    // 外部から別内容を書き込む
+    // 外部から別IDの追加を書き込む(競合なし)
     const external = {
       ...before,
       objects: [
@@ -934,12 +936,10 @@ test("annotation editor: external change while dirty shows banner instead of dis
     });
     expect(putResponse.ok()).toBeTruthy();
 
-    // 編集は破棄されず、確認バナーが出る
-    await expect(page.getByTestId("external-change-banner")).toBeVisible();
-
-    // 「外部の内容を読み込む」で反映される
-    await page.getByTestId("apply-external").click();
+    // 非競合変更は自動マージされ、ローカル追加分と外部追加分の両方が残る
     await expect(page.locator('[data-mm-id="ext-badge"]')).toBeVisible();
+    await expect(page.locator('[data-testid^="object-item-"]')).toHaveCount(initialCount + 2);
+    await expect(page.locator("text=未保存")).toBeVisible();
   } finally {
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
   }
@@ -1057,7 +1057,8 @@ test("annotation editor: image id can be renamed and navigates to the new URL", 
     await page.getByTestId("rename-id-input").fill(renamedId);
     await page.getByTestId("rename-id-button").click();
     await expect(page).toHaveURL(`/projects/${testProject}/annotations/${renamedId}`);
-    await expect(page.getByRole("heading", { name: `${testProject} / ${renamedId}` })).toBeVisible();
+    await expect(page.getByTestId("annotation-editor")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(renamedId);
   } finally {
     const projectRoot = join(process.cwd(), "../../projects/example");
     for (const candidate of [id, renamedId]) {

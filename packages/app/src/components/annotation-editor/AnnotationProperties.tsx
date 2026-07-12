@@ -28,6 +28,7 @@ interface AnnotationPropertiesProps {
   addPoint: () => void;
   removePoint: (index: number) => void;
   onOpenReplaceImage: () => void;
+  onOpenVisualCrop?: () => void;
 }
 
 function RectPositionFields({
@@ -70,6 +71,7 @@ export function AnnotationProperties({
   addPoint,
   removePoint,
   onOpenReplaceImage,
+  onOpenVisualCrop,
 }: AnnotationPropertiesProps) {
   const editableSelected = selected && isEditable(selected) ? selected : null;
 
@@ -333,9 +335,21 @@ export function AnnotationProperties({
               const crop = editableSelected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
               return (
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="text-xs font-medium text-slate-600">クロップ (画像px)</span>
-                    <Button
+                    <div className="flex items-center gap-1">
+                      {onOpenVisualCrop ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-[11px]"
+                          data-testid="open-visual-crop"
+                          onClick={onOpenVisualCrop}
+                        >
+                          クロップを編集
+                        </Button>
+                      ) : null}
+                      <Button
                       size="sm"
                       variant="ghost"
                       className="h-6 px-1.5 text-[11px]"
@@ -349,6 +363,7 @@ export function AnnotationProperties({
                     >
                       全体に戻す
                     </Button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <NumberField label="x" value={crop.x} step={1} min={0} testId="crop-x" onChange={(v) => updateCrop("x", v)} />

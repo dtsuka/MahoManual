@@ -260,6 +260,100 @@ body {
   vector-effect: non-scaling-stroke;
 }
 
+.mm-marquee-preview {
+  position: absolute;
+  z-index: 25;
+  border: 1px dashed #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  pointer-events: none;
+}
+
+.mm-snap-guide {
+  position: absolute;
+  z-index: 24;
+  background: #f43f5e;
+  pointer-events: none;
+}
+
+.mm-snap-guide--x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.mm-snap-guide--y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.mm-crop-full {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  pointer-events: none;
+}
+
+.mm-crop-dim {
+  position: absolute;
+  background: rgba(15, 23, 42, 0.45);
+  pointer-events: none;
+}
+
+.mm-crop-window {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #2563eb;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+}
+
+.mm-crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 2px;
+  background: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.5);
+}
+
+.mm-crop-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+}
+
+.mm-crop-toolbar-btn {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.mm-crop-toolbar-btn:hover {
+  background: #f8fafc;
+}
+
+.mm-inline-text-editor {
+  position: absolute;
+  z-index: 30;
+  min-width: 120px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 4px 6px;
+  font-size: 14px;
+  color: var(--mm-color, #e91e8c);
+  resize: both;
+}
+
 /* ============================================================
    マニュアル編集: CodeMirror / プレビュー
    ============================================================ */

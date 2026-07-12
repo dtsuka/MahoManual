@@ -1,4 +1,11 @@
 import type { AnnotationObject } from "@mahomanual/core/schema";
+import {
+  clampCrop as coreClampCrop,
+} from "@mahomanual/core/crop-math";
+import {
+  duplicateObjects as coreDuplicateObjects,
+  translateObjects as coreTranslateObjects,
+} from "@mahomanual/core/object-geometry";
 import { isEditable } from "@mahomanual/core/annotation-objects";
 import { createObjectId } from "./api.js";
 
@@ -12,36 +19,13 @@ interface Crop extends Size {
   y: number;
 }
 
-function translateObject(obj: AnnotationObject, dx: number, dy: number): AnnotationObject {
-  switch (obj.type) {
-    case "badge":
-    case "text":
-    case "cursor":
-      return { ...obj, at: { x: obj.at.x + dx, y: obj.at.y + dy } };
-    case "frame":
-    case "image":
-    case "mosaic":
-      return { ...obj, rect: { ...obj.rect, x: obj.rect.x + dx, y: obj.rect.y + dy } };
-    case "line":
-    case "arrow":
-      return {
-        ...obj,
-        points: obj.points.map((point) => ({ x: point.x + dx, y: point.y + dy })),
-      };
-    default: {
-      const _exhaustive: never = obj;
-      return _exhaustive;
-    }
-  }
-}
-
 export function translateObjects(
   objects: AnnotationObject[],
   selectedIds: ReadonlySet<string>,
   dx: number,
   dy: number,
 ): AnnotationObject[] {
-  return objects.map((obj) => selectedIds.has(obj.id) && isEditable(obj) ? translateObject(obj, dx, dy) : obj);
+  return coreTranslateObjects(objects, selectedIds, dx, dy);
 }
 
 export function removeUnlockedObjects(
@@ -56,28 +40,19 @@ export function duplicateObjects(
   selectedIds: readonly string[],
   offset = 1,
 ): { objects: AnnotationObject[]; selectedIds: string[] } {
-  const selected = new Set(selectedIds);
-  const copies: AnnotationObject[] = [];
-  const all = [...objects];
-  for (const obj of objects) {
-    if (!selected.has(obj.id) || !isEditable(obj)) {
-      continue;
-    }
-    const id = createObjectId(obj.type, all);
-    const copy = { ...translateObject(obj, offset, offset), id, source: "manual" as const };
-    copies.push(copy);
-    all.push(copy);
-  }
-  return { objects: [...objects, ...copies], selectedIds: copies.map((obj) => obj.id) };
+  return coreDuplicateObjects(objects, selectedIds, createObjectId, offset);
 }
 
 export function clampCrop(crop: Crop, natural: Size): Crop {
-  const x = Math.max(0, Math.min(crop.x, natural.w - 1));
-  const y = Math.max(0, Math.min(crop.y, natural.h - 1));
-  return {
-    x,
-    y,
-    w: Math.max(1, Math.min(crop.w, natural.w - x)),
-    h: Math.max(1, Math.min(crop.h, natural.h - y)),
-  };
+  return coreClampCrop(crop, natural);
 }
+
+export {
+  alignObjects,
+  collectSnapGuides,
+  distributeObjects,
+  objectsInRect,
+  reorderObject,
+  snapPointToGuides,
+  snapThresholdPct,
+} from "@mahomanual/core/object-geometry";

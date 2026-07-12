@@ -159,7 +159,7 @@ describe("Hono API", () => {
     );
     const response = await app.request(`/api/projects/${testProject}/theme`);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ theme: { color: "#336699", fontSize: 16 } });
+    expect(await response.json()).toEqual({ theme: { color: "#336699", fontSize: 16 }, defaults: {} });
 
     const missing = await app.request("/api/projects/no-such-project/theme");
     expect(missing.status).toBe(404);
@@ -173,7 +173,7 @@ describe("Hono API", () => {
       body: JSON.stringify({ color: "#ff6600", fontSize: 18 }),
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ theme: { color: "#ff6600", fontSize: 18 } });
+    expect(await response.json()).toEqual({ theme: { color: "#ff6600", fontSize: 18 }, defaults: {} });
     const yaml = readFileSync(join(testProjectRoot, "project.yaml"), "utf8");
     expect(yaml).toContain("テーマ更新");
     expect(yaml).toContain("#ff6600");
@@ -185,7 +185,7 @@ describe("Hono API", () => {
       body: JSON.stringify({}),
     });
     expect(cleared.status).toBe(200);
-    expect(await cleared.json()).toEqual({ theme: {} });
+    expect(await cleared.json()).toEqual({ theme: {}, defaults: {} });
     expect(readFileSync(join(testProjectRoot, "project.yaml"), "utf8")).not.toContain("annotation");
   });
 

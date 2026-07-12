@@ -5,6 +5,15 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
+import type { SnapGuide } from "@mahomanual/core/object-geometry";
+import {
+  applyObjectStyle,
+  copyObjectStyle,
+  extractObjectStyle,
+  resolveCreationDefaults,
+  type AnnotationDefaults,
+} from "@mahomanual/core/annotation-defaults";
+import { mergeAnnotationEdits, resolveConflicts, type ObjectConflict } from "@mahomanual/core/merge-annotation-edits";
 import { renderFigure } from "@mahomanual/core/render";
 import { expandCanvas } from "@mahomanual/core/expand-canvas";
 import {
@@ -41,7 +50,15 @@ import {
   duplicateObjects,
   removeUnlockedObjects,
   translateObjects,
+  alignObjects,
+  distributeObjects,
+  objectsInRect,
+  reorderObject,
+  snapThresholdPct,
 } from "../lib/annotation-operations.js";
+import { dragSnapDelta } from "../lib/editor-snap.js";
+import { resolveAnnotationNeighbors } from "../lib/annotation-navigation.js";
+import { loadRecentStyle, saveRecentStyle } from "../lib/recent-style.js";
 import {
   fitCanvasZoom,
   stepZoom,
@@ -75,8 +92,11 @@ import {
 } from "./ui.js";
 import { AnnotationObjectList } from "./annotation-editor/AnnotationObjectList.js";
 import { AnnotationProperties } from "./annotation-editor/AnnotationProperties.js";
+import { AlignmentToolbar } from "./annotation-editor/AlignmentToolbar.js";
 import { CanvasMarginPanel } from "./annotation-editor/CanvasMarginPanel.js";
 import { ImageFilePickerModal } from "./annotation-editor/ImageFilePickerModal.js";
+import { VisualCropOverlay } from "./annotation-editor/VisualCropOverlay.js";
+import { MergeConflictResolver } from "./annotation-editor/MergeConflictResolver.js";
 import {
   FRAME_HANDLES,
   readImageFile,
@@ -102,6 +122,7 @@ interface AnnotationEditorProps {
   annotationId: string;
   onBack?: () => void;
   onRenamed?: (id: string) => void;
+  onNavigateToAnnotation?: (id: string) => void;
 }
 
 interface Pt {
@@ -113,12 +134,21 @@ interface AnnotationPayload {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
   theme?: AnnotationTheme;
+  defaults?: AnnotationDefaults;
 }
 
-export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: AnnotationEditorProps) {
+export function AnnotationEditor({
+  project,
+  annotationId,
+  onBack,
+  onRenamed,
+  onNavigateToAnnotation,
+}: AnnotationEditorProps) {
   const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
+  const [annotationDefaults, setAnnotationDefaults] = useState<AnnotationDefaults>({});
+  const [annotationIds, setAnnotationIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
   const [status, setStatus] = useState<string>("");
@@ -155,6 +185,27 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const copiedIdsRef = useRef<string[]>([]);
   const spaceHeldRef = useRef(false);
   const [imagePickerMode, setImagePickerMode] = useState<"add" | "replace" | null>(null);
+  const [marqueeDraft, setMarqueeDraft] = useState<RectPct | null>(null);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [cropEdit, setCropEdit] = useState<{
+    imageId: string;
+    crop: { x: number; y: number; w: number; h: number };
+    snapshot: string;
+  } | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [soloId, setSoloId] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<string | "back" | null>(null);
+  const [inlineTextEdit, setInlineTextEdit] = useState<{ id: string; value: string } | null>(null);
+  const [mergeConflicts, setMergeConflicts] = useState<ObjectConflict[]>([]);
+  const [mergeResolutions, setMergeResolutions] = useState<Record<string, "local" | "remote">>({});
+  const [mergeContext, setMergeContext] = useState<{
+    local: AnnotationFile;
+    remote: AnnotationFile;
+    merged: AnnotationFile;
+  } | null>(null);
+  const marqueeJustFinishedRef = useRef(false);
+  const copiedStyleRef = useRef<ReturnType<typeof extractObjectStyle> | null>(null);
+  const arrowCoalesceRef = useRef<{ timer?: ReturnType<typeof setTimeout>; start?: AnnotationFile }>({});
   const selectedId = selectedIds.at(-1) ?? null;
 
   const figureHtml = useMemo(() => {
@@ -164,17 +215,27 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     const renderedAnnotation = interactionObjects
       ? { ...annotation, objects: interactionObjects }
       : annotation;
+    const visibleObjects = (() => {
+      let objects = renderedAnnotation.objects;
+      if (soloId) {
+        return objects.filter((obj) => obj.id === soloId);
+      }
+      if (hiddenIds.size > 0) {
+        return objects.filter((obj) => !hiddenIds.has(obj.id));
+      }
+      return objects;
+    })();
     return injectObjectIds(
       rewriteFigureHtml(
-        renderFigure(renderedAnnotation, {
+        renderFigure({ ...renderedAnnotation, objects: visibleObjects }, {
           naturalSizes,
           fence: { width: annotation.canvas.width },
         }),
         project,
       ),
-      taggableObjectsInDisplayOrder(renderedAnnotation.objects),
+      taggableObjectsInDisplayOrder(visibleObjects),
     );
-  }, [annotation, interactionObjects, naturalSizes, project]);
+  }, [annotation, interactionObjects, naturalSizes, project, hiddenIds, soloId]);
 
   const fetchPayload = async (): Promise<AnnotationPayload> => {
     const response = await fetch(
@@ -194,6 +255,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     setAnnotation(payload.annotation);
     setNaturalSizes(payload.naturalSizes);
     setTheme(payload.theme ?? {});
+    setAnnotationDefaults(payload.defaults ?? {});
     dirtyRef.current = false;
     setDirty(false);
     setExternalPayload(null);
@@ -231,6 +293,95 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     dirtyRef.current = nextDirty;
     setDirty(nextDirty);
     setHistoryVersion((version) => version + 1);
+  };
+
+  const applyTransientChange = (updater: (current: AnnotationFile) => AnnotationFile) => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const next = updater(current);
+    annotationRef.current = next;
+    setAnnotation(next);
+    const isDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
+    dirtyRef.current = isDirty;
+    setDirty(isDirty);
+  };
+
+  const commitArrowCoalesce = () => {
+    const start = arrowCoalesceRef.current.start;
+    const current = annotationRef.current;
+    if (!start || !current || JSON.stringify(start) === JSON.stringify(current)) {
+      arrowCoalesceRef.current = {};
+      return;
+    }
+    historyRef.current = {
+      past: [...historyRef.current.past, start].slice(-MAX_HISTORY),
+      future: [],
+    };
+    setHistoryVersion((version) => version + 1);
+    arrowCoalesceRef.current = {};
+  };
+
+  const neighbors = resolveAnnotationNeighbors(annotationIds, annotationId);
+
+  const requestNavigation = (target: string | "back") => {
+    if (dirtyRef.current) {
+      setPendingNavigation(target);
+      return;
+    }
+    if (target === "back") {
+      onBack?.();
+      return;
+    }
+    onNavigateToAnnotation?.(target);
+  };
+
+  const completePendingNavigation = async (mode: "save" | "discard") => {
+    const target = pendingNavigation;
+    if (!target) {
+      return;
+    }
+    if (mode === "save") {
+      await handleSave();
+      if (dirtyRef.current) {
+        return;
+      }
+    } else {
+      void fetchPayload().then(applyPayload);
+    }
+    setPendingNavigation(null);
+    if (target === "back") {
+      onBack?.();
+    } else {
+      onNavigateToAnnotation?.(target);
+    }
+  };
+
+  const applyMergeResolution = () => {
+    if (!mergeContext) {
+      return;
+    }
+    const resolved = resolveConflicts(mergeContext.merged, mergeResolutions, {
+      local: mergeContext.local,
+      remote: mergeContext.remote,
+    });
+    annotationRef.current = resolved;
+    savedAnnotationJsonRef.current = JSON.stringify(mergeContext.remote);
+    historyRef.current = { past: [], future: [] };
+    setHistoryVersion((version) => version + 1);
+    setAnnotation(resolved);
+    dirtyRef.current = true;
+    setDirty(true);
+    setMergeConflicts([]);
+    setMergeContext(null);
+    setMergeResolutions({});
+  };
+
+  const keepLocalMerge = () => {
+    setMergeConflicts([]);
+    setMergeContext(null);
+    setMergeResolutions({});
   };
 
   const undo = () => {
@@ -297,6 +448,13 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
   };
 
+  const buildCreationStyle = (type: AnnotationObject["type"]) =>
+    resolveCreationDefaults(type, {
+      objectPatch: loadRecentStyle(project, type) ?? undefined,
+      projectDefaults: annotationDefaults,
+      theme,
+    });
+
   const createPointObject = (type: "badge" | "text" | "cursor", at: Pt) => {
     const current = annotationRef.current;
     if (!current) {
@@ -304,11 +462,12 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
     const id = createObjectId(type, current.objects);
     const roundedAt = { x: roundCreationPct(at.x), y: roundCreationPct(at.y) };
+    const style = buildCreationStyle(type);
     const object: AnnotationObject = type === "badge"
-      ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt }
+      ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt, ...style }
       : type === "text"
-        ? { id, type, source: "manual", content: "テキスト", at: roundedAt }
-        : { id, type, source: "manual", icon: "pointer", at: roundedAt, size: 28 };
+        ? { id, type, source: "manual", content: "テキスト", at: roundedAt, ...style }
+        : { id, type, source: "manual", icon: style.icon ?? "pointer", at: roundedAt, size: style.size ?? 28, ...style };
     applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
     setSelectedIds([id]);
     if (type !== "badge") {
@@ -322,9 +481,10 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     const id = createObjectId(type, current.objects);
+    const style = buildCreationStyle(type);
     let object: AnnotationObject;
     if (type === "frame") {
-      object = { id, type, source: "manual", rect };
+      object = { id, type, source: "manual", rect, ...style };
     } else {
       const selectedImage = current.objects.find((obj) => obj.id === selectedId && obj.type === "image");
       const target = selectedImage ?? [...current.objects].reverse().find(
@@ -341,7 +501,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         source: "manual",
         targetImageId: target.id,
         rect,
-        blockSize: 12,
+        blockSize: style.blockSize ?? 12,
       };
     }
     applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
@@ -424,14 +584,27 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   };
 
   useEffect(() => {
+    setError("");
     setNextAnnotationId(annotationId);
     setViewportReady(false);
     resetCreation();
     setZoomMode("fit");
+    setHiddenIds(new Set());
+    setSoloId(null);
+    setMergeConflicts([]);
+    setMergeContext(null);
     void fetchPayload()
       .then(applyPayload)
       .catch((err: Error) => setError(err.message));
+    void fetch(`/api/projects/${encodeURIComponent(project)}/manual`)
+      .then((response) => response.json())
+      .then((body: { annotations?: string[] }) => setAnnotationIds(body.annotations ?? []))
+      .catch(() => setAnnotationIds([]));
   }, [project, annotationId]);
+
+  useEffect(() => {
+    setSelectedPointIndex(null);
+  }, [selectedId]);
 
   useEffect(() => {
     return subscribeProjectWatch(project, (event) => {
@@ -445,7 +618,29 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             return;
           }
           if (dirtyRef.current) {
-            setExternalPayload(payload);
+            const base = JSON.parse(savedAnnotationJsonRef.current) as AnnotationFile;
+            const local = annotationRef.current;
+            if (!local) {
+              return;
+            }
+            const result = mergeAnnotationEdits(base, local, payload.annotation);
+            if (result.conflicts.length === 0) {
+              annotationRef.current = result.merged;
+              savedAnnotationJsonRef.current = JSON.stringify(payload.annotation);
+              historyRef.current = { past: [], future: [] };
+              setHistoryVersion((version) => version + 1);
+              setAnnotation(result.merged);
+              dirtyRef.current = true;
+              setDirty(true);
+              setExternalPayload(null);
+              return;
+            }
+            setMergeConflicts(result.conflicts);
+            setMergeResolutions(Object.fromEntries(
+              result.conflicts.map((conflict) => [conflict.id, "local" as const]),
+            ));
+            setMergeContext({ local, remote: payload.annotation, merged: result.merged });
+            setExternalPayload(null);
             return;
           }
           applyPayload(payload);
@@ -455,8 +650,14 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   }, [project, annotationId]);
 
   useEffect(() => {
-    setSelectedPointIndex(null);
-  }, [selectedId]);
+    const handler = (event: BeforeUnloadEvent) => {
+      if (dirtyRef.current) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   useEffect(() => {
     const viewport = canvasViewportRef.current;
@@ -506,6 +707,33 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         showActualSize();
         return;
       }
+      if (cropEdit) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          const snapshot = JSON.parse(cropEdit.snapshot) as { x: number; y: number; w: number; h: number };
+          applyLocalChange((current) => ({
+            ...current,
+            objects: current.objects.map((obj) =>
+              obj.id === cropEdit.imageId && obj.type === "image" ? { ...obj, crop: snapshot } : obj,
+            ),
+          }));
+          setCropEdit(null);
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          setCropEdit(null);
+          return;
+        }
+      }
+      if (!isTextInput && commandKey && key === "a") {
+        event.preventDefault();
+        const editableIds = annotationRef.current.objects
+          .filter((obj) => isEditable(obj) && obj.type !== "image")
+          .map((obj) => obj.id);
+        setSelectedIds(editableIds);
+        return;
+      }
       if (!isTextInput && (activeTool === "line" || activeTool === "arrow")) {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -535,7 +763,43 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         redo();
         return;
       }
+      if (commandKey && event.altKey && key === "c" && selectedId) {
+        event.preventDefault();
+        const obj = annotationRef.current.objects.find((item) => item.id === selectedId);
+        if (obj) {
+          copiedStyleRef.current = extractObjectStyle(obj);
+        }
+        return;
+      }
+      if (commandKey && event.altKey && key === "v" && copiedStyleRef.current && selectedId) {
+        event.preventDefault();
+        applyLocalChange((current) => ({
+          ...current,
+          objects: current.objects.map((obj) =>
+            obj.id === selectedId && isEditable(obj)
+              ? applyObjectStyle(obj, copiedStyleRef.current!)
+              : obj,
+          ),
+        }));
+        return;
+      }
       if (selectedIds.length === 0) {
+        return;
+      }
+      if (!isTextInput && event.key === "[") {
+        event.preventDefault();
+        applyLocalChange((current) => ({
+          ...current,
+          objects: reorderObject(current.objects, selectedIds, "backward"),
+        }));
+        return;
+      }
+      if (!isTextInput && event.key === "]") {
+        event.preventDefault();
+        applyLocalChange((current) => ({
+          ...current,
+          objects: reorderObject(current.objects, selectedIds, "forward"),
+        }));
         return;
       }
       const selected = new Set(selectedIds);
@@ -583,7 +847,10 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       if (direction) {
         event.preventDefault();
         const amount = event.shiftKey ? 1 : 0.1;
-        applyLocalChange((current) => ({
+        if (!arrowCoalesceRef.current.start) {
+          arrowCoalesceRef.current.start = structuredClone(annotationRef.current);
+        }
+        applyTransientChange((current) => ({
           ...current,
           objects: translateObjects(
             current.objects,
@@ -592,6 +859,10 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             direction.y * amount,
           ),
         }));
+        if (arrowCoalesceRef.current.timer) {
+          clearTimeout(arrowCoalesceRef.current.timer);
+        }
+        arrowCoalesceRef.current.timer = setTimeout(commitArrowCoalesce, 250);
       }
     };
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -608,7 +879,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       window.removeEventListener("keydown", handler);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [activeTool, lineDraft, selectedIds]);
+  }, [activeTool, lineDraft, selectedIds, cropEdit]);
 
   // ポインタ座標 → figure 内の%座標
   const pctFromClient = (clientX: number, clientY: number): Pt => {
@@ -656,7 +927,78 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     h: roundCreationPct(Math.abs(end.y - start.y)),
   });
 
+  const getSnapThreshold = () => {
+    const figure = figureRef.current?.querySelector("figure");
+    const box = figure?.getBoundingClientRect();
+    if (!box) {
+      return SNAP_THRESHOLD_PCT;
+    }
+    return snapThresholdPct(zoom, box.width, 6);
+  };
+
+  const startMarqueeSelection = (event: ReactPointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const start = pctFromClient(event.clientX, event.clientY);
+    setMarqueeDraft({ x: start.x, y: start.y, w: 0, h: 0 });
+    marqueeJustFinishedRef.current = false;
+    startPointerDrag(event, {
+      onMove: (point) => setMarqueeDraft(normalizeDraftRect(start, point)),
+      onEnd: (point, moved, endEvent) => {
+        const rect = normalizeDraftRect(start, point);
+        setMarqueeDraft(null);
+        if (!moved || rect.w < 0.5 || rect.h < 0.5) {
+          if (!moved) {
+            setSelectedIds([]);
+          }
+          return;
+        }
+        marqueeJustFinishedRef.current = true;
+        const hits = objectsInRect(annotationRef.current?.objects ?? [], rect);
+        const additive = endEvent.metaKey || endEvent.ctrlKey || endEvent.shiftKey;
+        setSelectedIds(additive
+          ? (current) => {
+              const merged = new Set(current);
+              for (const id of hits) {
+                if (merged.has(id)) {
+                  merged.delete(id);
+                } else {
+                  merged.add(id);
+                }
+              }
+              return [...merged];
+            }
+          : hits);
+      },
+    });
+  };
+
+  const openVisualCrop = (imageId: string) => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const image = current.objects.find((obj) => obj.id === imageId && obj.type === "image");
+    if (!image || image.type !== "image" || !isEditable(image)) {
+      return;
+    }
+    const natural = naturalSizes[image.src];
+    if (!natural) {
+      return;
+    }
+    const crop = image.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+    setCropEdit({
+      imageId,
+      crop: { ...crop },
+      snapshot: JSON.stringify(crop),
+    });
+  };
+
   const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (marqueeJustFinishedRef.current) {
+      marqueeJustFinishedRef.current = false;
+      return;
+    }
     const point = pctFromClient(event.clientX, event.clientY);
     if (activeTool === "badge" || activeTool === "text" || activeTool === "cursor") {
       const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
@@ -683,6 +1025,19 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       return;
     }
     if (activeTool !== "select") {
+      return;
+    }
+    if (event.detail >= 2) {
+      const target = (event.target as Element).closest<HTMLElement>("[data-mm-id]");
+      const id = target?.dataset.mmId;
+      const obj = annotationRef.current?.objects.find((item) => item.id === id);
+      if (obj?.type === "text" && isEditable(obj)) {
+        setInlineTextEdit({ id: obj.id, value: obj.content });
+        return;
+      }
+      if (obj?.type === "image" && isEditable(obj)) {
+        openVisualCrop(obj.id);
+      }
       return;
     }
     const element = event.target as HTMLElement;
@@ -795,64 +1150,114 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     event.stopPropagation();
     const wasSelected = selectedIds.includes(objectId);
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
-    const dragIds = wasSelected ? selectedIds : [objectId];
+    const originalDragIds = wasSelected ? selectedIds : [objectId];
+    let dragIds = originalDragIds;
     setSelectedIds(additive
       ? (wasSelected ? selectedIds.filter((id) => id !== objectId) : [...selectedIds, objectId])
       : dragIds);
+    let workingObjects = current.objects;
+    if (event.altKey && !isLineObject(obj)) {
+      const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
+      workingObjects = duplicated.objects;
+      dragIds = duplicated.selectedIds;
+      setSelectedIds(dragIds);
+    }
+    const dragIdSet = new Set(dragIds);
     const startPct = pctFromClient(event.clientX, event.clientY);
+    const applyDrag = (rawDx: number, rawDy: number, altKey: boolean) => {
+      const snapped = dragSnapDelta(workingObjects, dragIdSet, rawDx, rawDy, getSnapThreshold(), altKey);
+      setSnapGuides(snapped.activeGuides);
+      return { dx: snapped.dx, dy: snapped.dy };
+    };
 
     if (obj.type === "badge" || obj.type === "text" || obj.type === "cursor") {
-      // 掴んだ点と中心のズレを保持(クリックだけで中心が吸い付かないように)
-      const grab = { x: obj.at.x - startPct.x, y: obj.at.y - startPct.y };
+      const source = workingObjects.find((item) => item.id === objectId);
+      if (!source || (source.type !== "badge" && source.type !== "text" && source.type !== "cursor")) {
+        return;
+      }
+      const grab = { x: source.at.x - startPct.x, y: source.at.y - startPct.y };
       startPointerDrag(event, {
-        onMove: (pct) => {
-          const dx = pct.x + grab.x - obj.at.x;
-          const dy = pct.y + grab.y - obj.at.y;
-          setInteractionObjects(translateObjects(current.objects, new Set(dragIds), dx, dy));
+        onMove: (pct, moveEvent) => {
+          const rawDx = pct.x + grab.x - source.at.x;
+          const rawDy = pct.y + grab.y - source.at.y;
+          const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
+          setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
         },
-        onEnd: (pct, moved) => {
+        onEnd: (pct, moved, endEvent) => {
           setInteractionObjects(null);
+          setSnapGuides([]);
           if (!moved) {
             return;
           }
           const at = { x: pct.x + grab.x, y: pct.y + grab.y };
-          const dx = at.x - obj.at.x;
-          const dy = at.y - obj.at.y;
-          applyLocalChange((latest) => ({
-            ...latest,
-            objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
-          }));
+          const rawDx = at.x - source.at.x;
+          const rawDy = at.y - source.at.y;
+          const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
+          applyLocalChange((latest) => {
+            if (event.altKey && !isLineObject(obj)) {
+              const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
+              return {
+                ...latest,
+                objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
+              };
+            }
+            return {
+              ...latest,
+              objects: translateObjects(latest.objects, dragIdSet, dx, dy),
+            };
+          });
+          if (event.altKey && !isLineObject(obj)) {
+            const duplicated = duplicateObjects(annotationRef.current?.objects ?? [], originalDragIds, 0);
+            setSelectedIds(duplicated.selectedIds);
+          }
         },
       });
       return;
     }
 
     if (isRectObject(obj)) {
-      const rect0 = obj.rect;
+      const source = workingObjects.find((item) => item.id === objectId);
+      if (!source || !isRectObject(source)) {
+        return;
+      }
+      const rect0 = source.rect;
       const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
       const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
       startPointerDrag(event, {
-        onMove: (pct) => {
+        onMove: (pct, moveEvent) => {
           const next = rectFor(pct);
-          setInteractionObjects(translateObjects(
-            current.objects,
-            new Set(dragIds),
-            next.x - rect0.x,
-            next.y - rect0.y,
-          ));
+          const rawDx = next.x - rect0.x;
+          const rawDy = next.y - rect0.y;
+          const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
+          setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
         },
-        onEnd: (pct, moved) => {
+        onEnd: (pct, moved, endEvent) => {
           setInteractionObjects(null);
+          setSnapGuides([]);
           if (!moved) {
             return;
           }
           const next = rectFor(pct);
-          const dx = next.x - rect0.x;
-          const dy = next.y - rect0.y;
-          applyLocalChange((latest) => ({
-            ...latest,
-            objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
-          }));
+          const rawDx = next.x - rect0.x;
+          const rawDy = next.y - rect0.y;
+          const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
+          applyLocalChange((latest) => {
+            if (event.altKey) {
+              const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
+              return {
+                ...latest,
+                objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
+              };
+            }
+            return {
+              ...latest,
+              objects: translateObjects(latest.objects, dragIdSet, dx, dy),
+            };
+          });
+          if (event.altKey) {
+            const duplicated = duplicateObjects(annotationRef.current?.objects ?? [], originalDragIds, 0);
+            setSelectedIds(duplicated.selectedIds);
+          }
         },
       });
       return;
@@ -877,24 +1282,24 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
     // line / arrow: 全点を平行移動
     startPointerDrag(event, {
-      onMove: (pct) => {
-        setInteractionObjects(translateObjects(
-          current.objects,
-          new Set(dragIds),
-          pct.x - startPct.x,
-          pct.y - startPct.y,
-        ));
+      onMove: (pct, moveEvent) => {
+        const rawDx = pct.x - startPct.x;
+        const rawDy = pct.y - startPct.y;
+        const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
+        setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
       },
-      onEnd: (pct, moved) => {
+      onEnd: (pct, moved, endEvent) => {
         setInteractionObjects(null);
+        setSnapGuides([]);
         if (!moved) {
           return;
         }
-        const dx = pct.x - startPct.x;
-        const dy = pct.y - startPct.y;
+        const rawDx = pct.x - startPct.x;
+        const rawDy = pct.y - startPct.y;
+        const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
         applyLocalChange((latest) => ({
           ...latest,
-          objects: translateObjects(latest.objects, new Set(dragIds), dx, dy),
+          objects: translateObjects(latest.objects, dragIdSet, dx, dy),
         }));
       },
     });
@@ -905,11 +1310,18 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (!current) {
       return;
     }
+    if (cropEdit) {
+      return;
+    }
     if (isRectCreationTool(activeTool)) {
       handleRectCreationPointerDown(event, activeTool);
       return;
     }
     const targetId = (event.target as Element).closest("[data-mm-id]")?.getAttribute("data-mm-id") ?? undefined;
+    if (activeTool === "select" && !targetId && !(event.target as Element).closest(".mm-editor-handle")) {
+      startMarqueeSelection(event);
+      return;
+    }
     if (!allowsObjectDrag(activeTool, targetId, selectedIds)) {
       event.preventDefault();
       event.stopPropagation();
@@ -953,7 +1365,14 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
     applyLocalChange((current) => ({
       ...current,
-      objects: current.objects.map((obj) => (obj.id === objectId && isEditable(obj) ? updater(obj) : obj)),
+      objects: current.objects.map((obj) => {
+        if (obj.id !== objectId || !isEditable(obj)) {
+          return obj;
+        }
+        const next = updater(obj);
+        saveRecentStyle(project, next);
+        return next;
+      }),
     }));
   };
 
@@ -1309,6 +1728,37 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const previewPoint = activeTool === "badge" || activeTool === "text" || activeTool === "cursor"
     ? hoverPoint
     : null;
+  const cropEditImage = cropEdit
+    ? annotation.objects.find(
+        (obj): obj is Extract<AnnotationObject, { type: "image" }> =>
+          obj.id === cropEdit.imageId && obj.type === "image",
+      ) ?? null
+    : null;
+  const cropEditNatural = cropEditImage ? naturalSizes[cropEditImage.src] : undefined;
+
+  const applyAlignment = (
+    axis: "horizontal" | "vertical",
+    edge: "start" | "center" | "end",
+  ) => {
+    applyLocalChange((current) => ({
+      ...current,
+      objects: alignObjects(current.objects, selectedIds, axis, edge),
+    }));
+  };
+
+  const applyDistribution = (axis: "horizontal" | "vertical") => {
+    applyLocalChange((current) => ({
+      ...current,
+      objects: distributeObjects(current.objects, selectedIds, axis),
+    }));
+  };
+
+  const applyLayerMove = (direction: "forward" | "backward") => {
+    applyLocalChange((current) => ({
+      ...current,
+      objects: reorderObject(current.objects, selectedIds, direction),
+    }));
+  };
 
   return (
     <div
@@ -1319,10 +1769,26 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         {onBack ? (
-          <IconButton label="戻る" onClick={onBack}>
+          <IconButton label="戻る" onClick={() => requestNavigation("back")}>
             <IconArrowLeft />
           </IconButton>
         ) : null}
+        <IconButton
+          label="前の注釈"
+          data-testid="nav-prev-annotation"
+          disabled={!neighbors.prev}
+          onClick={() => neighbors.prev && requestNavigation(neighbors.prev)}
+        >
+          <IconArrowLeft />
+        </IconButton>
+        <IconButton
+          label="次の注釈"
+          data-testid="nav-next-annotation"
+          disabled={!neighbors.next}
+          onClick={() => neighbors.next && requestNavigation(neighbors.next)}
+        >
+          <IconArrowLeft className="rotate-180" />
+        </IconButton>
         <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
           {project} / {annotationId}
         </h1>
@@ -1402,10 +1868,31 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             外部の内容を読み込む
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setExternalPayload(null)}>
-            無視する
+            GUIの内容を維持
           </Button>
         </Banner>
       ) : null}
+      {pendingNavigation ? (
+        <Banner kind="warning" testId="unsaved-nav-banner">
+          <span className="min-w-0 flex-1">未保存の変更があります。移動方法を選んでください。</span>
+          <Button size="sm" data-testid="nav-save-and-go" onClick={() => void completePendingNavigation("save")}>
+            保存して移動
+          </Button>
+          <Button size="sm" variant="ghost" data-testid="nav-discard-and-go" onClick={() => void completePendingNavigation("discard")}>
+            破棄して移動
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setPendingNavigation(null)}>
+            キャンセル
+          </Button>
+        </Banner>
+      ) : null}
+      <MergeConflictResolver
+        conflicts={mergeConflicts}
+        resolutions={mergeResolutions}
+        onResolutionChange={(id, choice) => setMergeResolutions((current) => ({ ...current, [id]: choice }))}
+        onApply={applyMergeResolution}
+        onKeepLocal={keepLocalMerge}
+      />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* オブジェクト追加ツールレール(キャンバス左端にフロート)。
             ツール名は SPEC の注釈用語に合わせ、CSS ツールチップで表示する */}
@@ -1517,8 +2004,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               onPointerMove={handleCanvasPointerMove}
               onPointerLeave={() => setHoverPoint(null)}
               onClick={handleCanvasClick}
-              onDoubleClick={(event) => event.preventDefault()}
             >
+              {selectedIds.length >= 2 && activeTool === "select" ? (
+                <AlignmentToolbar
+                  onAlign={applyAlignment}
+                  onDistribute={applyDistribution}
+                  onLayerForward={() => applyLayerMove("forward")}
+                  onLayerBackward={() => applyLayerMove("backward")}
+                />
+              ) : null}
               <div
                 ref={figureRef}
                 className="mm-editor-figure"
@@ -1602,7 +2096,86 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
                     <polyline points={toCanvasPoints(previewLinePoints)} />
                   </svg>
                 ) : null}
+                {marqueeDraft ? (
+                  <div
+                    data-testid="marquee-preview"
+                    className="mm-marquee-preview"
+                    style={{
+                      left: `${marqueeDraft.x}%`,
+                      top: `${marqueeDraft.y}%`,
+                      width: `${marqueeDraft.w}%`,
+                      height: `${marqueeDraft.h}%`,
+                    }}
+                  />
+                ) : null}
+                {snapGuides.map((guide, index) => (
+                  <div
+                    key={`${guide.axis}-${guide.value}-${index}`}
+                    data-testid={`snap-guide-${guide.axis}`}
+                    className={`mm-snap-guide mm-snap-guide--${guide.axis}`}
+                    style={guide.axis === "x"
+                      ? { left: `${guide.value}%` }
+                      : { top: `${guide.value}%` }}
+                  />
+                ))}
+                {inlineTextEdit && (() => {
+                  const textObj = annotation.objects.find((obj) => obj.id === inlineTextEdit.id && obj.type === "text");
+                  if (!textObj || textObj.type !== "text") {
+                    return null;
+                  }
+                  return (
+                    <textarea
+                      data-testid="inline-text-editor"
+                      className="mm-inline-text-editor"
+                      style={{ left: `${textObj.at.x}%`, top: `${textObj.at.y}%` }}
+                      value={inlineTextEdit.value}
+                      autoFocus
+                      onChange={(event) => setInlineTextEdit({ id: inlineTextEdit.id, value: event.target.value })}
+                      onBlur={() => {
+                        updateObject(inlineTextEdit.id, (obj) =>
+                          obj.type === "text" ? { ...obj, content: inlineTextEdit.value } : obj,
+                        );
+                        setInlineTextEdit(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                          event.preventDefault();
+                          updateObject(inlineTextEdit.id, (obj) =>
+                            obj.type === "text" ? { ...obj, content: inlineTextEdit.value } : obj,
+                          );
+                          setInlineTextEdit(null);
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setInlineTextEdit(null);
+                        }
+                      }}
+                    />
+                  );
+                })()}
               </div>
+              {cropEdit && cropEditImage && cropEditNatural ? (
+                <VisualCropOverlay
+                  image={cropEditImage}
+                  canvas={annotation.canvas}
+                  natural={cropEditNatural}
+                  crop={cropEdit.crop}
+                  onCropChange={(nextCrop) => {
+                    setCropEdit((current) => current ? { ...current, crop: nextCrop } : current);
+                    updateObject(cropEdit.imageId, (obj) =>
+                      obj.type === "image" ? { ...obj, crop: nextCrop } : obj,
+                    );
+                  }}
+                  onConfirm={() => setCropEdit(null)}
+                  onCancel={() => {
+                    const snapshot = JSON.parse(cropEdit.snapshot) as { x: number; y: number; w: number; h: number };
+                    updateObject(cropEdit.imageId, (obj) =>
+                      obj.type === "image" ? { ...obj, crop: snapshot } : obj,
+                    );
+                    setCropEdit(null);
+                  }}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -1644,6 +2217,8 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           <AnnotationObjectList
             objects={annotation.objects}
             selectedIds={selectedIds}
+            hiddenIds={hiddenIds}
+            soloId={soloId}
             dragListIndex={dragListIndex}
             dropListIndex={dropListIndex}
             onSelect={(id, additive) => {
@@ -1656,6 +2231,20 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
               }
             }}
             onToggleLock={toggleObjectLock}
+            onToggleHidden={(id) => {
+              setHiddenIds((current) => {
+                const next = new Set(current);
+                if (next.has(id)) {
+                  next.delete(id);
+                } else {
+                  next.add(id);
+                }
+                return next;
+              });
+            }}
+            onToggleSolo={(id) => {
+              setSoloId((current) => (current === id ? null : id));
+            }}
             onReorder={reorderByDisplayIndex}
             onDragListIndexChange={setDragListIndex}
             onDropListIndexChange={setDropListIndex}
@@ -1683,6 +2272,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
             addPoint={addPoint}
             removePoint={removePoint}
             onOpenReplaceImage={() => setImagePickerMode("replace")}
+            onOpenVisualCrop={selected?.type === "image" && isEditable(selected)
+              ? () => openVisualCrop(selected.id)
+              : undefined}
           />
         </aside>
       </div>

@@ -17,11 +17,13 @@ import {
   createManualProject,
   listManuals,
   readAnnotationFile,
+  readAnnotationDefaults,
   readManual,
   readProjectTheme,
   renameAnnotationId,
   renumberAllBadgesFiles,
   savePastedImage,
+  writeAnnotationDefaults,
   writeAnnotationFile,
   writeProjectTheme,
 } from "@mahomanual/core/project";
@@ -151,7 +153,7 @@ export function createApp() {
     if (!root) {
       return c.json({ error: "project not found" }, 404);
     }
-    return c.json({ theme: readProjectTheme(root) });
+    return c.json({ theme: readProjectTheme(root), defaults: readAnnotationDefaults(root) });
   });
 
   // 注釈の既定テーマを更新する。キー省略(または null)は「既定値に戻す」
@@ -160,7 +162,11 @@ export function createApp() {
     if (!root) {
       return c.json({ error: "project not found" }, 404);
     }
-    const body = await c.req.json<{ color?: unknown; fontSize?: unknown }>();
+    const body = await c.req.json<{
+      color?: unknown;
+      fontSize?: unknown;
+      defaults?: unknown;
+    }>();
     if (body.color != null && typeof body.color !== "string") {
       return c.json({ error: "colorは文字列で指定してください" }, 400);
     }
@@ -172,7 +178,10 @@ export function createApp() {
         color: body.color ?? undefined,
         fontSize: body.fontSize ?? undefined,
       });
-      return c.json({ theme });
+      if (body.defaults !== undefined) {
+        writeAnnotationDefaults(root, (body.defaults ?? {}) as Record<string, unknown>);
+      }
+      return c.json({ theme, defaults: readAnnotationDefaults(root) });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "theme update failed" }, 400);
     }
@@ -193,7 +202,12 @@ export function createApp() {
       const imageSources = collectImageSources(annotation);
       const naturalSizes = getNaturalSizes(root, imageSources);
       const theme = readProjectTheme(root);
-      return c.json({ annotation, naturalSizes, theme });
+      return c.json({
+        annotation,
+        naturalSizes,
+        theme,
+        defaults: readAnnotationDefaults(root),
+      });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "not found" }, 404);
     }
