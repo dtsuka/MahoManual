@@ -114,6 +114,10 @@ test("annotation editor: selected point objects show a dashed selection frame", 
   await page.getByTestId("add-text").click();
   await clickCanvas(page, 42, 32);
   await expectDashedSelectionFrame(page.locator(".mm-editor-figure .mm-text").last());
+
+  await page.getByTestId("add-cursor").click();
+  await clickCanvas(page, 54, 38);
+  await expectDashedSelectionFrame(page.locator(".mm-editor-figure .mm-cursor").last());
 });
 
 test("annotation editor: visibility controls use accessible stroke icons", async ({ page }) => {
