@@ -23,6 +23,16 @@ export function textBoxRectFromAnchor(at: Point): Rect {
   };
 }
 
+/** テキスト配置時にポインタを左上へ合わせる既定ボックス */
+export function textBoxRectFromTopLeft(at: Point): Rect {
+  return {
+    x: at.x,
+    y: at.y,
+    w: TEXT_BOX_WIDTH,
+    h: TEXT_BOX_HEIGHT,
+  };
+}
+
 /** 旧at形式も含め、テキストの編集対象となる矩形を返す */
 export function textBoxRect(obj: TextObject): Rect {
   return obj.rect ?? textBoxRectFromAnchor(obj.at);

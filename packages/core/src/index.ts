@@ -10,6 +10,7 @@ export {
   setTextBoxRect,
   textBoxRect,
   textBoxRectFromAnchor,
+  textBoxRectFromTopLeft,
   mosaicsForImage,
   taggableObjectsInDisplayOrder,
   type ImageObject,

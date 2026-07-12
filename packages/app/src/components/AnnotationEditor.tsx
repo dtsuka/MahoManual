@@ -13,6 +13,7 @@ import {
   taggableObjectsInDisplayOrder,
   textBoxRect,
   textBoxRectFromAnchor,
+  textBoxRectFromTopLeft,
 } from "@mahomanual/core/annotation-objects";
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
 import { rectAtPixelSize } from "@mahomanual/core/object-geometry";
@@ -426,11 +427,14 @@ export function AnnotationEditor({
     const id = createObjectId(type, current.objects);
     const roundedAt = { x: roundCreationPct(at.x), y: roundCreationPct(at.y) };
     const style = buildCreationStyle(type);
-    const rect = textBoxRectFromAnchor(roundedAt);
+    const rect = type === "text"
+      ? textBoxRectFromTopLeft(roundedAt)
+      : textBoxRectFromAnchor(roundedAt);
+    const textAnchor = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
     const object: AnnotationObject = type === "badge"
       ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt, ...style }
       : type === "text"
-        ? { id, type, source: "manual", content: "テキスト", at: roundedAt, rect, ...style }
+        ? { id, type, source: "manual", content: "テキスト", at: textAnchor, rect, ...style }
         : { id, type, source: "manual", icon: style.icon ?? "pointer", at: roundedAt, size: style.size ?? 28, ...style };
     applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
     setSelectedIds([id]);
@@ -1767,42 +1771,56 @@ export function AnnotationEditor({
           </Button>
         </div>
       </header>
-      {status ? <Banner kind="success">{status}</Banner> : null}
-      {externalPayload ? (
-        <Banner kind="warning" testId="external-change-banner">
-          <span className="min-w-0 flex-1">
-            外部で注釈が変更されました。読み込むと未保存の編集は失われます。
-          </span>
-          <Button size="sm" data-testid="apply-external" onClick={() => applyPayload(externalPayload)}>
-            外部の内容を読み込む
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setExternalPayload(null)}>
-            GUIの内容を維持
-          </Button>
-        </Banner>
-      ) : null}
-      {pendingNavigation ? (
-        <Banner kind="warning" testId="unsaved-nav-banner">
-          <span className="min-w-0 flex-1">未保存の変更があります。移動方法を選んでください。</span>
-          <Button size="sm" data-testid="nav-save-and-go" onClick={() => void completePendingNavigation("save")}>
-            保存して移動
-          </Button>
-          <Button size="sm" variant="ghost" data-testid="nav-discard-and-go" onClick={() => void completePendingNavigation("discard")}>
-            破棄して移動
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPendingNavigation(null)}>
-            キャンセル
-          </Button>
-        </Banner>
-      ) : null}
-      <MergeConflictResolver
-        conflicts={mergeConflicts}
-        resolutions={mergeResolutions}
-        onResolutionChange={(id, choice) => setMergeResolutions((current) => ({ ...current, [id]: choice }))}
-        onApply={applyMergeResolution}
-        onKeepLocal={keepLocalMerge}
-      />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex flex-col">
+          {status ? (
+            <div className="pointer-events-auto">
+              <Banner kind="success">{status}</Banner>
+            </div>
+          ) : null}
+          {externalPayload ? (
+            <div className="pointer-events-auto">
+              <Banner kind="warning" testId="external-change-banner">
+                <span className="min-w-0 flex-1">
+                  外部で注釈が変更されました。読み込むと未保存の編集は失われます。
+                </span>
+                <Button size="sm" data-testid="apply-external" onClick={() => applyPayload(externalPayload)}>
+                  外部の内容を読み込む
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setExternalPayload(null)}>
+                  GUIの内容を維持
+                </Button>
+              </Banner>
+            </div>
+          ) : null}
+          {pendingNavigation ? (
+            <div className="pointer-events-auto">
+              <Banner kind="warning" testId="unsaved-nav-banner">
+                <span className="min-w-0 flex-1">未保存の変更があります。移動方法を選んでください。</span>
+                <Button size="sm" data-testid="nav-save-and-go" onClick={() => void completePendingNavigation("save")}>
+                  保存して移動
+                </Button>
+                <Button size="sm" variant="ghost" data-testid="nav-discard-and-go" onClick={() => void completePendingNavigation("discard")}>
+                  破棄して移動
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setPendingNavigation(null)}>
+                  キャンセル
+                </Button>
+              </Banner>
+            </div>
+          ) : null}
+          {mergeConflicts.length > 0 ? (
+            <div className="pointer-events-auto">
+              <MergeConflictResolver
+                conflicts={mergeConflicts}
+                resolutions={mergeResolutions}
+                onResolutionChange={(id, choice) => setMergeResolutions((current) => ({ ...current, [id]: choice }))}
+                onApply={applyMergeResolution}
+                onKeepLocal={keepLocalMerge}
+              />
+            </div>
+          ) : null}
+        </div>
         {/* オブジェクト追加ツールレール(キャンバス左端にフロート)。
             ツール名は SPEC の注釈用語に合わせ、CSS ツールチップで表示する */}
         <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
@@ -2056,6 +2074,8 @@ export function AnnotationEditor({
                         : { left: `${textObj.at.x}%`, top: `${textObj.at.y}%` }}
                       value={inlineTextEdit.value}
                       autoFocus
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
                       onChange={(event) => setInlineTextEdit({ id: inlineTextEdit.id, value: event.target.value })}
                       onBlur={() => {
                         updateObject(inlineTextEdit.id, (obj) =>
