@@ -232,7 +232,7 @@ test("annotation editor: selected style can be saved and cleared as the project 
 
     await page.getByTestId("project-default-clear").click();
     await expect(page.getByTestId("project-default-clear")).toHaveCount(0);
-    await expect.poll(() => readFileSync(projectYamlPath, "utf8")).not.toContain("defaults:");
+    await expect.poll(() => readFileSync(projectYamlPath, "utf8")).not.toContain("badge:");
   } finally {
     writeFileSync(projectYamlPath, originalYaml, "utf8");
   }

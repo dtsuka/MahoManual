@@ -32,7 +32,7 @@ test("project home: set and reset default annotation color / font size", async (
     // 既存のタイトルを壊さない
     expect(savedYaml).toContain("アイケア様求人サイト");
 
-    // 既定値に戻して保存すると annotation セクションが消える
+    // 既定値に戻して保存すると color / fontSize が消える（defaults 等の他キーは残ってよい）
     await page.getByTestId("theme-reset").click();
     const [resetResponse] = await Promise.all([
       page.waitForResponse(
@@ -41,7 +41,9 @@ test("project home: set and reset default annotation color / font size", async (
       page.getByTestId("theme-save").click(),
     ]);
     expect(resetResponse.ok()).toBeTruthy();
-    expect(readFileSync(projectYamlPath, "utf8")).not.toContain("annotation");
+    const resetYaml = readFileSync(projectYamlPath, "utf8");
+    expect(resetYaml).not.toContain('color: "#3366ff"');
+    expect(resetYaml).not.toContain("fontSize:");
   } finally {
     writeFileSync(projectYamlPath, originalYaml, "utf8");
   }
