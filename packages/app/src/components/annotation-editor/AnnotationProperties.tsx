@@ -1,11 +1,12 @@
 import type { AnnotationFile, AnnotationObject, CursorIcon } from "@mahomanual/core/schema";
-import { isEditable, isLineObject } from "@mahomanual/core/annotation-objects";
+import { isEditable, isLineObject, isRectObject } from "@mahomanual/core/annotation-objects";
 import {
   DEFAULT_ANNOTATION_COLOR,
   DEFAULT_ANNOTATION_FONT_SIZE,
   DEFAULT_CURSOR_COLOR,
   type AnnotationTheme,
 } from "@mahomanual/core/theme";
+import { clampCrop } from "../../lib/annotation-operations.js";
 import { IconImage, IconPlus, IconX } from "../icons.js";
 import { Button, ColorInput, Kbd, SelectInput, cx } from "../ui.js";
 import { NumberField } from "./helpers.js";
@@ -18,15 +19,6 @@ interface AnnotationPropertiesProps {
   selectedPointIndex: number | null;
   setSelectedPointIndex: (index: number | null) => void;
   updateObject: (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => void;
-  updateAt: (key: "x" | "y", value: number) => void;
-  updateRect: (key: "x" | "y" | "w" | "h", value: number) => void;
-  updateCrop: (key: "x" | "y" | "w" | "h", value: number) => void;
-  updateLineType: (type: "line" | "arrow") => void;
-  updateLineStyle: (patch: { color?: string; strokeWidth?: number }) => void;
-  updateArrowHeads: (arrowHeads: "start" | "end" | "both") => void;
-  updatePointValue: (index: number, key: "x" | "y", value: number) => void;
-  addPoint: () => void;
-  removePoint: (index: number) => void;
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
   onResetImageSize?: () => void;
@@ -66,15 +58,6 @@ export function AnnotationProperties({
   selectedPointIndex,
   setSelectedPointIndex,
   updateObject,
-  updateAt,
-  updateRect,
-  updateCrop,
-  updateLineType,
-  updateLineStyle,
-  updateArrowHeads,
-  updatePointValue,
-  addPoint,
-  removePoint,
   onOpenReplaceImage,
   onOpenVisualCrop,
   onResetImageSize,
@@ -84,6 +67,129 @@ export function AnnotationProperties({
   onApplyProjectDefault,
 }: AnnotationPropertiesProps) {
   const editableSelected = selected && isEditable(selected) ? selected : null;
+
+  const updateAt = (axis: "x" | "y", value: number) => {
+    if (!editableSelected || (editableSelected.type !== "badge" && editableSelected.type !== "text" && editableSelected.type !== "cursor")) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) =>
+      obj.type === "badge" || obj.type === "text" || obj.type === "cursor"
+        ? { ...obj, at: { ...obj.at, [axis]: value } }
+        : obj,
+    );
+  };
+
+  const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
+    if (!editableSelected || !isRectObject(editableSelected)) {
+      return;
+    }
+    const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
+    updateObject(editableSelected.id, (obj) =>
+      isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj,
+    );
+  };
+
+  const updateCrop = (key: "x" | "y" | "w" | "h", value: number) => {
+    if (!editableSelected || editableSelected.type !== "image") {
+      return;
+    }
+    const natural = naturalSizes[editableSelected.src];
+    if (!natural) {
+      return;
+    }
+    const current = editableSelected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+    const next = clampCrop({ ...current, [key]: value }, natural);
+    updateObject(editableSelected.id, (obj) => (obj.type === "image" ? { ...obj, crop: next } : obj));
+  };
+
+  const updatePointValue = (index: number, axis: "x" | "y", value: number) => {
+    if (!editableSelected || !isLineObject(editableSelected)) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) =>
+      isLineObject(obj)
+        ? {
+            ...obj,
+            points: obj.points.map((point, i) => (i === index ? { ...point, [axis]: value } : point)),
+          }
+        : obj,
+    );
+  };
+
+  const updateLineStyle = (patch: { color?: string; strokeWidth?: number }) => {
+    if (!editableSelected || !isLineObject(editableSelected)) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) => (isLineObject(obj) ? { ...obj, ...patch } : obj));
+  };
+
+  const updateLineType = (type: "line" | "arrow") => {
+    if (!editableSelected || !isLineObject(editableSelected)) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) => {
+      if (!isLineObject(obj)) {
+        return obj;
+      }
+      if (type === "arrow") {
+        return {
+          ...obj,
+          type: "arrow",
+          arrowHeads: obj.type === "arrow" ? (obj.arrowHeads ?? "end") : "end",
+        };
+      }
+      if (obj.type === "arrow") {
+        const { arrowHeads: _arrowHeads, ...line } = obj;
+        return { ...line, type: "line" };
+      }
+      return obj;
+    });
+  };
+
+  const updateArrowHeads = (arrowHeads: "start" | "end" | "both") => {
+    if (!editableSelected || editableSelected.type !== "arrow") {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) =>
+      obj.type === "arrow" ? { ...obj, arrowHeads } : obj,
+    );
+  };
+
+  const addPoint = () => {
+    if (!editableSelected || !isLineObject(editableSelected)) {
+      return;
+    }
+    const objectId = editableSelected.id;
+    setSelectedPointIndex(editableSelected.points.length);
+    updateObject(objectId, (obj) => {
+      if (!isLineObject(obj)) {
+        return obj;
+      }
+      const last = obj.points[obj.points.length - 1] ?? { x: 50, y: 50 };
+      return { ...obj, points: [...obj.points, { x: Math.min(last.x + 8, 100), y: last.y }] };
+    });
+  };
+
+  const removePoint = (index: number) => {
+    if (!editableSelected || !isLineObject(editableSelected)) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) => {
+      if (!isLineObject(obj) || obj.points.length <= 2) {
+        return obj;
+      }
+      return { ...obj, points: obj.points.filter((_, i) => i !== index) };
+    });
+    setSelectedPointIndex(
+      selectedPointIndex === null
+        ? null
+        : selectedPointIndex === index
+          ? null
+          : selectedPointIndex > index
+            ? selectedPointIndex - 1
+            : selectedPointIndex,
+    );
+  };
 
   return (
     <>

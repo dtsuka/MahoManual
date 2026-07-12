@@ -48,7 +48,6 @@ import {
   type StickySnapState,
 } from "../lib/geometry.js";
 import {
-  clampCrop,
   duplicateObjects,
   removeUnlockedObjects,
   translateObjects,
@@ -78,6 +77,9 @@ import {
   commitTranslateDrag,
   previewTranslateDrag,
 } from "../lib/object-translate-drag.js";
+import { useAnnotationDocument } from "../lib/use-annotation-document.js";
+import { classifyEditorKeydown } from "../lib/editor-keyboard.js";
+import type { PointPct } from "../lib/geometry.js";
 import {
   IconArrowLeft,
   IconArrowLine,
@@ -129,7 +131,6 @@ import {
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
 const SNAP_THRESHOLD_PCT = 0.7;
 const SNAP_RELEASE_PCT = 1.5;
-const MAX_HISTORY = 100;
 // 表示倍率により1画面pxが0.1%以上になる場合も、クリック位置を安定した値へ揃える。
 const roundCreationPct = (value: number) => Math.round(value * 2) / 2;
 
@@ -139,11 +140,6 @@ interface AnnotationEditorProps {
   onBack?: () => void;
   onRenamed?: (id: string) => void;
   onNavigateToAnnotation?: (id: string) => void;
-}
-
-interface Pt {
-  x: number;
-  y: number;
 }
 
 interface AnnotationPayload {
@@ -160,7 +156,24 @@ export function AnnotationEditor({
   onRenamed,
   onNavigateToAnnotation,
 }: AnnotationEditorProps) {
-  const [annotation, setAnnotation] = useState<AnnotationFile | null>(null);
+  const {
+    annotation,
+    annotationRef,
+    dirty,
+    dirtyRef,
+    canUndo,
+    canRedo,
+    applyLocalChange,
+    applyTransientChange,
+    commitTransientChange,
+    nudgeSelection,
+    undo: undoDocument,
+    redo: redoDocument,
+    replaceDocument,
+    markSaved,
+    getSavedBase,
+    isSameAsCurrent,
+  } = useAnnotationDocument();
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
   const [annotationDefaults, setAnnotationDefaults] = useState<AnnotationDefaults>({});
@@ -170,13 +183,11 @@ export function AnnotationEditor({
   const [status, setStatus] = useState<string>("");
   const [nextAnnotationId, setNextAnnotationId] = useState(annotationId);
   const [error, setError] = useState<string>("");
-  const [dirty, setDirty] = useState(false);
-  const [, setHistoryVersion] = useState(0);
   const [interactionObjects, setInteractionObjects] = useState<AnnotationObject[] | null>(null);
   const [activeTool, setActiveTool] = useState<EditorTool>("select");
-  const [hoverPoint, setHoverPoint] = useState<Pt | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<PointPct | null>(null);
   const [rectDraft, setRectDraft] = useState<{ type: "frame" | "mosaic"; rect: RectPct } | null>(null);
-  const [lineDraft, setLineDraft] = useState<{ type: "line" | "arrow"; points: Pt[] } | null>(null);
+  const [lineDraft, setLineDraft] = useState<{ type: "line" | "arrow"; points: PointPct[] } | null>(null);
   const [zoom, setZoom] = useState(25);
   const [zoomMode, setZoomMode] = useState<"fit" | "manual">("fit");
   const [isSpaceHeld, setIsSpaceHeld] = useState(false);
@@ -191,13 +202,6 @@ export function AnnotationEditor({
   const wrapRef = useRef<HTMLDivElement>(null);
   const figureRef = useRef<HTMLDivElement>(null);
   const canvasViewportRef = useRef<HTMLDivElement>(null);
-  const annotationRef = useRef<AnnotationFile | null>(null);
-  const dirtyRef = useRef(false);
-  const savedAnnotationJsonRef = useRef("");
-  const historyRef = useRef<{
-    past: AnnotationFile[];
-    future: AnnotationFile[];
-  }>({ past: [], future: [] });
   const copiedIdsRef = useRef<string[]>([]);
   const spaceHeldRef = useRef(false);
   const [imagePickerMode, setImagePickerMode] = useState<"add" | "replace" | null>(null);
@@ -221,7 +225,6 @@ export function AnnotationEditor({
   } | null>(null);
   const marqueeJustFinishedRef = useRef(false);
   const copiedStyleRef = useRef<ReturnType<typeof extractObjectStyle> | null>(null);
-  const arrowCoalesceRef = useRef<{ timer?: ReturnType<typeof setTimeout>; start?: AnnotationFile }>({});
   const selectedId = selectedIds.at(-1) ?? null;
 
   const figureHtml = useMemo(() => {
@@ -265,91 +268,35 @@ export function AnnotationEditor({
   };
 
   const applyPayload = (payload: AnnotationPayload) => {
-    annotationRef.current = payload.annotation;
-    savedAnnotationJsonRef.current = JSON.stringify(payload.annotation);
-    historyRef.current = { past: [], future: [] };
-    setHistoryVersion((version) => version + 1);
-    setAnnotation(payload.annotation);
+    replaceDocument(payload.annotation, {
+      savedSnapshot: payload.annotation,
+      dirty: false,
+      clearHistory: true,
+    });
     setNaturalSizes(payload.naturalSizes);
     setTheme(payload.theme ?? {});
     setAnnotationDefaults(payload.defaults ?? {});
-    dirtyRef.current = false;
-    setDirty(false);
     setExternalPayload(null);
   };
 
-  // GUI 上の編集はすべてここを通し、annotationRef(最新値)と dirty を同期する
-  const applyLocalChange = (updater: (current: AnnotationFile) => AnnotationFile) => {
-    const current = annotationRef.current;
-    if (!current) {
-      return;
-    }
-    const next = updater(current);
-    if (next === current) {
-      return;
-    }
-    historyRef.current = {
-      past: [...historyRef.current.past, current].slice(-MAX_HISTORY),
-      future: [],
-    };
-    annotationRef.current = next;
-    setAnnotation(next);
-    const nextDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
-    dirtyRef.current = nextDirty;
-    setDirty(nextDirty);
-    setHistoryVersion((version) => version + 1);
-  };
-
-  const restoreHistoryAnnotation = (next: AnnotationFile) => {
-    annotationRef.current = next;
-    setAnnotation(next);
+  const syncSelectionToAnnotation = (next: AnnotationFile) => {
     setSelectedIds((ids) =>
       ids.filter((id) => next.objects.some((object) => object.id === id)),
     );
-    const nextDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
-    dirtyRef.current = nextDirty;
-    setDirty(nextDirty);
-    setHistoryVersion((version) => version + 1);
   };
 
-  const applyTransientChange = (updater: (current: AnnotationFile) => AnnotationFile) => {
-    const current = annotationRef.current;
-    if (!current) {
-      return;
+  const undo = () => {
+    const previous = undoDocument();
+    if (previous) {
+      syncSelectionToAnnotation(previous);
     }
-    const next = updater(current);
-    annotationRef.current = next;
-    setAnnotation(next);
-    const isDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
-    dirtyRef.current = isDirty;
-    setDirty(isDirty);
   };
 
-  const commitTransientChange = (start: AnnotationFile) => {
-    const current = annotationRef.current;
-    if (!current || JSON.stringify(start) === JSON.stringify(current)) {
-      return;
+  const redo = () => {
+    const next = redoDocument();
+    if (next) {
+      syncSelectionToAnnotation(next);
     }
-    historyRef.current = {
-      past: [...historyRef.current.past, start].slice(-MAX_HISTORY),
-      future: [],
-    };
-    setHistoryVersion((version) => version + 1);
-  };
-
-  const commitArrowCoalesce = () => {
-    const start = arrowCoalesceRef.current.start;
-    const current = annotationRef.current;
-    if (!start || !current || JSON.stringify(start) === JSON.stringify(current)) {
-      arrowCoalesceRef.current = {};
-      return;
-    }
-    historyRef.current = {
-      past: [...historyRef.current.past, start].slice(-MAX_HISTORY),
-      future: [],
-    };
-    setHistoryVersion((version) => version + 1);
-    arrowCoalesceRef.current = {};
   };
 
   const neighbors = resolveAnnotationNeighbors(annotationIds, annotationId);
@@ -395,13 +342,11 @@ export function AnnotationEditor({
       local: mergeContext.local,
       remote: mergeContext.remote,
     });
-    annotationRef.current = resolved;
-    savedAnnotationJsonRef.current = JSON.stringify(mergeContext.remote);
-    historyRef.current = { past: [], future: [] };
-    setHistoryVersion((version) => version + 1);
-    setAnnotation(resolved);
-    dirtyRef.current = true;
-    setDirty(true);
+    replaceDocument(resolved, {
+      savedSnapshot: mergeContext.remote,
+      dirty: true,
+      clearHistory: true,
+    });
     setMergeConflicts([]);
     setMergeContext(null);
     setMergeResolutions({});
@@ -413,32 +358,6 @@ export function AnnotationEditor({
     setMergeResolutions({});
   };
 
-  const undo = () => {
-    const current = annotationRef.current;
-    const previous = historyRef.current.past.at(-1);
-    if (!current || !previous) {
-      return;
-    }
-    historyRef.current = {
-      past: historyRef.current.past.slice(0, -1),
-      future: [current, ...historyRef.current.future].slice(0, MAX_HISTORY),
-    };
-    restoreHistoryAnnotation(previous);
-  };
-
-  const redo = () => {
-    const current = annotationRef.current;
-    const next = historyRef.current.future[0];
-    if (!current || !next) {
-      return;
-    }
-    historyRef.current = {
-      past: [...historyRef.current.past, current].slice(-MAX_HISTORY),
-      future: historyRef.current.future.slice(1),
-    };
-    restoreHistoryAnnotation(next);
-  };
-
   const handleSave = async () => {
     const current = annotationRef.current;
     if (!current) {
@@ -447,11 +366,7 @@ export function AnnotationEditor({
     try {
       const saved = await saveAnnotation(project, annotationId, current);
       // サーバーで zod 正規化された内容を保持し、保存エコーの同一判定を確実にする
-      annotationRef.current = saved.annotation;
-      savedAnnotationJsonRef.current = JSON.stringify(saved.annotation);
-      setAnnotation(saved.annotation);
-      dirtyRef.current = false;
-      setDirty(false);
+      markSaved(saved.annotation);
       setStatus("保存しました");
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
@@ -484,7 +399,7 @@ export function AnnotationEditor({
       theme,
     });
 
-  const createPointObject = (type: "badge" | "text" | "cursor", at: Pt) => {
+  const createPointObject = (type: "badge" | "text" | "cursor", at: PointPct) => {
     const current = annotationRef.current;
     if (!current) {
       return;
@@ -649,24 +564,22 @@ export function AnnotationEditor({
       void fetchPayload()
         .then((payload) => {
           // 自分の保存によるエコーは無視する
-          if (JSON.stringify(payload.annotation) === JSON.stringify(annotationRef.current)) {
+          if (isSameAsCurrent(payload.annotation)) {
             return;
           }
           if (dirtyRef.current) {
-            const base = JSON.parse(savedAnnotationJsonRef.current) as AnnotationFile;
+            const base = getSavedBase();
             const local = annotationRef.current;
             if (!local) {
               return;
             }
             const result = mergeAnnotationEdits(base, local, payload.annotation);
             if (result.conflicts.length === 0) {
-              annotationRef.current = result.merged;
-              savedAnnotationJsonRef.current = JSON.stringify(payload.annotation);
-              historyRef.current = { past: [], future: [] };
-              setHistoryVersion((version) => version + 1);
-              setAnnotation(result.merged);
-              dirtyRef.current = true;
-              setDirty(true);
+              replaceDocument(result.merged, {
+                savedSnapshot: payload.annotation,
+                dirty: true,
+                clearHistory: true,
+              });
               setExternalPayload(null);
               return;
             }
@@ -714,185 +627,153 @@ export function AnnotationEditor({
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      const active = document.activeElement;
       if (!annotationRef.current) {
         return;
       }
-      const commandKey = event.metaKey || event.ctrlKey;
-      const key = event.key.toLowerCase();
-      if (commandKey && key === "s") {
-        event.preventDefault();
-        void handleSave();
-        return;
-      }
+      const active = document.activeElement;
       const isTextInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
-      if (!isTextInput && event.code === "Space" && !commandKey) {
-        event.preventDefault();
-        spaceHeldRef.current = true;
-        setIsSpaceHeld(true);
-        return;
-      }
-      if (!isTextInput && commandKey && key === "0") {
-        event.preventDefault();
-        showFit();
-        return;
-      }
-      if (!isTextInput && commandKey && key === "1") {
-        event.preventDefault();
-        showActualSize();
-        return;
-      }
-      if (cropEdit) {
-        if (event.key === "Escape") {
+      const command = classifyEditorKeydown(event, {
+        isTextInput,
+        cropEditActive: !!cropEdit,
+        lineToolActive: activeTool === "line" || activeTool === "arrow",
+        hasSelection: selectedIds.length > 0,
+        hasCopiedIds: copiedIdsRef.current.length > 0,
+        hasCopiedStyle: !!copiedStyleRef.current,
+        hasSelectedId: !!selectedId,
+      });
+
+      switch (command.kind) {
+        case "none":
+          return;
+        case "save":
+          event.preventDefault();
+          void handleSave();
+          return;
+        case "space-down":
+          event.preventDefault();
+          spaceHeldRef.current = true;
+          setIsSpaceHeld(true);
+          return;
+        case "fit":
+          event.preventDefault();
+          showFit();
+          return;
+        case "actual-size":
+          event.preventDefault();
+          showActualSize();
+          return;
+        case "crop-cancel":
+          if (!cropEdit) {
+            return;
+          }
           event.preventDefault();
           applyTransientChange(() => cropEdit.start);
           setCropEdit(null);
           return;
-        }
-        if (event.key === "Enter") {
+        case "crop-commit":
+          if (!cropEdit) {
+            return;
+          }
           event.preventDefault();
           commitTransientChange(cropEdit.start);
           setCropEdit(null);
           return;
-        }
-      }
-      if (!isTextInput && commandKey && key === "a") {
-        event.preventDefault();
-        const editableIds = annotationRef.current.objects
-          .filter((obj) => isEditable(obj) && obj.type !== "image")
-          .map((obj) => obj.id);
-        setSelectedIds(editableIds);
-        return;
-      }
-      if (!isTextInput && (activeTool === "line" || activeTool === "arrow")) {
-        if (event.key === "Enter") {
+        case "select-all":
+          event.preventDefault();
+          setSelectedIds(
+            annotationRef.current.objects
+              .filter((obj) => isEditable(obj) && obj.type !== "image")
+              .map((obj) => obj.id),
+          );
+          return;
+        case "finish-line":
           event.preventDefault();
           finishLineDraft();
           return;
-        }
-        if (event.key === "Escape") {
+        case "cancel-creation":
           event.preventDefault();
           resetCreation();
           return;
-        }
-      }
-      if (isTextInput) {
-        return;
-      }
-      if (commandKey && key === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          redo();
-        } else {
+        case "undo":
+          event.preventDefault();
           undo();
+          return;
+        case "redo":
+          event.preventDefault();
+          redo();
+          return;
+        case "copy-style": {
+          event.preventDefault();
+          if (!selectedId) {
+            return;
+          }
+          const obj = annotationRef.current.objects.find((item) => item.id === selectedId);
+          if (obj) {
+            copiedStyleRef.current = extractObjectStyle(obj);
+          }
+          return;
         }
-        return;
-      }
-      if (event.ctrlKey && key === "y") {
-        event.preventDefault();
-        redo();
-        return;
-      }
-      if (commandKey && event.altKey && key === "c" && selectedId) {
-        event.preventDefault();
-        const obj = annotationRef.current.objects.find((item) => item.id === selectedId);
-        if (obj) {
-          copiedStyleRef.current = extractObjectStyle(obj);
+        case "paste-style":
+          event.preventDefault();
+          if (!selectedId || !copiedStyleRef.current) {
+            return;
+          }
+          applyLocalChange((current) => ({
+            ...current,
+            objects: current.objects.map((obj) =>
+              obj.id === selectedId && isEditable(obj)
+                ? applyObjectStyle(obj, copiedStyleRef.current!)
+                : obj,
+            ),
+          }));
+          return;
+        case "reorder":
+          event.preventDefault();
+          applyLocalChange((current) => ({
+            ...current,
+            objects: reorderObject(current.objects, selectedIds, command.direction),
+          }));
+          return;
+        case "duplicate": {
+          event.preventDefault();
+          const result = duplicateObjects(annotationRef.current.objects, selectedIds, 1);
+          applyLocalChange((current) => ({ ...current, objects: result.objects }));
+          setSelectedIds(result.selectedIds);
+          return;
         }
-        return;
-      }
-      if (commandKey && event.altKey && key === "v" && copiedStyleRef.current && selectedId) {
-        event.preventDefault();
-        applyLocalChange((current) => ({
-          ...current,
-          objects: current.objects.map((obj) =>
-            obj.id === selectedId && isEditable(obj)
-              ? applyObjectStyle(obj, copiedStyleRef.current!)
-              : obj,
-          ),
-        }));
-        return;
-      }
-      if (selectedIds.length === 0) {
-        return;
-      }
-      if (!isTextInput && event.key === "[") {
-        event.preventDefault();
-        applyLocalChange((current) => ({
-          ...current,
-          objects: reorderObject(current.objects, selectedIds, "backward"),
-        }));
-        return;
-      }
-      if (!isTextInput && event.key === "]") {
-        event.preventDefault();
-        applyLocalChange((current) => ({
-          ...current,
-          objects: reorderObject(current.objects, selectedIds, "forward"),
-        }));
-        return;
-      }
-      const selected = new Set(selectedIds);
-      if (commandKey && key === "d") {
-        event.preventDefault();
-        const result = duplicateObjects(annotationRef.current.objects, selectedIds, 1);
-        applyLocalChange((current) => ({ ...current, objects: result.objects }));
-        setSelectedIds(result.selectedIds);
-        return;
-      }
-      if (commandKey && key === "c") {
-        event.preventDefault();
-        copiedIdsRef.current = [...selectedIds];
-        return;
-      }
-      if (commandKey && key === "v" && copiedIdsRef.current.length > 0) {
-        event.preventDefault();
-        const result = duplicateObjects(annotationRef.current.objects, copiedIdsRef.current);
-        applyLocalChange((current) => ({ ...current, objects: result.objects }));
-        setSelectedIds(result.selectedIds);
-        copiedIdsRef.current = result.selectedIds;
-        return;
-      }
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        applyLocalChange((current) => ({
-          ...current,
-          objects: removeUnlockedObjects(current.objects, selected),
-        }));
-        setSelectedIds((ids) =>
-          ids.filter((id) => {
-            const obj = annotationRef.current?.objects.find((item) => item.id === id);
-            return obj !== undefined && !isEditable(obj);
-          }),
-        );
-        return;
-      }
-      const directions: Record<string, Pt> = {
-        ArrowLeft: { x: -1, y: 0 },
-        ArrowRight: { x: 1, y: 0 },
-        ArrowUp: { x: 0, y: -1 },
-        ArrowDown: { x: 0, y: 1 },
-      };
-      const direction = directions[event.key];
-      if (direction) {
-        event.preventDefault();
-        const amount = event.shiftKey ? 1 : 0.1;
-        if (!arrowCoalesceRef.current.start) {
-          arrowCoalesceRef.current.start = structuredClone(annotationRef.current);
+        case "copy":
+          event.preventDefault();
+          copiedIdsRef.current = [...selectedIds];
+          return;
+        case "paste": {
+          event.preventDefault();
+          const result = duplicateObjects(annotationRef.current.objects, copiedIdsRef.current);
+          applyLocalChange((current) => ({ ...current, objects: result.objects }));
+          setSelectedIds(result.selectedIds);
+          copiedIdsRef.current = result.selectedIds;
+          return;
         }
-        applyTransientChange((current) => ({
-          ...current,
-          objects: translateObjects(
-            current.objects,
-            selected,
-            direction.x * amount,
-            direction.y * amount,
-          ),
-        }));
-        if (arrowCoalesceRef.current.timer) {
-          clearTimeout(arrowCoalesceRef.current.timer);
+        case "delete":
+          event.preventDefault();
+          applyLocalChange((current) => ({
+            ...current,
+            objects: removeUnlockedObjects(current.objects, new Set(selectedIds)),
+          }));
+          setSelectedIds((ids) =>
+            ids.filter((id) => {
+              const obj = annotationRef.current?.objects.find((item) => item.id === id);
+              return obj !== undefined && !isEditable(obj);
+            }),
+          );
+          return;
+        case "nudge":
+          event.preventDefault();
+          nudgeSelection(selectedIds, command.dx, command.dy);
+          return;
+        default: {
+          const _exhaustive: never = command;
+          return _exhaustive;
         }
-        arrowCoalesceRef.current.timer = setTimeout(commitArrowCoalesce, 250);
       }
     };
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -909,10 +790,10 @@ export function AnnotationEditor({
       window.removeEventListener("keydown", handler);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [activeTool, lineDraft, selectedIds, cropEdit]);
+  }, [activeTool, lineDraft, selectedIds, cropEdit, selectedId]);
 
   // ポインタ座標 → figure 内の%座標
-  const pctFromClient = (clientX: number, clientY: number): Pt => {
+  const pctFromClient = (clientX: number, clientY: number): PointPct => {
     const figure = figureRef.current?.querySelector("figure");
     const box = figure?.getBoundingClientRect() ?? wrapRef.current?.getBoundingClientRect();
     if (!box) {
@@ -928,8 +809,8 @@ export function AnnotationEditor({
   const startPointerDrag = (
     start: { clientX: number; clientY: number },
     handlers: {
-      onMove: (pct: Pt, event: PointerEvent) => void;
-      onEnd: (pct: Pt, moved: boolean, event: PointerEvent) => void;
+      onMove: (pct: PointPct, event: PointerEvent) => void;
+      onEnd: (pct: PointPct, moved: boolean, event: PointerEvent) => void;
     },
   ) => {
     const startClient = { x: start.clientX, y: start.clientY };
@@ -950,7 +831,7 @@ export function AnnotationEditor({
     window.addEventListener("pointerup", onPointerUp);
   };
 
-  const normalizeDraftRect = (start: Pt, end: Pt): RectPct => ({
+  const normalizeDraftRect = (start: PointPct, end: PointPct): RectPct => ({
     x: roundCreationPct(Math.min(start.x, end.x)),
     y: roundCreationPct(Math.min(start.y, end.y)),
     w: roundCreationPct(Math.abs(end.x - start.x)),
@@ -1470,7 +1351,7 @@ export function AnnotationEditor({
     const objectId = selectedObject.id;
     const rect0 = selectedObject.rect;
     const startPct = pctFromClient(event.clientX, event.clientY);
-    const rectFor = (pct: Pt, shiftKey: boolean): RectPct =>
+    const rectFor = (pct: PointPct, shiftKey: boolean): RectPct =>
       resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y, {
         keepAspectRatio: shiftKey,
       });
@@ -1524,7 +1405,7 @@ export function AnnotationEditor({
     // Shift 中は隣接点を基準に 45° 刻み、通常時は他の点の x/y へ吸着
     // (水平・垂直の線を揃えやすくする)。吸着はヒステリシス付き
     let snapState: StickySnapState = {};
-    const snap = (pointerPct: Pt, shiftKey: boolean): Pt => {
+    const snap = (pointerPct: PointPct, shiftKey: boolean): PointPct => {
       const pct = { x: pointerPct.x + grab.x, y: pointerPct.y + grab.y };
       if (shiftKey) {
         snapState = {};
@@ -1535,7 +1416,7 @@ export function AnnotationEditor({
       snapState = result.snapped;
       return result.point;
     };
-    const pointsFor = (pct: Pt): Pt[] => points0.map((point, i) => (i === index ? pct : point));
+    const pointsFor = (pct: PointPct): PointPct[] => points0.map((point, i) => (i === index ? pct : point));
     startPointerDrag(event, {
       onMove: (pct, moveEvent) => {
         const next = pointsFor(snap(pct, moveEvent.shiftKey));
@@ -1563,133 +1444,6 @@ export function AnnotationEditor({
         }));
       },
     });
-  };
-
-  const addPoint = () => {
-    if (!selected || !isLineObject(selected)) {
-      return;
-    }
-    const objectId = selected.id;
-    setSelectedPointIndex(selected.points.length);
-    updateObject(objectId, (obj) => {
-      if (!isLineObject(obj)) {
-        return obj;
-      }
-      const last = obj.points[obj.points.length - 1] ?? { x: 50, y: 50 };
-      return { ...obj, points: [...obj.points, { x: Math.min(last.x + 8, 100), y: last.y }] };
-    });
-  };
-
-  const removePoint = (index: number) => {
-    if (!selected || !isLineObject(selected)) {
-      return;
-    }
-    updateObject(selected.id, (obj) => {
-      if (!isLineObject(obj) || obj.points.length <= 2) {
-        return obj;
-      }
-      return { ...obj, points: obj.points.filter((_, i) => i !== index) };
-    });
-    setSelectedPointIndex((current) => {
-      if (current === null) {
-        return null;
-      }
-      if (current === index) {
-        return null;
-      }
-      return current > index ? current - 1 : current;
-    });
-  };
-
-  // サイドパネルの数値・スタイル入力(選択中オブジェクトの型に応じて使用)
-  const updateAt = (axis: "x" | "y", value: number) => {
-    if (
-      !selected ||
-      (selected.type !== "badge" && selected.type !== "text" && selected.type !== "cursor")
-    ) {
-      return;
-    }
-    updateObject(selected.id, (obj) =>
-      obj.type === "badge" || obj.type === "text" || obj.type === "cursor"
-        ? { ...obj, at: { ...obj.at, [axis]: value } }
-        : obj,
-    );
-  };
-
-  const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!selected || !isRectObject(selected)) {
-      return;
-    }
-    const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
-    updateObject(selected.id, (obj) =>
-      isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj,
-    );
-  };
-
-  const updateCrop = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!selected || selected.type !== "image") {
-      return;
-    }
-    const natural = naturalSizes[selected.src];
-    if (!natural) {
-      return;
-    }
-    const current = selected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
-    const next = clampCrop({ ...current, [key]: value }, natural);
-    updateObject(selected.id, (obj) => obj.type === "image" ? { ...obj, crop: next } : obj);
-  };
-
-  const updatePointValue = (index: number, axis: "x" | "y", value: number) => {
-    if (!selected || !isLineObject(selected)) {
-      return;
-    }
-    updateObject(selected.id, (obj) =>
-      isLineObject(obj)
-        ? {
-            ...obj,
-            points: obj.points.map((point, i) => (i === index ? { ...point, [axis]: value } : point)),
-          }
-        : obj,
-    );
-  };
-
-  const updateLineStyle = (patch: { color?: string; strokeWidth?: number }) => {
-    if (!selected || !isLineObject(selected)) {
-      return;
-    }
-    updateObject(selected.id, (obj) => (isLineObject(obj) ? { ...obj, ...patch } : obj));
-  };
-
-  const updateLineType = (type: "line" | "arrow") => {
-    if (!selected || !isLineObject(selected)) {
-      return;
-    }
-    updateObject(selected.id, (obj) => {
-      if (!isLineObject(obj)) {
-        return obj;
-      }
-      if (type === "arrow") {
-        return {
-          ...obj,
-          type: "arrow",
-          arrowHeads: obj.type === "arrow" ? (obj.arrowHeads ?? "end") : "end",
-        };
-      }
-      if (obj.type === "arrow") {
-        const { arrowHeads: _arrowHeads, ...line } = obj;
-        return { ...line, type: "line" };
-      }
-      return obj;
-    });
-  };
-
-  const updateArrowHeads = (arrowHeads: "start" | "end" | "both") => {
-    if (!selected || selected.type !== "arrow") {
-      return;
-    }
-    updateObject(selected.id, (obj) =>
-      obj.type === "arrow" ? { ...obj, arrowHeads } : obj,
-    );
   };
 
   const handleReplaceImage = async (file: File) => {
@@ -1786,7 +1540,7 @@ export function AnnotationEditor({
       : null;
 
   const lineObjects = (interactionObjects ?? annotation.objects).filter(isLineObject);
-  const toCanvasPoints = (points: Pt[]): string =>
+  const toCanvasPoints = (points: PointPct[]): string =>
     points
       .map(
         (point) =>
@@ -1898,7 +1652,7 @@ export function AnnotationEditor({
           <IconButton
             label="元に戻す (⌘Z)"
             data-testid="undo-button"
-            disabled={historyRef.current.past.length === 0}
+            disabled={!canUndo}
             onClick={undo}
           >
             <IconUndo />
@@ -1906,7 +1660,7 @@ export function AnnotationEditor({
           <IconButton
             label="やり直す (⌘⇧Z)"
             data-testid="redo-button"
-            disabled={historyRef.current.future.length === 0}
+            disabled={!canRedo}
             onClick={redo}
           >
             <IconRedo />
@@ -2350,15 +2104,6 @@ export function AnnotationEditor({
             selectedPointIndex={selectedPointIndex}
             setSelectedPointIndex={setSelectedPointIndex}
             updateObject={updateObject}
-            updateAt={updateAt}
-            updateRect={updateRect}
-            updateCrop={updateCrop}
-            updateLineType={updateLineType}
-            updateLineStyle={updateLineStyle}
-            updateArrowHeads={updateArrowHeads}
-            updatePointValue={updatePointValue}
-            addPoint={addPoint}
-            removePoint={removePoint}
             onOpenReplaceImage={() => setImagePickerMode("replace")}
             onOpenVisualCrop={selected?.type === "image" && isEditable(selected)
               ? () => openVisualCrop(selected.id)
