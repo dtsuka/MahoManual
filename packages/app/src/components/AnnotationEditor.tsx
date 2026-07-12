@@ -1347,6 +1347,46 @@ export function AnnotationEditor({
     }));
   };
 
+  const fitSelectedTextHeight = () => {
+    const current = annotationRef.current;
+    const selectedObject = current?.objects.find((obj) => obj.id === selectedId);
+    const figure = figureRef.current?.querySelector("figure");
+    if (!current || !selectedObject || selectedObject.type !== "text" || !isEditable(selectedObject) || !figure) {
+      return;
+    }
+    const textElement = Array.from(figure.querySelectorAll<HTMLElement>(".mm-text"))
+      .find((element) => element.dataset.mmId === selectedObject.id);
+    const figureBox = figure.getBoundingClientRect();
+    if (!textElement || figureBox.height <= 0) {
+      return;
+    }
+
+    const probe = textElement.cloneNode(true) as HTMLElement;
+    probe.style.left = "0%";
+    probe.style.top = "0%";
+    probe.style.height = "auto";
+    probe.style.minHeight = "0";
+    probe.style.maxHeight = "none";
+    probe.style.transform = "none";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    figure.appendChild(probe);
+    const measuredHeight = probe.getBoundingClientRect().height;
+    probe.remove();
+    if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) {
+      return;
+    }
+
+    const nextHeight = Math.max(0.5, Math.round((measuredHeight / figureBox.height) * 1000) / 10);
+    updateObject(selectedObject.id, (obj) =>
+      obj.type === "text"
+        ? setTextBoxRect(obj, { ...textBoxRect(obj), h: nextHeight })
+        : obj,
+    );
+    setStatus("テキストボックスの高さを調整しました");
+    setTimeout(() => setStatus(""), 2000);
+  };
+
   const toggleObjectLock = (objectId: string) => {
     applyLocalChange((current) => ({
       ...current,
@@ -2151,6 +2191,9 @@ export function AnnotationEditor({
               onApplyProjectDefault={applyDefaultsToSelected}
               onResetImageSize={selected?.type === "image" && isEditable(selected)
                 ? resetImageToOriginalSize
+                : undefined}
+              onFitTextHeight={selected?.type === "text" && isEditable(selected)
+                ? fitSelectedTextHeight
                 : undefined}
             />
           )}

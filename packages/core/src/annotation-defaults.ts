@@ -1,4 +1,4 @@
-import type { AnnotationObject } from "./schema.js";
+import type { AnnotationObject, TextAlign, TextVerticalAlign } from "./schema.js";
 import {
   DEFAULT_ANNOTATION_COLOR,
   DEFAULT_ANNOTATION_FONT_SIZE,
@@ -8,7 +8,7 @@ import {
 
 export type AnnotationDefaults = {
   badge?: Partial<Pick<Extract<AnnotationObject, { type: "badge" }>, "color" | "size" | "fontSize">>;
-  text?: Partial<Pick<Extract<AnnotationObject, { type: "text" }>, "color" | "fontSize" | "background">>;
+  text?: Partial<Pick<Extract<AnnotationObject, { type: "text" }>, "color" | "fontSize" | "background" | "textAlign" | "verticalAlign" | "padding" | "borderColor" | "borderWidth" | "borderRadius">>;
   cursor?: Partial<Pick<Extract<AnnotationObject, { type: "cursor" }>, "color" | "size" | "icon">>;
   frame?: Partial<Pick<Extract<AnnotationObject, { type: "frame" }>, "color" | "strokeWidth" | "radius">>;
   line?: Partial<Pick<Extract<AnnotationObject, { type: "line" }>, "color" | "strokeWidth">>;
@@ -21,6 +21,12 @@ export type ObjectStylePatch = Partial<{
   size: number;
   fontSize: number;
   background: string;
+  textAlign: TextAlign;
+  verticalAlign: TextVerticalAlign;
+  padding: number;
+  borderColor: string;
+  borderWidth: number;
+  borderRadius: number;
   strokeWidth: number;
   radius: number;
   icon: Extract<AnnotationObject, { type: "cursor" }>["icon"];
@@ -30,7 +36,7 @@ export type ObjectStylePatch = Partial<{
 
 const STYLE_KEYS_BY_TYPE: Record<AnnotationObject["type"], readonly (keyof ObjectStylePatch)[]> = {
   badge: ["color", "size", "fontSize"],
-  text: ["color", "fontSize", "background"],
+  text: ["color", "fontSize", "background", "textAlign", "verticalAlign", "padding", "borderColor", "borderWidth", "borderRadius"],
   cursor: ["color", "size", "icon"],
   frame: ["color", "strokeWidth", "radius"],
   line: ["color", "strokeWidth"],
@@ -89,7 +95,15 @@ export function resolveCreationDefaults<T extends AnnotationObject["type"]>(
   };
   const coreDefaults: Record<AnnotationObject["type"], ObjectStylePatch> = {
     badge: { color: DEFAULT_ANNOTATION_COLOR, size: 22, fontSize: DEFAULT_ANNOTATION_FONT_SIZE },
-    text: { color: DEFAULT_ANNOTATION_COLOR, fontSize: DEFAULT_ANNOTATION_FONT_SIZE },
+    text: {
+      color: DEFAULT_ANNOTATION_COLOR,
+      fontSize: DEFAULT_ANNOTATION_FONT_SIZE,
+      textAlign: "left",
+      verticalAlign: "top",
+      padding: 0,
+      borderWidth: 0,
+      borderRadius: 0,
+    },
     cursor: { color: DEFAULT_CURSOR_COLOR, size: 28, icon: "pointer" },
     frame: { color: DEFAULT_ANNOTATION_COLOR, strokeWidth: 2, radius: 0 },
     line: { color: DEFAULT_ANNOTATION_COLOR, strokeWidth: 2 },

@@ -85,6 +85,11 @@ const badgeObjectSchema = baseSchema.extend({
   fontSize: z.number().gt(0).optional(),
 });
 
+export const textAlignSchema = z.enum(["left", "center", "right"]);
+export type TextAlign = z.infer<typeof textAlignSchema>;
+export const textVerticalAlignSchema = z.enum(["top", "middle", "bottom"]);
+export type TextVerticalAlign = z.infer<typeof textVerticalAlignSchema>;
+
 const textObjectSchema = baseSchema.extend({
   type: z.literal("text"),
   content: z.string(),
@@ -94,6 +99,12 @@ const textObjectSchema = baseSchema.extend({
   fontSize: z.number().gt(0).optional(),
   color: colorSchema.optional(),
   background: colorSchema.optional(),
+  textAlign: textAlignSchema.optional(),
+  verticalAlign: textVerticalAlignSchema.optional(),
+  padding: z.number().gte(0).optional(),
+  borderColor: colorSchema.optional(),
+  borderWidth: z.number().gte(0).optional(),
+  borderRadius: z.number().gte(0).optional(),
 });
 
 export const cursorIconSchema = z.enum(["pointer", "move", "grab", "text", "crosshair"]);

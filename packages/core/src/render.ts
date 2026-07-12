@@ -100,7 +100,22 @@ function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): str
   if (obj.background) {
     styles.push(`background:${obj.background}`);
   }
-  return `<div class="mm-obj mm-text" style="${styles.join("; ")};">${escapeHtml(obj.content)}</div>`;
+  if (obj.textAlign) {
+    styles.push(`text-align:${obj.textAlign}`);
+  }
+  if (obj.verticalAlign) {
+    styles.push(`justify-content:${obj.verticalAlign === "middle" ? "center" : obj.verticalAlign === "bottom" ? "flex-end" : "flex-start"}`);
+  }
+  if (obj.padding !== undefined) {
+    styles.push(`padding:${obj.padding}px`);
+  }
+  if (obj.borderWidth !== undefined && obj.borderWidth > 0) {
+    styles.push(`border:${obj.borderWidth}px solid ${obj.borderColor ?? "currentColor"}`);
+  }
+  if (obj.borderRadius !== undefined) {
+    styles.push(`border-radius:${obj.borderRadius}px`);
+  }
+  return `<div class="mm-obj mm-text" style="${styles.join("; ")};"><span>${escapeHtml(obj.content)}</span></div>`;
 }
 
 const CURSOR_ICON_CONTENT = {

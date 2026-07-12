@@ -22,6 +22,7 @@ interface AnnotationPropertiesProps {
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
   onResetImageSize?: () => void;
+  onFitTextHeight?: () => void;
   hasProjectDefault?: boolean;
   onSaveProjectDefault?: () => void;
   onClearProjectDefault?: () => void;
@@ -43,8 +44,8 @@ function RectPositionFields({
       <div className="grid grid-cols-2 gap-2">
         <NumberField label="x" value={rect.x} testId="prop-rect-x" onChange={(v) => onChange("x", v)} />
         <NumberField label="y" value={rect.y} testId="prop-rect-y" onChange={(v) => onChange("y", v)} />
-        <NumberField label="w" value={rect.w} min={0.5} onChange={(v) => onChange("w", v)} />
-        <NumberField label="h" value={rect.h} min={0.5} onChange={(v) => onChange("h", v)} />
+        <NumberField label="w" value={rect.w} min={0.5} testId="prop-rect-w" onChange={(v) => onChange("w", v)} />
+        <NumberField label="h" value={rect.h} min={0.5} testId="prop-rect-h" onChange={(v) => onChange("h", v)} />
       </div>
     </div>
   );
@@ -61,6 +62,7 @@ export function AnnotationProperties({
   onOpenReplaceImage,
   onOpenVisualCrop,
   onResetImageSize,
+  onFitTextHeight,
   hasProjectDefault,
   onSaveProjectDefault,
   onClearProjectDefault,
@@ -344,6 +346,116 @@ export function AnnotationProperties({
               label="テキストボックス (%)"
               onChange={updateRect}
             />
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">横位置</span>
+                <SelectInput
+                  data-testid="text-align"
+                  className="w-full"
+                  value={editableSelected.textAlign ?? "left"}
+                  onChange={(event) => {
+                    const textAlign = event.target.value as "left" | "center" | "right";
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, textAlign } : obj,
+                    );
+                  }}
+                >
+                  <option value="left">左揃え</option>
+                  <option value="center">中央揃え</option>
+                  <option value="right">右揃え</option>
+                </SelectInput>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">縦位置</span>
+                <SelectInput
+                  data-testid="vertical-align"
+                  className="w-full"
+                  value={editableSelected.verticalAlign ?? "top"}
+                  onChange={(event) => {
+                    const verticalAlign = event.target.value as "top" | "middle" | "bottom";
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, verticalAlign } : obj,
+                    );
+                  }}
+                >
+                  <option value="top">上揃え</option>
+                  <option value="middle">中央揃え</option>
+                  <option value="bottom">下揃え</option>
+                </SelectInput>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-600">内側余白 (px)</span>
+                <NumberField
+                  label=""
+                  value={editableSelected.padding ?? 0}
+                  min={0}
+                  step={1}
+                  testId="text-padding"
+                  onChange={(v) =>
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, padding: Math.max(0, Math.round(v)) } : obj,
+                    )
+                  }
+                />
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">ボーダー色</span>
+                <ColorInput
+                  data-testid="prop-border-color"
+                  value={editableSelected.borderColor ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
+                  onChange={(event) => {
+                    const borderColor = event.target.value;
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, borderColor } : obj,
+                    );
+                  }}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-600">ボーダー幅 (px)</span>
+                <NumberField
+                  label=""
+                  value={editableSelected.borderWidth ?? 0}
+                  min={0}
+                  step={1}
+                  testId="border-width"
+                  onChange={(v) =>
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, borderWidth: Math.max(0, Math.round(v)) } : obj,
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-xs font-medium text-slate-600">角丸 (px)</span>
+                <NumberField
+                  label=""
+                  value={editableSelected.borderRadius ?? 0}
+                  min={0}
+                  step={1}
+                  testId="border-radius"
+                  onChange={(v) =>
+                    updateObject(editableSelected.id, (obj) =>
+                      obj.type === "text" ? { ...obj, borderRadius: Math.max(0, Math.round(v)) } : obj,
+                    )
+                  }
+                />
+              </div>
+            </div>
+            {onFitTextHeight ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                data-testid="fit-text-height"
+                onClick={onFitTextHeight}
+              >
+                内容に合わせて高さを調整
+              </Button>
+            ) : null}
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>

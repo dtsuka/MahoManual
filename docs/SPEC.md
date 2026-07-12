@@ -64,6 +64,7 @@ annotation:                         # 注釈テーマの上書き(任意)
   fontSize: 14                      # badge/text の既定フォントサイズpx(--mm-font-size)
   defaults:                         # 種類別の作成既定値(任意)
     badge: { color: "#E91E8C", size: 22 }
+    text: { textAlign: left, verticalAlign: top, padding: 0, borderWidth: 0 }
     frame: { strokeWidth: 2 }
 ```
 
@@ -128,6 +129,12 @@ interface TextObj extends Base {
   fontSize?: number;                // 既定 14
   color?: string;
   background?: string;              // 省略時は背景なし
+  textAlign?: "left" | "center" | "right";       // 水平方向
+  verticalAlign?: "top" | "middle" | "bottom";   // 垂直方向
+  padding?: number;                 // 内側余白px、既定0
+  borderColor?: string;             // ボーダー色
+  borderWidth?: number;             // ボーダー幅px、既定0
+  borderRadius?: number;            // 角丸px、既定0
 }
 
 interface CursorObj extends Base { // 操作説明用のマウスカーソル
@@ -299,7 +306,7 @@ caption: ""       # 任意。figcaptionとして出力
 
 - figure: `position:relative`、`aspect-ratio: canvas.width / canvas.height`、`max-width` はフェンスの `width`。`width ≤ 680` なら `mm-print-s`、それ以外は `mm-print-l` クラスを付与(印刷時の縮小率切替、§6.4)
 - **badge**: `left/top` = `at` の%値、`transform: translate(-50%,-50%)` で中心合わせ。サイズ・フォントはpx固定(縮小表示でも可読性維持)。badgeの表示は `n` の数値をCSSで円形に描画(Unicode①は使わない)
-- **text**: `rect` がある場合は `left/top/width/height` を%値で指定する矩形テキストボックスとして描画し、内容は改行・長い単語を折り返す。`rect` がない旧JSONは `at` を中心とするアンカー表示へフォールバックする。GUIの選択・リサイズ・ダブルクリック編集はこの矩形を対象にする
+- **text**: `rect` がある場合は `left/top/width/height` を%値で指定する矩形テキストボックスとして描画し、内容は改行・長い単語を折り返す。`textAlign`・`verticalAlign`・`padding`・ボーダー指定はテキストボックス内へ適用する。`rect` がない旧JSONは `at` を中心とするアンカー表示へフォールバックする。GUIの選択・リサイズ・ダブルクリック編集はこの矩形を対象にする
 - **cursor**: Lucide相当のアイコンを外部ファイルやWebフォントへ依存しないinline SVGで描画する。`pointer`は`at`を矢印の先端、その他は中心として配置し、単一HTML出力にもSVGパスを直接含める
 - **frame**: `left/top/width/height` = `rect` の%値。`border: {strokeWidth}px solid {color}`、`box-sizing:border-box`
 - **line / arrow**: figure全面に重ねた1つの `<svg>` にまとめる。`viewBox="0 0 {canvas.width} {canvas.height}"`。点は%→キャンバスpxに変換(`x_px = x / 100 * canvas.width`)。figureのaspect-ratioとviewBoxが一致するためスケーリングは常に等倍比(歪みなし)。**strokeWidthはviewBox座標系のpxで指定し、図全体と比例スケール**(vector-effectは使わない。矢印マーカーとの太さ整合のため)。arrowは `marker-end`(オブジェクトごとに一意のmarker idを生成)
@@ -466,7 +473,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
 - 複数画像: 既存キャンバスへ画像を追加し、画像オブジェクトをドラッグ・リサイズして横並び・重ね合わせできる。追加画像は縦横比を維持してキャンバス中央へ収まる初期配置とする
 - オブジェクトロック: オブジェクト単位の `locked` を一覧の鍵ボタンで切り替える。ロック中はドラッグ・リサイズ・数値変更・クロップ・置換・レイヤー移動・削除を禁止し、選択と内容確認のみ許可する。新規のベース画像・レシピ画像はロック、追加画像は配置調整のためロック解除を既定とする
-- テキストボックス: テキストツールのクリックで幅・高さを持つ矩形ボックスを作成する。選択中は右パネルで矩形のx/y/w/h(%)を編集でき、キャンバス上のダブルクリックで同じボックス内を直接編集する。Cmd/Ctrl+Enterまたはフォーカスアウトで確定、Escで取消する
+- テキストボックス: テキストツールのクリックで幅・高さを持つ矩形ボックスを作成する。選択中は右パネルで矩形のx/y/w/h(%)、文字揃え、内側余白、ボーダーを編集できる。「内容に合わせて高さを調整」はブラウザ上の実測値を具体的な`rect.h`へ確定する。キャンバス上のダブルクリックで同じボックス内を直接編集する。Cmd/Ctrl+Enterまたはフォーカスアウトで確定、Escで取消する
 - モザイク: `targetImageId` で対象画像を明示し、矩形範囲と粗さを非破壊データとして保持する。編集画面では効果をプレビューし、HTML/PDF/合成PNG出力時はSharpで対象画素を縮小・最近傍拡大して画像へ実適用する。納品物には対象範囲の未加工画素を含む画像を残さない
 - キャンバス余白: 上下左右のpx指定でcanvasを拡張/縮小(coreの `expandCanvas`)。既存注釈の見た目位置は維持され、画像の外側へ注釈を置けるようになる(§4.5)
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする

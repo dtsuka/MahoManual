@@ -128,6 +128,8 @@ export {
   type CaptureRecipe,
   type CursorIcon,
   type RecipeStep,
+  type TextAlign,
+  type TextVerticalAlign,
 } from "./schema.js";
 export { renderFigure, type RenderFenceOptions, type RenderOptions } from "./render.js";
 export { DEFAULT_CURSOR_COLOR, THEME_CSS } from "./theme.js";
