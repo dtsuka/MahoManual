@@ -13,9 +13,27 @@ export interface PointPct {
 // リサイズ後も rect が潰れない最小サイズ(%)。スキーマは w,h > 0 を要求する
 export const MIN_RECT_PCT = 0.5;
 
+export interface ResizeRectOptions {
+  keepAspectRatio?: boolean;
+}
+
 // 8方向ハンドル(nw/n/ne/e/se/s/sw/w)によるリサイズ。
-// dx/dy はドラッグ開始点からの移動量(%)。掴んでいない辺は固定される
-export function resizeRect(rect: RectPct, dir: string, dx: number, dy: number): RectPct {
+// dx/dy はドラッグ開始点からの移動量(%)。掴んでいない辺は固定される。
+// keepAspectRatio 時は開始時の縦横比を維持する(Shift+ドラッグ用)
+export function resizeRect(
+  rect: RectPct,
+  dir: string,
+  dx: number,
+  dy: number,
+  options: ResizeRectOptions = {},
+): RectPct {
+  if (!options.keepAspectRatio || rect.w <= 0 || rect.h <= 0) {
+    return resizeRectFree(rect, dir, dx, dy);
+  }
+  return resizeRectKeepAspect(rect, dir, dx, dy);
+}
+
+function resizeRectFree(rect: RectPct, dir: string, dx: number, dy: number): RectPct {
   let { x, y, w, h } = rect;
   if (dir.includes("e")) {
     w = Math.max(MIN_RECT_PCT, w + dx);
@@ -34,6 +52,69 @@ export function resizeRect(rect: RectPct, dir: string, dx: number, dy: number): 
     y = nextY;
   }
   return { x, y, w, h };
+}
+
+function resizeRectKeepAspect(rect: RectPct, dir: string, dx: number, dy: number): RectPct {
+  const aspect = rect.w / rect.h;
+  const isCorner = (dir.includes("n") || dir.includes("s")) && (dir.includes("e") || dir.includes("w"));
+
+  if (isCorner) {
+    const free = resizeRectFree(rect, dir, dx, dy);
+    const widthDelta = Math.abs(free.w - rect.w);
+    const heightDelta = Math.abs(free.h - rect.h);
+    let w: number;
+    let h: number;
+    if (widthDelta >= heightDelta) {
+      w = Math.max(MIN_RECT_PCT, free.w);
+      h = Math.max(MIN_RECT_PCT, w / aspect);
+    } else {
+      h = Math.max(MIN_RECT_PCT, free.h);
+      w = Math.max(MIN_RECT_PCT, h * aspect);
+    }
+    let x = rect.x;
+    let y = rect.y;
+    if (dir.includes("w")) {
+      x = rect.x + rect.w - w;
+    }
+    if (dir.includes("n")) {
+      y = rect.y + rect.h - h;
+    }
+    return { x, y, w, h };
+  }
+
+  if (dir === "e" || dir === "w") {
+    const free = resizeRectFree(rect, dir, dx, 0);
+    const w = Math.max(MIN_RECT_PCT, free.w);
+    const h = Math.max(MIN_RECT_PCT, w / aspect);
+    const y = rect.y + (rect.h - h) / 2;
+    return { x: free.x, y, w, h };
+  }
+
+  if (dir === "n" || dir === "s") {
+    const free = resizeRectFree(rect, dir, 0, dy);
+    const h = Math.max(MIN_RECT_PCT, free.h);
+    const w = Math.max(MIN_RECT_PCT, h * aspect);
+    const x = rect.x + (rect.w - w) / 2;
+    return { x, y: free.y, w, h };
+  }
+
+  return resizeRectFree(rect, dir, dx, dy);
+}
+
+// 画像の実ピクセル(またはcrop)をキャンバス座標へ1:1で写し、現在矩形の中心を維持する
+export function rectAtPixelSize(
+  current: RectPct,
+  canvas: { width: number; height: number },
+  pixelSize: { w: number; h: number },
+): RectPct {
+  const w = (pixelSize.w / canvas.width) * 100;
+  const h = (pixelSize.h / canvas.height) * 100;
+  return {
+    x: current.x + current.w / 2 - w / 2,
+    y: current.y + current.h / 2 - h / 2,
+    w,
+    h,
+  };
 }
 
 // anchor から見た角度を 45° 刻みにスナップする(距離は保存)。

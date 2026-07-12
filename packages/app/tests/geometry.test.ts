@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   nearestSegmentIndex,
+  rectAtPixelSize,
   resizeRect,
   snapAngle,
   snapToGuides,
@@ -30,6 +31,42 @@ describe("resizeRect", () => {
     const rect = resizeRect({ x: 10, y: 10, w: 5, h: 5 }, "w", 10, 0);
     expect(rect.w).toBeGreaterThan(0);
     expect(rect.x + rect.w).toBeCloseTo(15, 5);
+  });
+
+  it("keeps aspect ratio when resizing from se with keepAspectRatio", () => {
+    const rect = resizeRect({ x: 10, y: 10, w: 20, h: 10 }, "se", 10, 0, { keepAspectRatio: true });
+    expect(rect.x).toBe(10);
+    expect(rect.y).toBe(10);
+    expect(rect.w / rect.h).toBeCloseTo(2, 5);
+    expect(rect.w).toBeCloseTo(30, 5);
+    expect(rect.h).toBeCloseTo(15, 5);
+  });
+
+  it("keeps aspect ratio when resizing from nw with keepAspectRatio", () => {
+    const rect = resizeRect({ x: 10, y: 10, w: 20, h: 10 }, "nw", -10, 0, { keepAspectRatio: true });
+    expect(rect.x + rect.w).toBeCloseTo(30, 5);
+    expect(rect.y + rect.h).toBeCloseTo(20, 5);
+    expect(rect.w / rect.h).toBeCloseTo(2, 5);
+    expect(rect.w).toBeCloseTo(30, 5);
+  });
+
+  it("keeps aspect ratio when resizing from e edge with keepAspectRatio", () => {
+    const rect = resizeRect({ x: 10, y: 10, w: 20, h: 10 }, "e", 10, 0, { keepAspectRatio: true });
+    expect(rect.w / rect.h).toBeCloseTo(2, 5);
+    expect(rect.w).toBeCloseTo(30, 5);
+    expect(rect.h).toBeCloseTo(15, 5);
+    expect(rect.x).toBe(10);
+    expect(rect.y + rect.h / 2).toBeCloseTo(15, 5);
+  });
+});
+
+describe("rectAtPixelSize", () => {
+  it("places a 1:1 pixel-sized rect centered on the current rect", () => {
+    expect(rectAtPixelSize(
+      { x: 20, y: 30, w: 40, h: 20 },
+      { width: 1000, height: 800 },
+      { w: 200, h: 100 },
+    )).toEqual({ x: 30, y: 33.75, w: 20, h: 12.5 });
   });
 });
 
