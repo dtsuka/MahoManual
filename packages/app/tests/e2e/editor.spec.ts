@@ -164,6 +164,27 @@ test("annotation editor: Alt-drag keeps the created copy selected", async ({ pag
   }
 });
 
+test("annotation editor: selected style can be saved and cleared as the project default", async ({ page }) => {
+  const projectYamlPath = join(process.cwd(), "../../projects/example/project.yaml");
+  const originalYaml = readFileSync(projectYamlPath, "utf8");
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-b1").click();
+    await page.getByTestId("project-default-save").click();
+    await expect(page.getByTestId("project-default-clear")).toBeVisible();
+    await expect.poll(() => readFileSync(projectYamlPath, "utf8")).toContain("defaults:");
+    expect(readFileSync(projectYamlPath, "utf8")).toContain("badge:");
+
+    await page.getByTestId("project-default-clear").click();
+    await expect(page.getByTestId("project-default-clear")).toHaveCount(0);
+    await expect.poll(() => readFileSync(projectYamlPath, "utf8")).not.toContain("defaults:");
+  } finally {
+    writeFileSync(projectYamlPath, originalYaml, "utf8");
+  }
+});
+
 test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {

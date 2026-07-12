@@ -57,4 +57,26 @@ describe("applyObjectStyle", () => {
     });
     expect(style).toEqual({ color: "#123456", fontSize: 16 });
   });
+
+  it("ignores style fields unsupported by the target object type", () => {
+    const badge = {
+      id: "b1",
+      type: "badge" as const,
+      source: "manual" as const,
+      n: 1,
+      at: { x: 1, y: 2 },
+    };
+    expect(applyObjectStyle(badge, { color: "#123456", strokeWidth: 8 })).toEqual({
+      ...badge,
+      color: "#123456",
+    });
+  });
+
+  it("returns only creation fields supported by the requested type", () => {
+    expect(resolveCreationDefaults("cursor", { theme: { color: "#123456", fontSize: 18 } })).toEqual({
+      color: "#123456",
+      size: 28,
+      icon: "pointer",
+    });
+  });
 });
