@@ -348,7 +348,7 @@ function AnnotationRoute() {
     <AnnotationEditor
       project={project}
       annotationId={id}
-      onBack={() => navigate(-1)}
+      onBack={() => navigate(`/projects/${encodeURIComponent(project)}`)}
       onNavigateToAnnotation={(nextId) =>
         navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`)
       }

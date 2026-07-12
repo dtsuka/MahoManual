@@ -29,8 +29,8 @@ import {
   extractAnnotatedFigures,
   livePreview,
 } from "../lib/live-preview.js";
+import { BackToProjectButton } from "./BackToProjectButton.js";
 import {
-  IconArrowLeft,
   IconDownload,
   IconImage,
   IconList,
@@ -41,7 +41,6 @@ import {
   Button,
   ButtonLink,
   DirtyBadge,
-  IconButton,
   SelectInput,
   Separator,
   TextInput,
@@ -318,9 +317,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-        <IconButton label="プロジェクトへ戻る" onClick={() => navigate(`/projects/${project}`)}>
-          <IconArrowLeft />
-        </IconButton>
+        <BackToProjectButton project={project} />
         <div className="flex min-w-0 items-baseline gap-1.5">
           <h1 className="truncate text-[15px] font-semibold tracking-tight">{project}</h1>
           <span className="shrink-0 text-slate-300">/</span>

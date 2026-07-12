@@ -81,8 +81,8 @@ import { useAnnotationDocument } from "../lib/use-annotation-document.js";
 import { useVisualCropEdit } from "../lib/use-visual-crop-edit.js";
 import { classifyEditorKeydown } from "../lib/editor-keyboard.js";
 import type { PointPct } from "../lib/geometry.js";
+import { BackToProjectButton } from "./BackToProjectButton.js";
 import {
-  IconArrowLeft,
   IconArrowLine,
   IconBadge,
   IconChevronRight,
@@ -1575,13 +1575,8 @@ export function AnnotationEditor({
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         <nav className="flex items-center gap-1" aria-label="注釈ナビゲーション">
-          {onBack ? (
-            <Button size="sm" variant="ghost" onClick={() => requestNavigation("back")}>
-              <IconArrowLeft size={14} />
-              戻る
-            </Button>
-          ) : null}
-          {onBack ? <Separator /> : null}
+          <BackToProjectButton project={project} onClick={() => requestNavigation("back")} />
+          <Separator />
           <Button
             size="sm"
             variant="ghost"

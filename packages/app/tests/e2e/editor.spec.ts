@@ -42,7 +42,7 @@ test("annotation editor: header navigation actions show text labels", async ({ p
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "戻る" })).toContainText("戻る");
+  await expect(page.getByTestId("back-to-project")).toContainText("戻る");
   await expect(page.getByTestId("nav-prev-annotation")).toContainText("前の注釈");
   await expect(page.getByTestId("nav-next-annotation")).toContainText("次の注釈");
 });
@@ -654,17 +654,16 @@ test("manual editor: clicking an annotated image in live preview opens its edito
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 });
 
-test("manual editor: back from annotation editor restores the markdown editor", async ({ page }) => {
+test("annotation editor: back returns to the project page", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await expect(page.locator(".cm-content")).toContainText("アイケア様");
 
   await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
-  await page.getByRole("button", { name: "戻る" }).click();
-  await expect(page.getByTestId("md-editor")).toBeVisible();
-  // 戻った後も CodeMirror が本文を保持して再表示されること(空白にならない)
-  await expect(page.locator(".cm-content")).toContainText("アイケア様");
+  await page.getByTestId("back-to-project").click();
+  await expect(page.getByRole("link", { name: "マニュアル編集" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: testProject })).toBeVisible();
 });
 
 test("annotation editor: frame can be selected from object list and resized via handles", async ({
