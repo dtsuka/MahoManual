@@ -90,7 +90,10 @@ test("annotation editor: selected point objects show a dashed selection frame", 
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
-  const expectDashedSelectionFrame = async (locator: ReturnType<typeof page.locator>) => {
+  const expectDashedSelectionFrame = async (
+    locator: ReturnType<typeof page.locator>,
+    borderRadius = "0px",
+  ) => {
     await expect(locator).toHaveClass(/is-selected/);
     await expect.poll(() =>
       locator.evaluate((element) => {
@@ -98,26 +101,42 @@ test("annotation editor: selected point objects show a dashed selection frame", 
         return {
           borderStyle: style.borderStyle,
           borderWidth: style.borderWidth,
+          borderRadius: style.borderRadius,
           content: style.content,
         };
       }),
     ).toEqual({
       borderStyle: "dashed",
       borderWidth: "2px",
+      borderRadius,
       content: '""',
     });
   };
+  const clickObject = async (locator: ReturnType<typeof page.locator>) => {
+    const box = await locator.boundingBox();
+    if (!box) {
+      throw new Error("object has no bounding box");
+    }
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
 
-  await page.getByTestId("object-item-b1").click();
-  await expectDashedSelectionFrame(page.locator('.mm-editor-figure [data-mm-id="b1"]'));
+  const badge = page.locator('.mm-editor-figure [data-mm-id="b1"]');
+  await clickObject(badge);
+  await expectDashedSelectionFrame(badge, "50%");
 
   await page.getByTestId("add-text").click();
   await clickCanvas(page, 42, 32);
-  await expectDashedSelectionFrame(page.locator(".mm-editor-figure .mm-text").last());
+  const text = page.locator(".mm-editor-figure .mm-text").last();
+  await clickObject(badge);
+  await clickObject(text);
+  await expectDashedSelectionFrame(text);
 
   await page.getByTestId("add-cursor").click();
   await clickCanvas(page, 54, 38);
-  await expectDashedSelectionFrame(page.locator(".mm-editor-figure .mm-cursor").last());
+  const cursor = page.locator(".mm-editor-figure .mm-cursor").last();
+  await clickObject(badge);
+  await clickObject(cursor);
+  await expectDashedSelectionFrame(cursor);
 });
 
 test("annotation editor: visibility controls use accessible stroke icons", async ({ page }) => {
