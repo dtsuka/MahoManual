@@ -81,6 +81,13 @@ import {
   FRAME_HANDLES,
   readImageFile,
 } from "./annotation-editor/helpers.js";
+import {
+  allowsObjectDrag,
+  isEditingPlacedBadge,
+  isRectCreationTool,
+  type EditorTool,
+  type RectCreationTool,
+} from "./annotation-editor/editor-tool.js";
 
 // 点ドラッグ時に他の点の x/y へ吸着する距離(%)。
 // 解除距離を大きくする(ヒステリシス)ことで吸着⇄解除のフリッカーを防ぐ
@@ -96,9 +103,6 @@ interface AnnotationEditorProps {
   onBack?: () => void;
   onRenamed?: (id: string) => void;
 }
-
-type CreationTool = "badge" | "text" | "cursor" | "frame" | "mosaic" | "line" | "arrow";
-type EditorTool = "select" | CreationTool;
 
 interface Pt {
   x: number;
@@ -656,7 +660,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     const point = pctFromClient(event.clientX, event.clientY);
     if (activeTool === "badge" || activeTool === "text" || activeTool === "cursor") {
       const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
-      if (activeTool === "badge" && targetId && selectedIds.includes(targetId)) {
+      if (isEditingPlacedBadge(activeTool, targetId, selectedIds)) {
         return;
       }
       createPointObject(activeTool, point);
@@ -709,9 +713,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
-    const editingSelectedBadge = activeTool === "badge"
-      && targetId !== undefined
-      && selectedIds.includes(targetId);
+    const editingSelectedBadge = isEditingPlacedBadge(activeTool, targetId, selectedIds);
     if (activeTool !== "select" && event.buttons === 0 && !editingSelectedBadge) {
       setHoverPoint(pctFromClient(event.clientX, event.clientY));
     }
@@ -756,39 +758,28 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   // figure 上のドラッグはイベント委任で受ける。
   // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
   // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
-  const handleFigurePointerDown = (event: ReactPointerEvent) => {
-    const current = annotationRef.current;
-    if (!current) {
-      return;
-    }
-    if (activeTool === "frame" || activeTool === "mosaic") {
-      event.preventDefault();
-      event.stopPropagation();
-      const type = activeTool;
-      const start = pctFromClient(event.clientX, event.clientY);
-      setRectDraft({ type, rect: { x: start.x, y: start.y, w: 0, h: 0 } });
-      startPointerDrag(event, {
-        onMove: (point) => setRectDraft({ type, rect: normalizeDraftRect(start, point) }),
-        onEnd: (point, moved) => {
-          const rect = normalizeDraftRect(start, point);
-          setRectDraft(null);
-          if (moved && rect.w >= 0.5 && rect.h >= 0.5) {
-            createRectObject(type, rect);
-          }
-        },
-      });
-      return;
-    }
+  const handleRectCreationPointerDown = (event: ReactPointerEvent, type: RectCreationTool) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const start = pctFromClient(event.clientX, event.clientY);
+    setRectDraft({ type, rect: { x: start.x, y: start.y, w: 0, h: 0 } });
+    startPointerDrag(event, {
+      onMove: (point) => setRectDraft({ type, rect: normalizeDraftRect(start, point) }),
+      onEnd: (point, moved) => {
+        const rect = normalizeDraftRect(start, point);
+        setRectDraft(null);
+        if (moved && rect.w >= 0.5 && rect.h >= 0.5) {
+          createRectObject(type, rect);
+        }
+      },
+    });
+  };
+
+  const handleObjectSelectionPointerDown = (
+    event: ReactPointerEvent,
+    current: AnnotationFile,
+  ) => {
     const target = (event.target as Element).closest("[data-mm-id]");
-    const targetId = target?.getAttribute("data-mm-id");
-    const editsSelectedBadge = activeTool === "badge"
-      && typeof targetId === "string"
-      && selectedIds.includes(targetId);
-    if (activeTool !== "select" && !editsSelectedBadge) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     if (!target) {
       return;
     }
@@ -907,6 +898,24 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         }));
       },
     });
+  };
+
+  const handleFigurePointerDown = (event: ReactPointerEvent) => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    if (isRectCreationTool(activeTool)) {
+      handleRectCreationPointerDown(event, activeTool);
+      return;
+    }
+    const targetId = (event.target as Element).closest("[data-mm-id]")?.getAttribute("data-mm-id") ?? undefined;
+    if (!allowsObjectDrag(activeTool, targetId, selectedIds)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    handleObjectSelectionPointerDown(event, current);
   };
 
   useEffect(() => {
