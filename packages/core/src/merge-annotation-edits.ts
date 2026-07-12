@@ -2,8 +2,8 @@ import type { AnnotationFile, AnnotationObject } from "./schema.js";
 
 export type MergeConflictReason =
   | "both_modified"
+  | "local_deleted_remote_modified"
   | "local_modified_remote_deleted"
-  | "remote_modified_local_deleted"
   | "order_conflict"
   | "canvas_conflict";
 
@@ -65,7 +65,7 @@ export function mergeAnnotationEdits(
     }
     if (!localObj && remoteObj && remoteChanged) {
       if (baseObj && localChanged) {
-        conflicts.push({ id, reason: "local_modified_remote_deleted", base: baseObj, local: localObj, remote: remoteObj });
+        conflicts.push({ id, reason: "local_deleted_remote_modified", base: baseObj, local: localObj, remote: remoteObj });
       } else {
         mergedObjects.set(id, remoteObj);
       }
@@ -73,7 +73,7 @@ export function mergeAnnotationEdits(
     }
     if (!remoteObj && localObj && localChanged) {
       if (baseObj && remoteChanged) {
-        conflicts.push({ id, reason: "remote_modified_local_deleted", base: baseObj, local: localObj, remote: remoteObj });
+        conflicts.push({ id, reason: "local_modified_remote_deleted", base: baseObj, local: localObj, remote: remoteObj });
       } else {
         mergedObjects.set(id, localObj);
       }
@@ -170,9 +170,17 @@ export function resolveConflicts(
     const obj = choice === "local" ? localMap.get(id) : remoteMap.get(id);
     if (obj) {
       resolvedMap.set(id, obj);
+    } else {
+      resolvedMap.delete(id);
     }
   }
-  const orderIds = context.local.objects.map((obj) => obj.id);
+  const orderChoice = resolutions["(order)"];
+  const orderSource = orderChoice === "remote"
+    ? context.remote.objects
+    : orderChoice === "local"
+      ? context.local.objects
+      : merged.objects;
+  const orderIds = orderSource.map((obj) => obj.id);
   const objects = [
     ...orderIds
       .map((id) => resolvedMap.get(id))

@@ -327,19 +327,6 @@ body {
   gap: 6px;
 }
 
-.mm-crop-toolbar-btn {
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #fff;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: #334155;
-}
-
-.mm-crop-toolbar-btn:hover {
-  background: #f8fafc;
-}
-
 .mm-inline-text-editor {
   position: absolute;
   z-index: 30;

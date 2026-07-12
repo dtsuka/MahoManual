@@ -190,7 +190,7 @@ export function AnnotationEditor({
   const [cropEdit, setCropEdit] = useState<{
     imageId: string;
     crop: { x: number; y: number; w: number; h: number };
-    snapshot: string;
+    start: AnnotationFile;
   } | null>(null);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [soloId, setSoloId] = useState<string | null>(null);
@@ -306,6 +306,18 @@ export function AnnotationEditor({
     const isDirty = JSON.stringify(next) !== savedAnnotationJsonRef.current;
     dirtyRef.current = isDirty;
     setDirty(isDirty);
+  };
+
+  const commitTransientChange = (start: AnnotationFile) => {
+    const current = annotationRef.current;
+    if (!current || JSON.stringify(start) === JSON.stringify(current)) {
+      return;
+    }
+    historyRef.current = {
+      past: [...historyRef.current.past, start].slice(-MAX_HISTORY),
+      future: [],
+    };
+    setHistoryVersion((version) => version + 1);
   };
 
   const commitArrowCoalesce = () => {
@@ -710,18 +722,13 @@ export function AnnotationEditor({
       if (cropEdit) {
         if (event.key === "Escape") {
           event.preventDefault();
-          const snapshot = JSON.parse(cropEdit.snapshot) as { x: number; y: number; w: number; h: number };
-          applyLocalChange((current) => ({
-            ...current,
-            objects: current.objects.map((obj) =>
-              obj.id === cropEdit.imageId && obj.type === "image" ? { ...obj, crop: snapshot } : obj,
-            ),
-          }));
+          applyTransientChange(() => cropEdit.start);
           setCropEdit(null);
           return;
         }
         if (event.key === "Enter") {
           event.preventDefault();
+          commitTransientChange(cropEdit.start);
           setCropEdit(null);
           return;
         }
@@ -990,7 +997,7 @@ export function AnnotationEditor({
     setCropEdit({
       imageId,
       crop: { ...crop },
-      snapshot: JSON.stringify(crop),
+      start: structuredClone(current),
     });
   };
 
@@ -1193,9 +1200,11 @@ export function AnnotationEditor({
           const rawDx = at.x - source.at.x;
           const rawDy = at.y - source.at.y;
           const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
+          let duplicatedIds: string[] = [];
           applyLocalChange((latest) => {
             if (event.altKey && !isLineObject(obj)) {
               const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
+              duplicatedIds = duplicated.selectedIds;
               return {
                 ...latest,
                 objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
@@ -1207,8 +1216,7 @@ export function AnnotationEditor({
             };
           });
           if (event.altKey && !isLineObject(obj)) {
-            const duplicated = duplicateObjects(annotationRef.current?.objects ?? [], originalDragIds, 0);
-            setSelectedIds(duplicated.selectedIds);
+            setSelectedIds(duplicatedIds);
           }
         },
       });
@@ -1241,9 +1249,11 @@ export function AnnotationEditor({
           const rawDx = next.x - rect0.x;
           const rawDy = next.y - rect0.y;
           const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
+          let duplicatedIds: string[] = [];
           applyLocalChange((latest) => {
             if (event.altKey) {
               const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
+              duplicatedIds = duplicated.selectedIds;
               return {
                 ...latest,
                 objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
@@ -1255,8 +1265,7 @@ export function AnnotationEditor({
             };
           });
           if (event.altKey) {
-            const duplicated = duplicateObjects(annotationRef.current?.objects ?? [], originalDragIds, 0);
-            setSelectedIds(duplicated.selectedIds);
+            setSelectedIds(duplicatedIds);
           }
         },
       });
@@ -1994,6 +2003,7 @@ export function AnnotationEditor({
           <div className="flex min-h-full w-max min-w-full items-center justify-center p-8 pl-16">
             <div
               ref={wrapRef}
+              data-editor-canvas
               className="relative shrink-0 bg-white shadow-md ring-1 ring-slate-900/10"
               style={{
                 width: annotation.canvas.width * zoom / 100,
@@ -2162,16 +2172,21 @@ export function AnnotationEditor({
                   crop={cropEdit.crop}
                   onCropChange={(nextCrop) => {
                     setCropEdit((current) => current ? { ...current, crop: nextCrop } : current);
-                    updateObject(cropEdit.imageId, (obj) =>
-                      obj.type === "image" ? { ...obj, crop: nextCrop } : obj,
-                    );
+                    applyTransientChange((current) => ({
+                      ...current,
+                      objects: current.objects.map((obj) =>
+                        obj.id === cropEdit.imageId && obj.type === "image"
+                          ? { ...obj, crop: nextCrop }
+                          : obj,
+                      ),
+                    }));
                   }}
-                  onConfirm={() => setCropEdit(null)}
+                  onConfirm={() => {
+                    commitTransientChange(cropEdit.start);
+                    setCropEdit(null);
+                  }}
                   onCancel={() => {
-                    const snapshot = JSON.parse(cropEdit.snapshot) as { x: number; y: number; w: number; h: number };
-                    updateObject(cropEdit.imageId, (obj) =>
-                      obj.type === "image" ? { ...obj, crop: snapshot } : obj,
-                    );
+                    applyTransientChange(() => cropEdit.start);
                     setCropEdit(null);
                   }}
                 />

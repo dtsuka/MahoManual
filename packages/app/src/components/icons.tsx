@@ -271,6 +271,37 @@ export function IconUnlock(props: IconProps) {
   );
 }
 
+export function IconEye(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M1.75 8s2.2-4 6.25-4 6.25 4 6.25 4-2.2 4-6.25 4S1.75 8 1.75 8Z" />
+      <circle cx="8" cy="8" r="1.75" />
+    </Icon>
+  );
+}
+
+export function IconEyeOff(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.2 4.3C2.25 5.15 1.75 6 1.75 6s2.2 4 6.25 4c1.05 0 1.97-.27 2.76-.68" />
+      <path d="M5.45 2.35A7.1 7.1 0 0 1 8 1.9c4.05 0 6.25 4.1 6.25 4.1a9.2 9.2 0 0 1-1.55 1.95" />
+      <path d="M2 2l12 12" />
+    </Icon>
+  );
+}
+
+export function IconSolo(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="2.25" />
+      <path d="M5 2.5H2.5V5" />
+      <path d="M11 2.5h2.5V5" />
+      <path d="M5 13.5H2.5V11" />
+      <path d="M11 13.5h2.5V11" />
+    </Icon>
+  );
+}
+
 export function IconX(props: IconProps) {
   return (
     <Icon {...props}>

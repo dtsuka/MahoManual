@@ -1,6 +1,6 @@
 import type { AnnotationObject } from "@mahomanual/core/schema";
 import { isEditable } from "@mahomanual/core/annotation-objects";
-import { IconGrip, IconLock, IconUnlock } from "../icons.js";
+import { IconEye, IconEyeOff, IconGrip, IconLock, IconSolo, IconUnlock } from "../icons.js";
 import { cx } from "../ui.js";
 import { objectIcon, objectLabel } from "./helpers.js";
 
@@ -92,7 +92,7 @@ export function AnnotationObjectList({
               type="button"
               data-testid={`object-item-${obj.id}`}
               className={cx(
-                "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-16 text-left text-[13px] transition-colors duration-150",
+                "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-20 text-left text-[13px] transition-colors duration-150",
                 hiddenIds.has(obj.id) && "opacity-50",
                 soloId && soloId !== obj.id && "opacity-40",
                 isEditable(obj) ? "cursor-grab" : "cursor-default",
@@ -123,25 +123,34 @@ export function AnnotationObjectList({
               <button
                 type="button"
                 data-testid={`object-visibility-${obj.id}`}
-                className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                className={cx(
+                  "flex h-6 w-6 items-center justify-center rounded transition-colors",
+                  hiddenIds.has(obj.id)
+                    ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                    : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                )}
                 title={hiddenIds.has(obj.id) ? "表示する" : "一時的に非表示"}
+                aria-label={hiddenIds.has(obj.id) ? `${obj.id}を表示` : `${obj.id}を一時的に非表示`}
+                aria-pressed={hiddenIds.has(obj.id)}
                 onClick={() => onToggleHidden(obj.id)}
               >
-                {hiddenIds.has(obj.id) ? "👁‍🗨" : "👁"}
+                {hiddenIds.has(obj.id) ? <IconEyeOff size={13} /> : <IconEye size={13} />}
               </button>
               <button
                 type="button"
                 data-testid={`object-solo-${obj.id}`}
                 className={cx(
-                  "flex h-6 w-6 items-center justify-center rounded text-[10px]",
+                  "flex h-6 w-6 items-center justify-center rounded transition-colors",
                   soloId === obj.id
                     ? "bg-blue-100 text-blue-700"
                     : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
                 )}
-                title="単独表示"
+                title={soloId === obj.id ? "単独表示を解除" : "単独表示"}
+                aria-label={soloId === obj.id ? `${obj.id}の単独表示を解除` : `${obj.id}だけを表示`}
+                aria-pressed={soloId === obj.id}
                 onClick={() => onToggleSolo(obj.id)}
               >
-                1
+                <IconSolo size={13} />
               </button>
               <button
                 type="button"

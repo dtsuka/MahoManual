@@ -1,6 +1,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { fullImageCrop, resizeCrop, type CropHandle } from "@mahomanual/core/crop-math";
 import type { AnnotationObject } from "@mahomanual/core/schema";
+import { Button } from "../ui.js";
 import { FRAME_HANDLES } from "./helpers.js";
 
 interface PixelRect {
@@ -87,7 +88,9 @@ export function VisualCropOverlay({
   const startHandleDrag = (event: ReactPointerEvent, handle: CropHandle) => {
     event.preventDefault();
     event.stopPropagation();
-    const figure = (event.currentTarget as HTMLElement).closest(".mm-editor-figure")?.querySelector("figure");
+    const figure = (event.currentTarget as HTMLElement)
+      .closest("[data-editor-canvas]")
+      ?.querySelector(".mm-editor-figure figure");
     const box = figure?.getBoundingClientRect();
     if (!box) {
       return;
@@ -114,6 +117,8 @@ export function VisualCropOverlay({
       className="pointer-events-auto absolute inset-0 z-20"
       data-testid="visual-crop-overlay"
       onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
     >
       <div className="mm-crop-full" style={fullStyle} />
       <div className="mm-crop-dim" style={fullStyle} />
@@ -133,15 +138,15 @@ export function VisualCropOverlay({
         ))}
       </div>
       <div className="mm-crop-toolbar">
-        <button type="button" className="mm-crop-toolbar-btn" data-testid="crop-reset-full" onClick={() => onCropChange(fullImageCrop(natural))}>
+        <Button size="sm" variant="secondary" data-testid="crop-reset-full" onClick={() => onCropChange(fullImageCrop(natural))}>
           全体に戻す
-        </button>
-        <button type="button" className="mm-crop-toolbar-btn" data-testid="crop-confirm" onClick={onConfirm}>
+        </Button>
+        <Button size="sm" variant="primary" data-testid="crop-confirm" onClick={onConfirm}>
           確定
-        </button>
-        <button type="button" className="mm-crop-toolbar-btn" data-testid="crop-cancel" onClick={onCancel}>
+        </Button>
+        <Button size="sm" variant="secondary" data-testid="crop-cancel" onClick={onCancel}>
           取消
-        </button>
+        </Button>
       </div>
     </div>
   );
