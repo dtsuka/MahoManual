@@ -1,24 +1,18 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { clampCrop, resizeCrop, type CropHandle } from "@mahomanual/core/crop-math";
+import {
+  clampCrop,
+  resizeCrop,
+  type CropHandle,
+  type PixelRect,
+  type PixelSize,
+} from "@mahomanual/core/crop-math";
 import type { AnnotationObject } from "@mahomanual/core/schema";
 import { FRAME_HANDLES } from "./helpers.js";
-
-interface PixelRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-interface NaturalSize {
-  w: number;
-  h: number;
-}
 
 interface VisualCropOverlayProps {
   image: Extract<AnnotationObject, { type: "image" }>;
   canvas: { width: number; height: number };
-  natural: NaturalSize;
+  natural: PixelSize;
   crop: PixelRect;
   onCropChange: (crop: PixelRect) => void;
 }
@@ -26,7 +20,7 @@ interface VisualCropOverlayProps {
 function cropToOverlayStyle(
   imageRect: { x: number; y: number; w: number; h: number },
   crop: PixelRect,
-  natural: NaturalSize,
+  natural: PixelSize,
 ) {
   const cropLeftPct = (crop.x / natural.w) * imageRect.w;
   const cropTopPct = (crop.y / natural.h) * imageRect.h;
@@ -55,7 +49,7 @@ function clientToSourcePixels(
   box: DOMRect,
   imageRect: { x: number; y: number; w: number; h: number },
   canvas: { width: number; height: number },
-  natural: NaturalSize,
+  natural: PixelSize,
 ): { x: number; y: number } {
   const canvasX = ((clientX - box.left) / box.width) * canvas.width;
   const canvasY = ((clientY - box.top) / box.height) * canvas.height;
@@ -69,6 +63,43 @@ function clientToSourcePixels(
   };
 }
 
+function resolveFigureBox(target: HTMLElement): DOMRect | null {
+  const figure = target
+    .closest("[data-editor-canvas]")
+    ?.querySelector(".mm-editor-figure figure");
+  return figure?.getBoundingClientRect() ?? null;
+}
+
+function beginCropPointerDrag(
+  event: ReactPointerEvent,
+  crop: PixelRect,
+  imageRect: { x: number; y: number; w: number; h: number },
+  canvas: { width: number; height: number },
+  natural: PixelSize,
+  applyDelta: (crop0: PixelRect, dx: number, dy: number) => PixelRect,
+  onCropChange: (crop: PixelRect) => void,
+) {
+  event.preventDefault();
+  event.stopPropagation();
+  const box = resolveFigureBox(event.currentTarget as HTMLElement);
+  if (!box) {
+    return;
+  }
+  const startClient = { x: event.clientX, y: event.clientY };
+  const crop0 = { ...crop };
+  const onMove = (moveEvent: PointerEvent) => {
+    const startPx = clientToSourcePixels(startClient.x, startClient.y, box, imageRect, canvas, natural);
+    const currentPx = clientToSourcePixels(moveEvent.clientX, moveEvent.clientY, box, imageRect, canvas, natural);
+    onCropChange(applyDelta(crop0, currentPx.x - startPx.x, currentPx.y - startPx.y));
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
 export function VisualCropOverlay({
   image,
   canvas,
@@ -79,68 +110,6 @@ export function VisualCropOverlay({
   const imageRect = image.rect;
   const cropStyle = cropToOverlayStyle(imageRect, crop, natural);
   const fullStyle = fullImageOverlayStyle(imageRect);
-
-  const startHandleDrag = (event: ReactPointerEvent, handle: CropHandle) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const figure = (event.currentTarget as HTMLElement)
-      .closest("[data-editor-canvas]")
-      ?.querySelector(".mm-editor-figure figure");
-    const box = figure?.getBoundingClientRect();
-    if (!box) {
-      return;
-    }
-    const startClient = { x: event.clientX, y: event.clientY };
-    const crop0 = { ...crop };
-    const onMove = (moveEvent: PointerEvent) => {
-      const startPx = clientToSourcePixels(startClient.x, startClient.y, box, imageRect, canvas, natural);
-      const currentPx = clientToSourcePixels(moveEvent.clientX, moveEvent.clientY, box, imageRect, canvas, natural);
-      onCropChange(
-        resizeCrop(crop0, handle, { dx: currentPx.x - startPx.x, dy: currentPx.y - startPx.y }, natural),
-      );
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  };
-
-  const startCropMove = (event: ReactPointerEvent) => {
-    if ((event.target as HTMLElement).closest(".mm-crop-handle")) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    const figure = (event.currentTarget as HTMLElement)
-      .closest("[data-editor-canvas]")
-      ?.querySelector(".mm-editor-figure figure");
-    const box = figure?.getBoundingClientRect();
-    if (!box) {
-      return;
-    }
-    const startClient = { x: event.clientX, y: event.clientY };
-    const crop0 = { ...crop };
-    const onMove = (moveEvent: PointerEvent) => {
-      const startPx = clientToSourcePixels(startClient.x, startClient.y, box, imageRect, canvas, natural);
-      const currentPx = clientToSourcePixels(moveEvent.clientX, moveEvent.clientY, box, imageRect, canvas, natural);
-      const dx = currentPx.x - startPx.x;
-      const dy = currentPx.y - startPx.y;
-      onCropChange(clampCrop({
-        x: crop0.x + dx,
-        y: crop0.y + dy,
-        w: crop0.w,
-        h: crop0.h,
-      }, natural));
-    };
-    const onUp = () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  };
 
   return (
     <div
@@ -155,7 +124,25 @@ export function VisualCropOverlay({
         className="mm-crop-window"
         style={cropStyle}
         data-testid="crop-window"
-        onPointerDown={startCropMove}
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest(".mm-crop-handle")) {
+            return;
+          }
+          beginCropPointerDrag(
+            event,
+            crop,
+            imageRect,
+            canvas,
+            natural,
+            (crop0, dx, dy) => clampCrop({
+              x: crop0.x + dx,
+              y: crop0.y + dy,
+              w: crop0.w,
+              h: crop0.h,
+            }, natural),
+            onCropChange,
+          );
+        }}
       >
         {FRAME_HANDLES.map((handle) => (
           <div
@@ -167,7 +154,22 @@ export function VisualCropOverlay({
               top: `${handle.fy * 100}%`,
               cursor: handle.cursor,
             }}
-            onPointerDown={(event) => startHandleDrag(event, handle.dir as CropHandle)}
+            onPointerDown={(event) => {
+              beginCropPointerDrag(
+                event,
+                crop,
+                imageRect,
+                canvas,
+                natural,
+                (crop0, dx, dy) => resizeCrop(
+                  crop0,
+                  handle.dir as CropHandle,
+                  { dx, dy },
+                  natural,
+                ),
+                onCropChange,
+              );
+            }}
           />
         ))}
       </div>

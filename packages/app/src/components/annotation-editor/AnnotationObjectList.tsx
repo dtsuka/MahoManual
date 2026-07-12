@@ -56,156 +56,132 @@ export function AnnotationObjectList({
           ? "クロップ編集中はオブジェクトを切り替えられません。確定または取消してください。"
           : "前面 → 背面の順。⌘/Ctrl/Shift+クリックで複数選択できます。"}
       </p>
-      <ul className="space-y-0.5">
-        {[...objects].reverse().map((obj, displayIndex) => (
-          <li
-            key={obj.id}
-            draggable={!selectionLocked && isEditable(obj)}
-            onDragStart={() => {
-              if (!selectionLocked && isEditable(obj)) {
-                onDragListIndexChange(displayIndex);
-              }
-            }}
-            onDragOver={(event) => {
-              if (selectionLocked) {
-                return;
-              }
-              event.preventDefault();
-              onDropListIndexChange(displayIndex);
-            }}
-            onDragLeave={() => {
-              if (dropListIndex === displayIndex) {
-                onDropListIndexChange(null);
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              if (!selectionLocked && dragListIndex !== null) {
-                onReorder(dragListIndex, displayIndex);
-              }
-              onDragListIndexChange(null);
-              onDropListIndexChange(null);
-            }}
-            onDragEnd={() => {
-              onDragListIndexChange(null);
-              onDropListIndexChange(null);
-            }}
-            className={cx(
-              "relative rounded-md",
-              dropListIndex === displayIndex && dragListIndex !== displayIndex &&
-                "border-t-2 border-blue-400",
-            )}
-          >
-            <button
-              type="button"
-              data-testid={`object-item-${obj.id}`}
-              disabled={selectionLocked}
-              className={cx(
-                "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-20 text-left text-[13px] transition-colors duration-150",
-                hiddenIds.has(obj.id) && "opacity-50",
-                soloId && soloId !== obj.id && "opacity-40",
-                selectionLocked
-                  ? "cursor-not-allowed"
-                  : isEditable(obj) ? "cursor-grab" : "cursor-default",
-                selectedIds.includes(obj.id)
-                  ? "border-blue-400 bg-blue-50 text-blue-800"
-                  : "border-transparent text-slate-700 hover:bg-slate-100",
-                selectionLocked && !selectedIds.includes(obj.id) && "opacity-40",
-              )}
-              onClick={(event) => {
+      <fieldset disabled={selectionLocked} className="m-0 min-w-0 border-0 p-0">
+        <ul className="space-y-0.5">
+          {[...objects].reverse().map((obj, displayIndex) => (
+            <li
+              key={obj.id}
+              draggable={!selectionLocked && isEditable(obj)}
+              onDragStart={() => {
+                if (!selectionLocked && isEditable(obj)) {
+                  onDragListIndexChange(displayIndex);
+                }
+              }}
+              onDragOver={(event) => {
                 if (selectionLocked) {
                   return;
                 }
-                onSelect(obj.id, event.metaKey || event.ctrlKey || event.shiftKey);
+                event.preventDefault();
+                onDropListIndexChange(displayIndex);
               }}
+              onDragLeave={() => {
+                if (dropListIndex === displayIndex) {
+                  onDropListIndexChange(null);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (!selectionLocked && dragListIndex !== null) {
+                  onReorder(dragListIndex, displayIndex);
+                }
+                onDragListIndexChange(null);
+                onDropListIndexChange(null);
+              }}
+              onDragEnd={() => {
+                onDragListIndexChange(null);
+                onDropListIndexChange(null);
+              }}
+              className={cx(
+                "relative rounded-md",
+                dropListIndex === displayIndex && dragListIndex !== displayIndex &&
+                  "border-t-2 border-blue-400",
+              )}
             >
-              <span
+              <button
+                type="button"
+                data-testid={`object-item-${obj.id}`}
                 className={cx(
-                  "shrink-0",
-                  selectedIds.includes(obj.id) ? "text-blue-600" : "text-slate-400",
+                  "group flex w-full items-center gap-2 rounded-md border py-1.5 pl-2 pr-20 text-left text-[13px] transition-colors duration-150",
+                  hiddenIds.has(obj.id) && "opacity-50",
+                  soloId && soloId !== obj.id && "opacity-40",
+                  isEditable(obj) ? "cursor-grab" : "cursor-default",
+                  selectedIds.includes(obj.id)
+                    ? "border-blue-400 bg-blue-50 text-blue-800"
+                    : "border-transparent text-slate-700 hover:bg-slate-100",
+                  selectionLocked && !selectedIds.includes(obj.id) && "opacity-40",
                 )}
+                onClick={(event) => {
+                  onSelect(obj.id, event.metaKey || event.ctrlKey || event.shiftKey);
+                }}
               >
-                {objectIcon(obj.type)}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{objectLabel(obj)}</span>
-              <span className="shrink-0 font-mono text-[10px] text-slate-500">{obj.id}</span>
-              {!selectionLocked ? (
+                <span
+                  className={cx(
+                    "shrink-0",
+                    selectedIds.includes(obj.id) ? "text-blue-600" : "text-slate-400",
+                  )}
+                >
+                  {objectIcon(obj.type)}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{objectLabel(obj)}</span>
+                <span className="shrink-0 font-mono text-[10px] text-slate-500">{obj.id}</span>
                 <IconGrip
                   size={12}
                   className="shrink-0 text-slate-300 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
                 />
-              ) : null}
-            </button>
-            <div className="absolute right-1 top-1 flex items-center gap-0.5">
-              <button
-                type="button"
-                data-testid={`object-visibility-${obj.id}`}
-                disabled={selectionLocked}
-                className={cx(
-                  "flex h-6 w-6 items-center justify-center rounded transition-colors",
-                  selectionLocked && "cursor-not-allowed opacity-40",
-                  hiddenIds.has(obj.id)
-                    ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                    : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
-                )}
-                title={hiddenIds.has(obj.id) ? "表示する" : "一時的に非表示"}
-                aria-label={hiddenIds.has(obj.id) ? `${obj.id}を表示` : `${obj.id}を一時的に非表示`}
-                aria-pressed={hiddenIds.has(obj.id)}
-                onClick={() => {
-                  if (!selectionLocked) {
-                    onToggleHidden(obj.id);
-                  }
-                }}
-              >
-                {hiddenIds.has(obj.id) ? <IconEyeOff size={13} /> : <IconEye size={13} />}
               </button>
-              <button
-                type="button"
-                data-testid={`object-solo-${obj.id}`}
-                disabled={selectionLocked}
-                className={cx(
-                  "flex h-6 w-6 items-center justify-center rounded transition-colors",
-                  selectionLocked && "cursor-not-allowed opacity-40",
-                  soloId === obj.id
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
-                )}
-                title={soloId === obj.id ? "単独表示を解除" : "単独表示"}
-                aria-label={soloId === obj.id ? `${obj.id}の単独表示を解除` : `${obj.id}だけを表示`}
-                aria-pressed={soloId === obj.id}
-                onClick={() => {
-                  if (!selectionLocked) {
-                    onToggleSolo(obj.id);
-                  }
-                }}
-              >
-                <IconSolo size={13} />
-              </button>
-              <button
-                type="button"
-                data-testid={`object-lock-${obj.id}`}
-                disabled={selectionLocked}
-                className={cx(
-                  "flex h-6 w-6 items-center justify-center rounded transition-colors",
-                  selectionLocked && "cursor-not-allowed opacity-40",
-                  !isEditable(obj)
-                    ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                    : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
-                )}
-                title={!isEditable(obj) ? "ロックを解除" : "オブジェクトをロック"}
-                aria-label={!isEditable(obj) ? `${obj.id}のロックを解除` : `${obj.id}をロック`}
-                onClick={() => {
-                  if (!selectionLocked) {
-                    onToggleLock(obj.id);
-                  }
-                }}
-              >
-                {!isEditable(obj) ? <IconLock size={12} /> : <IconUnlock size={12} />}
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
+              <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                <button
+                  type="button"
+                  data-testid={`object-visibility-${obj.id}`}
+                  className={cx(
+                    "flex h-6 w-6 items-center justify-center rounded transition-colors",
+                    hiddenIds.has(obj.id)
+                      ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                      : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                  )}
+                  title={hiddenIds.has(obj.id) ? "表示する" : "一時的に非表示"}
+                  aria-label={hiddenIds.has(obj.id) ? `${obj.id}を表示` : `${obj.id}を一時的に非表示`}
+                  aria-pressed={hiddenIds.has(obj.id)}
+                  onClick={() => onToggleHidden(obj.id)}
+                >
+                  {hiddenIds.has(obj.id) ? <IconEyeOff size={13} /> : <IconEye size={13} />}
+                </button>
+                <button
+                  type="button"
+                  data-testid={`object-solo-${obj.id}`}
+                  className={cx(
+                    "flex h-6 w-6 items-center justify-center rounded transition-colors",
+                    soloId === obj.id
+                      ? "bg-blue-100 text-blue-700"
+                      : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                  )}
+                  title={soloId === obj.id ? "単独表示を解除" : "単独表示"}
+                  aria-label={soloId === obj.id ? `${obj.id}の単独表示を解除` : `${obj.id}だけを表示`}
+                  aria-pressed={soloId === obj.id}
+                  onClick={() => onToggleSolo(obj.id)}
+                >
+                  <IconSolo size={13} />
+                </button>
+                <button
+                  type="button"
+                  data-testid={`object-lock-${obj.id}`}
+                  className={cx(
+                    "flex h-6 w-6 items-center justify-center rounded transition-colors",
+                    !isEditable(obj)
+                      ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                      : "text-slate-400 hover:bg-slate-200 hover:text-slate-700",
+                  )}
+                  title={!isEditable(obj) ? "ロックを解除" : "オブジェクトをロック"}
+                  aria-label={!isEditable(obj) ? `${obj.id}のロックを解除` : `${obj.id}をロック`}
+                  onClick={() => onToggleLock(obj.id)}
+                >
+                  {!isEditable(obj) ? <IconLock size={12} /> : <IconUnlock size={12} />}
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
     </section>
   );
 }
