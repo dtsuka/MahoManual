@@ -173,6 +173,21 @@ test("annotation editor: zoom, fit, pointer zoom and space pan only change the v
   expect(readFileSync(annotationPath, "utf8")).toBe(beforeJson);
 });
 
+test("annotation editor: fit zoom above 100% preserves the canvas aspect ratio", async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 1400 });
+  await page.goto(`/projects/${testProject}/annotations/1-2`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const zoom = Number.parseFloat((await page.getByTestId("zoom-value").textContent()) ?? "0");
+  expect(zoom).toBeGreaterThan(100);
+
+  const figureSize = await page.locator(".mm-editor-figure figure").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  expect(figureSize.width / figureSize.height).toBeCloseTo(1286 / 771, 3);
+});
+
 test("annotation editor: Cmd/Ctrl+D duplicates and Cmd/Ctrl+S saves from an input", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
