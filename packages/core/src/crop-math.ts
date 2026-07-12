@@ -70,3 +70,45 @@ export function resizeCrop(
   }
   return clampCrop({ x, y, w, h }, natural);
 }
+
+export interface RectPct {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * ビジュアルクロップ編集用に、現在の crop→rect 縮尺で元画像全体の表示 rect を復元する。
+ * 編集中はこの rect + フルcrop で描画し、縦横比を崩さずクロップ窓を重ねる。
+ */
+export function revealRectForCropEdit(
+  rect: RectPct,
+  crop: PixelRect,
+  natural: PixelSize,
+  canvas: { width: number; height: number },
+): RectPct {
+  const scale = ((rect.w / 100) * canvas.width) / Math.max(crop.w, 1);
+  const rectX = (rect.x / 100) * canvas.width;
+  const rectY = (rect.y / 100) * canvas.height;
+  return {
+    x: ((rectX - crop.x * scale) / canvas.width) * 100,
+    y: ((rectY - crop.y * scale) / canvas.height) * 100,
+    w: (natural.w * scale / canvas.width) * 100,
+    h: (natural.h * scale / canvas.height) * 100,
+  };
+}
+
+/** reveal rect 上の crop 領域をキャンバス%の配置 rect へ写す */
+export function rectFromCropInReveal(
+  reveal: RectPct,
+  crop: PixelRect,
+  natural: PixelSize,
+): RectPct {
+  return {
+    x: reveal.x + (crop.x / natural.w) * reveal.w,
+    y: reveal.y + (crop.y / natural.h) * reveal.h,
+    w: (crop.w / natural.w) * reveal.w,
+    h: (crop.h / natural.h) * reveal.h,
+  };
+}

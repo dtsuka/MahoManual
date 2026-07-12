@@ -72,14 +72,15 @@ describe("revealRectForCropEdit", () => {
 
   it("現在のcrop→rectの縮尺で元画像全体のrectを復元し、crop窓が元rectに一致する", () => {
     const crop = { x: 0, y: 240, w: 2560, h: 1440 };
-    const rect = { x: 0, y: 0, w: 100, h: 100 };
+    // crop 2560×1440 を scale 0.5 で置くと 1280×720 → canvas% は w=100, h=75
+    const rect = { x: 0, y: 12.5, w: 100, h: 75 };
     const reveal = revealRectForCropEdit(rect, crop, natural, canvas);
 
     // 縮尺は crop.w → rect.w から一意に決まる(2560px → 1280 canvas px → 0.5)
     expect(reveal.w).toBeCloseTo(100, 5);
     expect(reveal.h).toBeCloseTo((1920 * 0.5 / 960) * 100, 5);
     expect(reveal.x).toBeCloseTo(0, 5);
-    expect(reveal.y).toBeCloseTo(-(240 * 0.5 / 960) * 100, 5);
+    expect(reveal.y).toBeCloseTo(12.5 - (240 * 0.5 / 960) * 100, 5);
 
     const cropWindow = rectFromCropInReveal(reveal, crop, natural);
     expect(cropWindow.x).toBeCloseTo(rect.x, 5);
