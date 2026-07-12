@@ -86,6 +86,36 @@ test("annotation editor: tools create objects directly on the canvas", async ({ 
   }
 });
 
+test("annotation editor: selected point objects show a dashed selection frame", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const expectDashedSelectionFrame = async (locator: ReturnType<typeof page.locator>) => {
+    await expect(locator).toHaveClass(/is-selected/);
+    await expect.poll(() =>
+      locator.evaluate((element) => {
+        const style = getComputedStyle(element, "::before");
+        return {
+          borderStyle: style.borderStyle,
+          borderWidth: style.borderWidth,
+          content: style.content,
+        };
+      }),
+    ).toEqual({
+      borderStyle: "dashed",
+      borderWidth: "2px",
+      content: '""',
+    });
+  };
+
+  await page.getByTestId("object-item-b1").click();
+  await expectDashedSelectionFrame(page.locator('.mm-editor-figure [data-mm-id="b1"]'));
+
+  await page.getByTestId("add-text").click();
+  await clickCanvas(page, 42, 32);
+  await expectDashedSelectionFrame(page.locator(".mm-editor-figure .mm-text").last());
+});
+
 test("annotation editor: visibility controls use accessible stroke icons", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
