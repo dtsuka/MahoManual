@@ -12,6 +12,7 @@ import { basename, dirname, extname, join } from "node:path";
 import { YAMLMap, parseDocument, parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
+import { parseAnnotationDefaults, type AnnotationDefaults } from "./annotation-defaults.js";
 import { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
 import {
   annotationObjectSchema,
@@ -104,6 +105,35 @@ export function readProjectTheme(projectRoot: string): AnnotationTheme {
     theme.fontSize = fontSize;
   }
   return theme;
+}
+
+export function readAnnotationDefaults(projectRoot: string): AnnotationDefaults {
+  const yaml = readProjectYaml(projectRoot);
+  const annotation = yaml.annotation;
+  if (!annotation || typeof annotation !== "object") {
+    return {};
+  }
+  return parseAnnotationDefaults((annotation as { defaults?: unknown }).defaults);
+}
+
+export function writeAnnotationDefaults(
+  projectRoot: string,
+  defaults: AnnotationDefaults,
+): AnnotationDefaults {
+  const path = join(projectRoot, "project.yaml");
+  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
+  const hasValues = Object.keys(defaults).length > 0;
+  if (hasValues) {
+    doc.setIn(["annotation", "defaults"], defaults);
+  } else {
+    doc.deleteIn(["annotation", "defaults"]);
+  }
+  const annotation = doc.get("annotation");
+  if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
+    doc.delete("annotation");
+  }
+  writeFileSync(path, doc.toString(), "utf8");
+  return readAnnotationDefaults(projectRoot);
 }
 
 // project.yaml の annotation セクション(テーマ設定)を書き込む。

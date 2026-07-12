@@ -15,6 +15,15 @@ export {
   type TaggableObject,
 } from "./annotation-objects.js";
 export {
+  applyObjectStyle,
+  copyObjectStyle,
+  extractObjectStyle,
+  parseAnnotationDefaults,
+  resolveCreationDefaults,
+  type AnnotationDefaults,
+  type ObjectStylePatch,
+} from "./annotation-defaults.js";
+export {
   buildPreviewHtml,
   buildProject,
   getNaturalSizes,
@@ -33,8 +42,40 @@ export {
   type RectPct,
   type Region,
 } from "./capture-math.js";
+export {
+  clampCrop,
+  fullImageCrop,
+  resizeCrop,
+  validateCrop,
+  type CropHandle,
+  type PixelRect,
+  type PixelSize,
+} from "./crop-math.js";
 export { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
+export {
+  alignObjects,
+  collectSnapGuides,
+  distributeObjects,
+  duplicateObjects,
+  objectBounds,
+  objectsInRect,
+  reorderObject,
+  snapPointToGuides,
+  snapThresholdPct,
+  translateObjects,
+  type ObjectBounds,
+  type PointPct as GeometryPointPct,
+  type RectPct as GeometryRectPct,
+  type SnapGuide,
+} from "./object-geometry.js";
 export { mergeAnnotations } from "./merge-annotations.js";
+export {
+  mergeAnnotationEdits,
+  resolveConflicts,
+  type MergeAnnotationEditsResult,
+  type MergeConflictReason,
+  type ObjectConflict,
+} from "./merge-annotation-edits.js";
 export { applyMosaicsToImage, mosaicRegionsForImage, type MosaicPixelRegion } from "./mosaic.js";
 export { renderAnnotationPng } from "./export-image.js";
 export {
@@ -57,7 +98,8 @@ export {
   loadRecipeFile,
   readAnnotationFile,
   readManual,
-  readProjectYaml,
+  readAnnotationDefaults,
+  writeAnnotationDefaults,
   removeAnnotationObject,
   renumberBadges,
   renumberBadgesFile,

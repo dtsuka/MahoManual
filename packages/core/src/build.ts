@@ -115,29 +115,7 @@ function copyImages(projectRoot: string, outputDir: string, srcPaths: string[]):
   }
 }
 
-function toPixelCrop(
-  crop: PixelCrop,
-  natural: { w: number; h: number },
-  src: string,
-): PixelCrop {
-  const pixelCrop = {
-    x: Math.round(crop.x),
-    y: Math.round(crop.y),
-    w: Math.round(crop.w),
-    h: Math.round(crop.h),
-  };
-  if (
-    pixelCrop.x < 0 ||
-    pixelCrop.y < 0 ||
-    pixelCrop.w < 1 ||
-    pixelCrop.h < 1 ||
-    pixelCrop.x + pixelCrop.w > natural.w ||
-    pixelCrop.y + pixelCrop.h > natural.h
-  ) {
-    throw new Error(`crop is outside the source image: ${src}`);
-  }
-  return pixelCrop;
-}
+import { validateCrop } from "./crop-math.js";
 
 async function writeCroppedImages(
   projectRoot: string,
@@ -216,7 +194,7 @@ function renderAnnotatedImageFence(
         deliveryObjects.push(obj);
         continue;
       }
-      const crop = toPixelCrop(
+      const crop = validateCrop(
         obj.crop ?? { x: 0, y: 0, w: naturalSizes[obj.src]!.w, h: naturalSizes[obj.src]!.h },
         naturalSizes[obj.src]!,
         obj.src,

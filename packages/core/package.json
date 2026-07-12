@@ -17,7 +17,11 @@
     "./capture-math": "./src/capture-math.ts",
     "./expand-canvas": "./src/expand-canvas.ts",
     "./annotation-objects": "./src/annotation-objects.ts",
-    "./merge-annotations": "./src/merge-annotations.ts"
+    "./merge-annotations": "./src/merge-annotations.ts",
+    "./crop-math": "./src/crop-math.ts",
+    "./object-geometry": "./src/object-geometry.ts",
+    "./annotation-defaults": "./src/annotation-defaults.ts",
+    "./merge-annotation-edits": "./src/merge-annotation-edits.ts"
   },
   "scripts": {
     "test": "vitest run"
