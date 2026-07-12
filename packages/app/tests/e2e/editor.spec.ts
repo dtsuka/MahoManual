@@ -38,6 +38,15 @@ async function dragCanvas(
   await page.mouse.up();
 }
 
+test("annotation editor: header navigation actions show text labels", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "戻る" })).toContainText("戻る");
+  await expect(page.getByTestId("nav-prev-annotation")).toContainText("前の注釈");
+  await expect(page.getByTestId("nav-next-annotation")).toContainText("次の注釈");
+});
+
 test("annotation editor: tools create objects directly on the canvas", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
@@ -236,6 +245,21 @@ test("annotation editor: selected style can be saved and cleared as the project 
   } finally {
     writeFileSync(projectYamlPath, originalYaml, "utf8");
   }
+});
+
+test("annotation editor: selected object style can be reset to defaults", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  await page.getByTestId("object-item-b1").click();
+  await page.getByTestId("prop-color").fill("#123456");
+  await page.getByTestId("prop-font-size").fill("28");
+  await expect(page.getByTestId("prop-color")).toHaveValue("#123456");
+  await expect(page.getByTestId("prop-font-size")).toHaveValue("28");
+
+  await page.getByRole("button", { name: "デフォルトに戻す" }).click();
+  await expect(page.getByTestId("prop-color")).toHaveValue("#e91e8c");
+  await expect(page.getByTestId("prop-font-size")).toHaveValue("14");
 });
 
 test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
