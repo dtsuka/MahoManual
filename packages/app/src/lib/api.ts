@@ -222,7 +222,11 @@ export function rewriteFigureHtml(html: string, project: string): string {
   });
 }
 
-export function injectObjectIds(html: string, objects: AnnotationObject[]): string {
+export function injectObjectIds(
+  html: string,
+  objects: AnnotationObject[],
+  selectedIds: ReadonlySet<string> = new Set(),
+): string {
   const taggable = taggableObjectsInDisplayOrder(objects);
   let index = 0;
   return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame|mosaic)/g, (match, tag, kind) => {
@@ -231,7 +235,8 @@ export function injectObjectIds(html: string, objects: AnnotationObject[]): stri
     if (!obj) {
       return match;
     }
-    return `<${tag} data-mm-id="${obj.id}" class="mm-obj mm-${kind}`;
+    const selectedClass = selectedIds.has(obj.id) ? " is-selected" : "";
+    return `<${tag} data-mm-id="${obj.id}" class="mm-obj mm-${kind}${selectedClass}`;
   });
 }
 

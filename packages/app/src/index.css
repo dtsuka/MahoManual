@@ -183,6 +183,10 @@ body {
   pointer-events: none;
 }
 
+.mm-editor-figure .mm-badge.is-selected::before {
+  border-radius: 50%;
+}
+
 /* polyline には outline が効かないため選択表示は drop-shadow で行う */
 .mm-editor-figure polyline.is-selected {
   filter: drop-shadow(0 0 3px #2563eb);

@@ -118,6 +118,49 @@ const MAX_HISTORY = 100;
 // 表示倍率により1画面pxが0.1%以上になる場合も、クリック位置を安定した値へ揃える。
 const roundCreationPct = (value: number) => Math.round(value * 2) / 2;
 
+interface CanvasEventLike {
+  clientX: number;
+  clientY: number;
+  target: EventTarget | null;
+}
+
+interface CanvasObjectTargets {
+  direct: HTMLElement | null;
+  point: HTMLElement | null;
+}
+
+const POINT_OBJECT_SELECTOR = ".mm-badge, .mm-text, .mm-cursor";
+
+function resolveCanvasObjectTargets(event: CanvasEventLike): CanvasObjectTargets {
+  if (!(event.target instanceof Element)) {
+    return { direct: null, point: null };
+  }
+  const directTarget = event.target.closest<HTMLElement>("[data-mm-id]");
+  if (!directTarget) {
+    return { direct: null, point: null };
+  }
+  if (!directTarget.classList.contains("mm-frame")) {
+    return {
+      direct: directTarget,
+      point: directTarget.matches(POINT_OBJECT_SELECTOR) ? directTarget : null,
+    };
+  }
+
+  // 透明なフレームの下にある点オブジェクトは、表示上クリックできるため
+  // elementsFromPoint で拾い直す。フレームの境界や他のオブジェクト上は
+  // 従来どおり最前面のターゲットを優先する。
+  const pointTarget = document
+    .elementsFromPoint(event.clientX, event.clientY)
+    .map((element) => element.closest<HTMLElement>("[data-mm-id]"))
+    .find((element) => element?.matches(POINT_OBJECT_SELECTOR)) ?? null;
+  return { direct: directTarget, point: pointTarget };
+}
+
+function resolveCanvasObjectElement(event: CanvasEventLike): HTMLElement | null {
+  const { direct, point } = resolveCanvasObjectTargets(event);
+  return point ?? direct;
+}
+
 interface AnnotationEditorProps {
   project: string;
   annotationId: string;
@@ -235,8 +278,9 @@ export function AnnotationEditor({
         project,
       ),
       taggableObjectsInDisplayOrder(visibleObjects),
+      new Set(selectedIds),
     );
-  }, [annotation, interactionObjects, naturalSizes, project, hiddenIds, soloId]);
+  }, [annotation, interactionObjects, naturalSizes, project, hiddenIds, soloId, selectedIds]);
 
   const fetchPayload = async (): Promise<AnnotationPayload> => {
     const response = await fetch(
@@ -1009,7 +1053,7 @@ export function AnnotationEditor({
     }
     const point = pctFromClient(event.clientX, event.clientY);
     if (activeTool === "badge" || activeTool === "text" || activeTool === "cursor") {
-      const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
+      const targetId = resolveCanvasObjectElement(event)?.dataset.mmId;
       if (isEditingPlacedBadge(activeTool, targetId, selectedIds)) {
         return;
       }
@@ -1036,7 +1080,7 @@ export function AnnotationEditor({
       return;
     }
     if (event.detail >= 2) {
-      const target = (event.target as Element).closest<HTMLElement>("[data-mm-id]");
+      const target = resolveCanvasObjectElement(event);
       const id = target?.dataset.mmId;
       const obj = annotationRef.current?.objects.find((item) => item.id === id);
       if (obj?.type === "text" && isEditable(obj)) {
@@ -1048,11 +1092,11 @@ export function AnnotationEditor({
       }
       return;
     }
-    const element = event.target as HTMLElement;
-    if (element.closest(".mm-editor-handle")) {
+    const element = event.target instanceof Element ? event.target : null;
+    if (element?.closest(".mm-editor-handle")) {
       return;
     }
-    const target = element.closest<HTMLElement>("[data-mm-id]");
+    const target = resolveCanvasObjectElement(event);
     if (!target) {
       setSelectedIds([]);
       return;
@@ -1075,7 +1119,7 @@ export function AnnotationEditor({
   };
 
   const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
+    const targetId = resolveCanvasObjectElement(event)?.dataset.mmId;
     const editingSelectedBadge = isEditingPlacedBadge(activeTool, targetId, selectedIds);
     if (activeTool !== "select" && event.buttons === 0 && !editingSelectedBadge) {
       setHoverPoint(pctFromClient(event.clientX, event.clientY));
@@ -1141,8 +1185,17 @@ export function AnnotationEditor({
   const handleObjectSelectionPointerDown = (
     event: ReactPointerEvent,
     current: AnnotationFile,
+    isSelectMode: boolean,
   ) => {
-    const target = (event.target as Element).closest("[data-mm-id]");
+    const targets = resolveCanvasObjectTargets(event);
+    const directFrame = targets.direct?.classList.contains("mm-frame") ? targets.direct : null;
+    const directFrameObject = directFrame
+      ? current.objects.find((item) => item.id === directFrame.dataset.mmId)
+      : undefined;
+    // フレーム上の点はクリックなら選択し、移動が始まったらフレームをドラッグする。
+    // 透明なフレームが背面の丸数字・テキストをクリック不能にしないための分岐。
+    const dragFrame = isSelectMode && directFrameObject && isEditable(directFrameObject) ? directFrame : null;
+    const target = dragFrame ?? targets.point ?? targets.direct;
     if (!target) {
       return;
     }
@@ -1158,6 +1211,7 @@ export function AnnotationEditor({
     event.stopPropagation();
     const wasSelected = selectedIds.includes(objectId);
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    const clickThroughId = dragFrame ? targets.point?.dataset.mmId : undefined;
     const originalDragIds = wasSelected ? selectedIds : [objectId];
     let dragIds = originalDragIds;
     setSelectedIds(additive
@@ -1244,6 +1298,13 @@ export function AnnotationEditor({
           setInteractionObjects(null);
           setSnapGuides([]);
           if (!moved) {
+            if (clickThroughId) {
+              setSelectedIds(additive
+                ? (selectedIds.includes(clickThroughId)
+                  ? selectedIds.filter((id) => id !== clickThroughId)
+                  : [...selectedIds, clickThroughId])
+                : [clickThroughId]);
+            }
             return;
           }
           const next = rectFor(pct);
@@ -1327,7 +1388,7 @@ export function AnnotationEditor({
       handleRectCreationPointerDown(event, activeTool);
       return;
     }
-    const targetId = (event.target as Element).closest("[data-mm-id]")?.getAttribute("data-mm-id") ?? undefined;
+    const targetId = resolveCanvasObjectElement(event)?.getAttribute("data-mm-id") ?? undefined;
     if (activeTool === "select" && !targetId && !(event.target as Element).closest(".mm-editor-handle")) {
       startMarqueeSelection(event);
       return;
@@ -1337,21 +1398,8 @@ export function AnnotationEditor({
       event.stopPropagation();
       return;
     }
-    handleObjectSelectionPointerDown(event, current);
+    handleObjectSelectionPointerDown(event, current, activeTool === "select");
   };
-
-  useEffect(() => {
-    if (!figureRef.current) {
-      return;
-    }
-    const nodes = figureRef.current.querySelectorAll("[data-mm-id]");
-    nodes.forEach((node) => node.classList.remove("is-selected"));
-    for (const id of selectedIds) {
-      figureRef.current.querySelectorAll(`[data-mm-id="${id}"]`).forEach((node) => {
-        node.classList.add("is-selected");
-      });
-    }
-  }, [selectedIds, figureHtml]);
 
   if (error) {
     return (
