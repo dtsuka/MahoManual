@@ -1,5 +1,5 @@
 import type { AnnotationFile, AnnotationObject, CursorIcon } from "@mahomanual/core/schema";
-import { isEditable, isLineObject, isRectObject } from "@mahomanual/core/annotation-objects";
+import { isEditable, isLineObject, isRectObject, textBoxRect } from "@mahomanual/core/annotation-objects";
 import {
   DEFAULT_ANNOTATION_COLOR,
   DEFAULT_ANNOTATION_FONT_SIZE,
@@ -69,24 +69,33 @@ export function AnnotationProperties({
   const editableSelected = selected && isEditable(selected) ? selected : null;
 
   const updateAt = (axis: "x" | "y", value: number) => {
-    if (!editableSelected || (editableSelected.type !== "badge" && editableSelected.type !== "text" && editableSelected.type !== "cursor")) {
+    if (!editableSelected || (editableSelected.type !== "badge" && editableSelected.type !== "cursor")) {
       return;
     }
     updateObject(editableSelected.id, (obj) =>
-      obj.type === "badge" || obj.type === "text" || obj.type === "cursor"
+      obj.type === "badge" || obj.type === "cursor"
         ? { ...obj, at: { ...obj.at, [axis]: value } }
         : obj,
     );
   };
 
   const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!editableSelected || !isRectObject(editableSelected)) {
+    if (!editableSelected || (editableSelected.type !== "text" && !isRectObject(editableSelected))) {
       return;
     }
     const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
-    updateObject(editableSelected.id, (obj) =>
-      isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj,
-    );
+    updateObject(editableSelected.id, (obj) => {
+      if (obj.type === "text") {
+        const rect = textBoxRect(obj);
+        const next = { ...rect, [key]: clamped };
+        return {
+          ...obj,
+          rect: next,
+          at: { x: next.x + next.w / 2, y: next.y + next.h / 2 },
+        };
+      }
+      return isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj;
+    });
   };
 
   const updateCrop = (key: "x" | "y" | "w" | "h", value: number) => {
@@ -330,13 +339,11 @@ export function AnnotationProperties({
                 }}
               />
             </label>
-            <div>
-              <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-              <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-              </div>
-            </div>
+            <RectPositionFields
+              rect={textBoxRect(editableSelected)}
+              label="テキストボックス (%)"
+              onChange={updateRect}
+            />
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>

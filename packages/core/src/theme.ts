@@ -55,7 +55,7 @@ export const THEME_FIGURE_CSS = `.mm { --mm-color: ${DEFAULT_ANNOTATION_COLOR}; 
 .mm-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--mm-color); color: #fff; box-shadow: 0 0 0 1px #fff;
             font-weight: bold; font-size: var(--mm-font-size); line-height: 1.5; display: flex;
             justify-content: center; transform: translate(-50%,-50%); }
-.mm-text  { transform: translate(-50%,-50%); white-space: pre; color: var(--mm-color); font-size: var(--mm-font-size); }
+.mm-text  { box-sizing: border-box; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--mm-color); font-size: var(--mm-font-size); line-height: 1.45; }
 .mm-cursor { color: ${DEFAULT_CURSOR_COLOR}; line-height: 0; }
 .mm-cursor > svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .mm-frame { box-sizing: border-box; border: 2px solid var(--mm-color); }

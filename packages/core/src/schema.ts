@@ -89,6 +89,8 @@ const textObjectSchema = baseSchema.extend({
   type: z.literal("text"),
   content: z.string(),
   at: pointSchema,
+  // 新しいテキストは矩形ボックスで描画する。at は既存JSONとの互換用に残す。
+  rect: rectSchema.optional(),
   fontSize: z.number().gt(0).optional(),
   color: colorSchema.optional(),
   background: colorSchema.optional(),

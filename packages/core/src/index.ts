@@ -6,6 +6,10 @@ export {
   isEditable,
   isLineObject,
   isRectObject,
+  normalizeTextBoxes,
+  setTextBoxRect,
+  textBoxRect,
+  textBoxRectFromAnchor,
   mosaicsForImage,
   taggableObjectsInDisplayOrder,
   type ImageObject,
@@ -13,6 +17,7 @@ export {
   type MosaicObject,
   type RectObject,
   type TaggableObject,
+  type TextObject,
 } from "./annotation-objects.js";
 export {
   applyObjectStyle,

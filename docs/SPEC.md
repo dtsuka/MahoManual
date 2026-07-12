@@ -123,7 +123,8 @@ interface BadgeObj extends Base {   // 丸数字
 interface TextObj extends Base {
   type: "text";
   content: string;
-  at: Point;                        // 中心点
+  rect?: Rect;                      // テキストボックスの配置・サイズ(新規作成時に使用)
+  at: Point;                        // rectの中心。旧形式との互換用アンカー
   fontSize?: number;                // 既定 14
   color?: string;
   background?: string;              // 省略時は背景なし
@@ -297,7 +298,8 @@ caption: ""       # 任意。figcaptionとして出力
 ### 6.2 レンダリング規則
 
 - figure: `position:relative`、`aspect-ratio: canvas.width / canvas.height`、`max-width` はフェンスの `width`。`width ≤ 680` なら `mm-print-s`、それ以外は `mm-print-l` クラスを付与(印刷時の縮小率切替、§6.4)
-- **badge / text**: `left/top` = `at` の%値、`transform: translate(-50%,-50%)` で中心合わせ。サイズ・フォントはpx固定(縮小表示でも可読性維持)。badgeの表示は `n` の数値をCSSで円形に描画(Unicode①は使わない)
+- **badge**: `left/top` = `at` の%値、`transform: translate(-50%,-50%)` で中心合わせ。サイズ・フォントはpx固定(縮小表示でも可読性維持)。badgeの表示は `n` の数値をCSSで円形に描画(Unicode①は使わない)
+- **text**: `rect` がある場合は `left/top/width/height` を%値で指定する矩形テキストボックスとして描画し、内容は改行・長い単語を折り返す。`rect` がない旧JSONは `at` を中心とするアンカー表示へフォールバックする。GUIの選択・リサイズ・ダブルクリック編集はこの矩形を対象にする
 - **cursor**: Lucide相当のアイコンを外部ファイルやWebフォントへ依存しないinline SVGで描画する。`pointer`は`at`を矢印の先端、その他は中心として配置し、単一HTML出力にもSVGパスを直接含める
 - **frame**: `left/top/width/height` = `rect` の%値。`border: {strokeWidth}px solid {color}`、`box-sizing:border-box`
 - **line / arrow**: figure全面に重ねた1つの `<svg>` にまとめる。`viewBox="0 0 {canvas.width} {canvas.height}"`。点は%→キャンバスpxに変換(`x_px = x / 100 * canvas.width`)。figureのaspect-ratioとviewBoxが一致するためスケーリングは常に等倍比(歪みなし)。**strokeWidthはviewBox座標系のpxで指定し、図全体と比例スケール**(vector-effectは使わない。矢印マーカーとの太さ整合のため)。arrowは `marker-end`(オブジェクトごとに一意のmarker idを生成)
@@ -464,6 +466,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - 注釈エディタ: オブジェクトパレット(badge/text/cursor/frame/line/arrow)、ドラッグ・リサイズ、クロップUI、Deleteキー削除、%座標への変換はcanvas基準
 - 複数画像: 既存キャンバスへ画像を追加し、画像オブジェクトをドラッグ・リサイズして横並び・重ね合わせできる。追加画像は縦横比を維持してキャンバス中央へ収まる初期配置とする
 - オブジェクトロック: オブジェクト単位の `locked` を一覧の鍵ボタンで切り替える。ロック中はドラッグ・リサイズ・数値変更・クロップ・置換・レイヤー移動・削除を禁止し、選択と内容確認のみ許可する。新規のベース画像・レシピ画像はロック、追加画像は配置調整のためロック解除を既定とする
+- テキストボックス: テキストツールのクリックで幅・高さを持つ矩形ボックスを作成する。選択中は右パネルで矩形のx/y/w/h(%)を編集でき、キャンバス上のダブルクリックで同じボックス内を直接編集する。Cmd/Ctrl+Enterまたはフォーカスアウトで確定、Escで取消する
 - モザイク: `targetImageId` で対象画像を明示し、矩形範囲と粗さを非破壊データとして保持する。編集画面では効果をプレビューし、HTML/PDF/合成PNG出力時はSharpで対象画素を縮小・最近傍拡大して画像へ実適用する。納品物には対象範囲の未加工画素を含む画像を残さない
 - キャンバス余白: 上下左右のpx指定でcanvasを拡張/縮小(coreの `expandCanvas`)。既存注釈の見た目位置は維持され、画像の外側へ注釈を置けるようになる(§4.5)
 - Undo / Redo: GUI内の注釈編集履歴を最大100件保持。`Cmd/Ctrl+Z`でUndo、`Cmd/Ctrl+Shift+Z`または`Ctrl+Y`でRedo。外部変更の読込・別注釈への遷移時は履歴をリセットする
@@ -475,6 +478,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - Phase 10-2: ビジュアルクロップ、矩形選択、整列・等間隔、スマートガイド(6画面px)、Alt+ドラッグ複製、`[`/`]`でレイヤー移動
 - Phase 10-3: `annotation.defaults` と localStorage 直近スタイル、選択中スタイルの種類別既定への保存・解除、⌘⌥C/V スタイルコピー、一覧の一時非表示・単独表示、前後注釈移動と未保存移動バナー、テキストのインライン編集
 - Phase 10-4: 矢印キー移動の履歴統合(250ms)、外部変更時の3-wayマージとオブジェクト単位競合解決UI
+- Phase 10-5: テキストオブジェクトを矩形テキストボックスへ移行し、矩形の選択・リサイズ・キャンバス上ダブルクリック編集を追加
 
 ## 12. 決定事項の要約(迷ったらここ)
 

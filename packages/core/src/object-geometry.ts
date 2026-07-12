@@ -47,9 +47,16 @@ const DEFAULT_CURSOR_RADIUS_PCT = 1.4;
 function translateObject(obj: AnnotationObject, dx: number, dy: number): AnnotationObject {
   switch (obj.type) {
     case "badge":
-    case "text":
     case "cursor":
       return { ...obj, at: { x: obj.at.x + dx, y: obj.at.y + dy } };
+    case "text":
+      return {
+        ...obj,
+        at: { x: obj.at.x + dx, y: obj.at.y + dy },
+        ...(obj.rect
+          ? { rect: { ...obj.rect, x: obj.rect.x + dx, y: obj.rect.y + dy } }
+          : {}),
+      };
     case "frame":
     case "image":
     case "mosaic":
@@ -74,6 +81,9 @@ export function objectBounds(obj: AnnotationObject): ObjectBounds | null {
       return { x: obj.at.x - r, y: obj.at.y - r, w: r * 2, h: r * 2 };
     }
     case "text": {
+      if (obj.rect) {
+        return { ...obj.rect };
+      }
       const r = 2;
       return { x: obj.at.x - r, y: obj.at.y - r, w: r * 2, h: r * 2 };
     }

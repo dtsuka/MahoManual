@@ -1,13 +1,51 @@
-import type { AnnotationFile, AnnotationObject } from "./schema.js";
+import type { AnnotationFile, AnnotationObject, Point, Rect } from "./schema.js";
 
 export type ImageObject = Extract<AnnotationObject, { type: "image" }>;
 export type MosaicObject = Extract<AnnotationObject, { type: "mosaic" }>;
+export type TextObject = Extract<AnnotationObject, { type: "text" }>;
 export type RectObject = Extract<AnnotationObject, { type: "frame" | "image" | "mosaic" }>;
 export type LineObject = Extract<AnnotationObject, { type: "line" | "arrow" }>;
 export type TaggableObject = Extract<
   AnnotationObject,
   { type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" }
 >;
+
+const TEXT_BOX_WIDTH = 24;
+const TEXT_BOX_HEIGHT = 8;
+
+/** テキストをクリック配置したときの既定ボックス(座標はキャンバス%) */
+export function textBoxRectFromAnchor(at: Point): Rect {
+  return {
+    x: at.x - TEXT_BOX_WIDTH / 2,
+    y: at.y - TEXT_BOX_HEIGHT / 2,
+    w: TEXT_BOX_WIDTH,
+    h: TEXT_BOX_HEIGHT,
+  };
+}
+
+/** 旧at形式も含め、テキストの編集対象となる矩形を返す */
+export function textBoxRect(obj: TextObject): Rect {
+  return obj.rect ?? textBoxRectFromAnchor(obj.at);
+}
+
+/** テキストボックスの矩形変更と中心アンカー同期を一度に行う */
+export function setTextBoxRect(obj: TextObject, rect: Rect): TextObject {
+  return {
+    ...obj,
+    rect,
+    at: { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 },
+  };
+}
+
+/** 旧形式のテキストを矩形ボックスへ読み込み時に正規化する */
+export function normalizeTextBoxes(annotation: AnnotationFile): AnnotationFile {
+  return {
+    ...annotation,
+    objects: annotation.objects.map((obj) =>
+      obj.type === "text" && !obj.rect ? setTextBoxRect(obj, textBoxRect(obj)) : obj,
+    ),
+  };
+}
 
 export function collectImageSources(
   annotation: Pick<AnnotationFile, "objects">,

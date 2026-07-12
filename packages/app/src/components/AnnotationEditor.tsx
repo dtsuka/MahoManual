@@ -4,7 +4,16 @@ import type {
   PointerEvent as ReactPointerEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
-import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
+import {
+  isEditable,
+  isLineObject,
+  isRectObject,
+  normalizeTextBoxes,
+  setTextBoxRect,
+  taggableObjectsInDisplayOrder,
+  textBoxRect,
+  textBoxRectFromAnchor,
+} from "@mahomanual/core/annotation-objects";
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
 import { rectAtPixelSize } from "@mahomanual/core/object-geometry";
 import {
@@ -221,6 +230,7 @@ export function AnnotationEditor({
     merged: AnnotationFile;
   } | null>(null);
   const marqueeJustFinishedRef = useRef(false);
+  const lastTextPointerClickRef = useRef<{ id: string; timestamp: number } | null>(null);
   const copiedStyleRef = useRef<ReturnType<typeof extractObjectStyle> | null>(null);
   const selectedId = selectedIds.at(-1) ?? null;
   const onCropOpened = useCallback((imageId: string) => {
@@ -271,12 +281,14 @@ export function AnnotationEditor({
     if (!response.ok) {
       throw new Error("注釈の読み込みに失敗しました");
     }
-    return (await response.json()) as AnnotationPayload;
+    const payload = (await response.json()) as AnnotationPayload;
+    return { ...payload, annotation: normalizeTextBoxes(payload.annotation) };
   };
 
   const applyPayload = (payload: AnnotationPayload) => {
-    replaceDocument(payload.annotation, {
-      savedSnapshot: payload.annotation,
+    const normalized = normalizeTextBoxes(payload.annotation);
+    replaceDocument(normalized, {
+      savedSnapshot: normalized,
       dirty: false,
       clearHistory: true,
     });
@@ -414,10 +426,11 @@ export function AnnotationEditor({
     const id = createObjectId(type, current.objects);
     const roundedAt = { x: roundCreationPct(at.x), y: roundCreationPct(at.y) };
     const style = buildCreationStyle(type);
+    const rect = textBoxRectFromAnchor(roundedAt);
     const object: AnnotationObject = type === "badge"
       ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt, ...style }
       : type === "text"
-        ? { id, type, source: "manual", content: "テキスト", at: roundedAt, ...style }
+        ? { id, type, source: "manual", content: "テキスト", at: roundedAt, rect, ...style }
         : { id, type, source: "manual", icon: style.icon ?? "pointer", at: roundedAt, size: style.size ?? 28, ...style };
     applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
     setSelectedIds([id]);
@@ -916,19 +929,6 @@ export function AnnotationEditor({
     if (activeTool !== "select") {
       return;
     }
-    if (event.detail >= 2) {
-      const target = resolveCanvasObjectElement(event);
-      const id = target?.dataset.mmId;
-      const obj = annotationRef.current?.objects.find((item) => item.id === id);
-      if (obj?.type === "text" && isEditable(obj)) {
-        setInlineTextEdit({ id: obj.id, value: obj.content });
-        return;
-      }
-      if (obj?.type === "image" && isEditable(obj)) {
-        visualCrop.open(obj.id);
-      }
-      return;
-    }
     const element = event.target instanceof Element ? event.target : null;
     if (element?.closest(".mm-editor-handle")) {
       return;
@@ -952,6 +952,27 @@ export function AnnotationEditor({
       setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
     } else {
       setSelectedIds([id]);
+    }
+  };
+
+  const handleCanvasDoubleClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (activeTool === "line" || activeTool === "arrow") {
+      finishLineDraft();
+      return;
+    }
+    if (activeTool !== "select") {
+      return;
+    }
+    const target = resolveCanvasObjectElement(event);
+    const id = target?.dataset.mmId;
+    const obj = annotationRef.current?.objects.find((item) => item.id === id);
+    if (obj?.type === "text" && isEditable(obj)) {
+      setSelectedIds([obj.id]);
+      setInlineTextEdit({ id: obj.id, value: obj.content });
+      return;
+    }
+    if (obj?.type === "image" && isEditable(obj)) {
+      visualCrop.open(obj.id);
     }
   };
 
@@ -1096,6 +1117,19 @@ export function AnnotationEditor({
         event.preventDefault();
         event.stopPropagation();
 
+        // ドラッグ開始時に click イベントが抑止されても、テキストの2回目の
+        // pointerdown をダブルクリックとして扱えるようにする。
+        if (isSelectMode && obj.type === "text" && !additive) {
+          const previous = lastTextPointerClickRef.current;
+          if (previous && previous.id === obj.id && event.timeStamp - previous.timestamp < 500) {
+            lastTextPointerClickRef.current = null;
+            setSelectedIds([obj.id]);
+            setInlineTextEdit({ id: obj.id, value: obj.content });
+            return;
+          }
+          lastTextPointerClickRef.current = null;
+        }
+
         // line / arrow: Option+クリックで最も近い線分に点を挿入（複製ドラッグとは別経路）
         if (isLineObject(obj) && event.altKey) {
           setSelectedIds(nextSelectionIds(selectedIds, gesture.objectId, additive));
@@ -1126,7 +1160,14 @@ export function AnnotationEditor({
           altKey: event.altKey,
         });
         setSelectedIds(session.nextSelectedIds);
-        beginTranslatePointerDrag(() => session);
+        beginTranslatePointerDrag(
+          () => session,
+          () => {
+            if (obj.type === "text" && isSelectMode && !additive) {
+              lastTextPointerClickRef.current = { id: obj.id, timestamp: event.timeStamp };
+            }
+          },
+        );
         return;
       }
       case "frame-over-point": {
@@ -1321,13 +1362,20 @@ export function AnnotationEditor({
       return;
     }
     const selectedObject = current.objects.find((obj) => obj.id === selectedId);
-    if (!selectedObject || !isEditable(selectedObject) || !isRectObject(selectedObject)) {
+    if (!selectedObject || !isEditable(selectedObject)) {
+      return;
+    }
+    const rect0 = selectedObject.type === "text"
+      ? textBoxRect(selectedObject)
+      : isRectObject(selectedObject)
+        ? selectedObject.rect
+        : null;
+    if (!rect0) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
     const objectId = selectedObject.id;
-    const rect0 = selectedObject.rect;
     const startPct = pctFromClient(event.clientX, event.clientY);
     const rectFor = (pct: PointPct, shiftKey: boolean): RectPct =>
       resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y, {
@@ -1337,9 +1385,13 @@ export function AnnotationEditor({
       onMove: (pct, moveEvent) => {
         const next = rectFor(pct, moveEvent.shiftKey);
         setInteractionObjects(current.objects.map((item) =>
-          item.id === objectId && isEditable(item) && isRectObject(item)
-            ? { ...item, rect: next }
-            : item,
+          item.id !== objectId || !isEditable(item)
+            ? item
+            : item.type === "text"
+              ? setTextBoxRect(item, next)
+              : isRectObject(item)
+                ? { ...item, rect: next }
+                : item,
         ));
       },
       onEnd: (pct, moved, endEvent) => {
@@ -1351,9 +1403,13 @@ export function AnnotationEditor({
         applyLocalChange((latest) => ({
           ...latest,
           objects: latest.objects.map((item) =>
-            item.id === objectId && isEditable(item) && isRectObject(item)
-              ? { ...item, rect: next }
-              : item,
+            item.id !== objectId || !isEditable(item)
+              ? item
+              : item.type === "text"
+                ? setTextBoxRect(item, next)
+                : isRectObject(item)
+                  ? { ...item, rect: next }
+                  : item,
           ),
         }));
       },
@@ -1509,8 +1565,12 @@ export function AnnotationEditor({
   };
 
   const interactionSelected = interactionObjects?.find((obj) => obj.id === selectedId) ?? selected;
-  const activeFrameRect = interactionSelected && isEditable(interactionSelected) && isRectObject(interactionSelected)
-    ? interactionSelected.rect
+  const activeFrameRect = interactionSelected && isEditable(interactionSelected)
+    ? interactionSelected.type === "text"
+      ? textBoxRect(interactionSelected)
+      : isRectObject(interactionSelected)
+        ? interactionSelected.rect
+        : null
     : null;
   const activeLinePoints =
     interactionSelected && isEditable(interactionSelected) && isLineObject(interactionSelected)
@@ -1822,6 +1882,7 @@ export function AnnotationEditor({
               onPointerMove={handleCanvasPointerMove}
               onPointerLeave={() => setHoverPoint(null)}
               onClick={handleCanvasClick}
+              onDoubleClick={handleCanvasDoubleClick}
             >
               {selectedIds.length >= 2 && activeTool === "select" ? (
                 <AlignmentToolbar
@@ -1945,7 +2006,14 @@ export function AnnotationEditor({
                     <textarea
                       data-testid="inline-text-editor"
                       className="mm-inline-text-editor"
-                      style={{ left: `${textObj.at.x}%`, top: `${textObj.at.y}%` }}
+                      style={textObj.rect
+                        ? {
+                            left: `${textObj.rect.x}%`,
+                            top: `${textObj.rect.y}%`,
+                            width: `${textObj.rect.w}%`,
+                            height: `${textObj.rect.h}%`,
+                          }
+                        : { left: `${textObj.at.x}%`, top: `${textObj.at.y}%` }}
                       value={inlineTextEdit.value}
                       autoFocus
                       onChange={(event) => setInlineTextEdit({ id: inlineTextEdit.id, value: event.target.value })}

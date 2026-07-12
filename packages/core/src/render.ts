@@ -79,10 +79,18 @@ function renderBadgeObject(obj: Extract<AnnotationObject, { type: "badge" }>): s
 }
 
 function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): string {
-  const styles = [
-    `left:${pct(obj.at.x)}`,
-    `top:${pct(obj.at.y)}`,
-  ];
+  const styles = obj.rect
+    ? [
+        `left:${pct(obj.rect.x)}`,
+        `top:${pct(obj.rect.y)}`,
+        `width:${pct(obj.rect.w)}`,
+        `height:${pct(obj.rect.h)}`,
+      ]
+    : [
+        `left:${pct(obj.at.x)}`,
+        `top:${pct(obj.at.y)}`,
+        "transform:translate(-50%,-50%)",
+      ];
   if (obj.fontSize !== undefined) {
     styles.push(`font-size:${obj.fontSize}px`);
   }
@@ -92,7 +100,7 @@ function renderTextObject(obj: Extract<AnnotationObject, { type: "text" }>): str
   if (obj.background) {
     styles.push(`background:${obj.background}`);
   }
-  return `<span class="mm-obj mm-text" style="${styles.join("; ")};">${escapeHtml(obj.content)}</span>`;
+  return `<div class="mm-obj mm-text" style="${styles.join("; ")};">${escapeHtml(obj.content)}</div>`;
 }
 
 const CURSOR_ICON_CONTENT = {

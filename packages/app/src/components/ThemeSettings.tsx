@@ -177,9 +177,9 @@ export function ThemeSettings({ project }: { project: string }) {
             className="mm-obj mm-frame"
             style={{ left: "24%", top: "24%", width: "26%", height: "52%" }}
           />
-          <span className="mm-obj mm-text" style={{ left: "72%", top: "50%" }}>
+          <div className="mm-obj mm-text" style={{ left: "60%", top: "30%", width: "32%", height: "40%" }}>
             テキスト注釈
-          </span>
+          </div>
         </div>
       </div>
     </Card>
