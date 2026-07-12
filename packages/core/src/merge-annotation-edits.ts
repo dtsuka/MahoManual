@@ -29,10 +29,6 @@ function objectsById(objects: readonly AnnotationObject[]): Map<string, Annotati
   return new Map(objects.map((obj) => [obj.id, obj]));
 }
 
-function objectOrderSignature(objects: readonly AnnotationObject[]): string {
-  return objects.map((obj) => obj.id).join("\u0000");
-}
-
 export function mergeAnnotationEdits(
   base: AnnotationFile,
   local: AnnotationFile,

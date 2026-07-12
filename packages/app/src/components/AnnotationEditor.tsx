@@ -65,6 +65,11 @@ import {
   stepZoom,
 } from "../lib/annotation-viewport.js";
 import {
+  classifySelectPointerGesture,
+  resolveCanvasObjectElement,
+  resolveCanvasObjectTargets,
+} from "../lib/canvas-hit-test.js";
+import {
   IconArrowLeft,
   IconArrowLine,
   IconBadge,
@@ -117,49 +122,6 @@ const SNAP_RELEASE_PCT = 1.5;
 const MAX_HISTORY = 100;
 // 表示倍率により1画面pxが0.1%以上になる場合も、クリック位置を安定した値へ揃える。
 const roundCreationPct = (value: number) => Math.round(value * 2) / 2;
-
-interface CanvasEventLike {
-  clientX: number;
-  clientY: number;
-  target: EventTarget | null;
-}
-
-interface CanvasObjectTargets {
-  direct: HTMLElement | null;
-  point: HTMLElement | null;
-}
-
-const POINT_OBJECT_SELECTOR = ".mm-badge, .mm-text, .mm-cursor";
-
-function resolveCanvasObjectTargets(event: CanvasEventLike): CanvasObjectTargets {
-  if (!(event.target instanceof Element)) {
-    return { direct: null, point: null };
-  }
-  const directTarget = event.target.closest<HTMLElement>("[data-mm-id]");
-  if (!directTarget) {
-    return { direct: null, point: null };
-  }
-  if (!directTarget.classList.contains("mm-frame")) {
-    return {
-      direct: directTarget,
-      point: directTarget.matches(POINT_OBJECT_SELECTOR) ? directTarget : null,
-    };
-  }
-
-  // 透明なフレームの下にある点オブジェクトは、表示上クリックできるため
-  // elementsFromPoint で拾い直す。フレームの境界や他のオブジェクト上は
-  // 従来どおり最前面のターゲットを優先する。
-  const pointTarget = document
-    .elementsFromPoint(event.clientX, event.clientY)
-    .map((element) => element.closest<HTMLElement>("[data-mm-id]"))
-    .find((element) => element?.matches(POINT_OBJECT_SELECTOR)) ?? null;
-  return { direct: directTarget, point: pointTarget };
-}
-
-function resolveCanvasObjectElement(event: CanvasEventLike): HTMLElement | null {
-  const { direct, point } = resolveCanvasObjectTargets(event);
-  return point ?? direct;
-}
 
 interface AnnotationEditorProps {
   project: string;
@@ -1188,154 +1150,35 @@ export function AnnotationEditor({
     isSelectMode: boolean,
   ) => {
     const targets = resolveCanvasObjectTargets(event);
-    const directFrame = targets.direct?.classList.contains("mm-frame") ? targets.direct : null;
-    const directFrameObject = directFrame
-      ? current.objects.find((item) => item.id === directFrame.dataset.mmId)
-      : undefined;
-    // フレーム上の点はクリックなら選択し、移動が始まったらフレームをドラッグする。
-    // 透明なフレームが背面の丸数字・テキストをクリック不能にしないための分岐。
-    const dragFrame = isSelectMode && directFrameObject && isEditable(directFrameObject) ? directFrame : null;
-    const target = dragFrame ?? targets.point ?? targets.direct;
-    if (!target) {
+    const gesture = classifySelectPointerGesture(targets, {
+      isSelectMode,
+      isEditableFrame: (id) => {
+        const candidate = current.objects.find((item) => item.id === id);
+        return !!candidate && isEditable(candidate);
+      },
+    });
+    if (gesture.kind === "none") {
       return;
     }
-    const objectId = target.getAttribute("data-mm-id");
-    if (!objectId) {
-      return;
-    }
+    const objectId = gesture.objectId;
+    const clickThroughId = gesture.clickThroughId;
     const obj = current.objects.find((item) => item.id === objectId);
     if (!obj || !isEditable(obj)) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    const wasSelected = selectedIds.includes(objectId);
-    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
-    const clickThroughId = dragFrame ? targets.point?.dataset.mmId : undefined;
-    const originalDragIds = wasSelected ? selectedIds : [objectId];
-    let dragIds = originalDragIds;
-    setSelectedIds(additive
-      ? (wasSelected ? selectedIds.filter((id) => id !== objectId) : [...selectedIds, objectId])
-      : dragIds);
-    let workingObjects = current.objects;
-    if (event.altKey && !isLineObject(obj)) {
-      const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
-      workingObjects = duplicated.objects;
-      dragIds = duplicated.selectedIds;
-      setSelectedIds(dragIds);
-    }
-    const dragIdSet = new Set(dragIds);
+
     const startPct = pctFromClient(event.clientX, event.clientY);
-    const applyDrag = (rawDx: number, rawDy: number, altKey: boolean) => {
-      const snapped = dragSnapDelta(workingObjects, dragIdSet, rawDx, rawDy, getSnapThreshold(), altKey);
-      setSnapGuides(snapped.activeGuides);
-      return { dx: snapped.dx, dy: snapped.dy };
-    };
 
-    if (obj.type === "badge" || obj.type === "text" || obj.type === "cursor") {
-      const source = workingObjects.find((item) => item.id === objectId);
-      if (!source || (source.type !== "badge" && source.type !== "text" && source.type !== "cursor")) {
-        return;
-      }
-      const grab = { x: source.at.x - startPct.x, y: source.at.y - startPct.y };
-      startPointerDrag(event, {
-        onMove: (pct, moveEvent) => {
-          const rawDx = pct.x + grab.x - source.at.x;
-          const rawDy = pct.y + grab.y - source.at.y;
-          const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
-          setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
-        },
-        onEnd: (pct, moved, endEvent) => {
-          setInteractionObjects(null);
-          setSnapGuides([]);
-          if (!moved) {
-            return;
-          }
-          const at = { x: pct.x + grab.x, y: pct.y + grab.y };
-          const rawDx = at.x - source.at.x;
-          const rawDy = at.y - source.at.y;
-          const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
-          let duplicatedIds: string[] = [];
-          applyLocalChange((latest) => {
-            if (event.altKey && !isLineObject(obj)) {
-              const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
-              duplicatedIds = duplicated.selectedIds;
-              return {
-                ...latest,
-                objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
-              };
-            }
-            return {
-              ...latest,
-              objects: translateObjects(latest.objects, dragIdSet, dx, dy),
-            };
-          });
-          if (event.altKey && !isLineObject(obj)) {
-            setSelectedIds(duplicatedIds);
-          }
-        },
-      });
-      return;
-    }
-
-    if (isRectObject(obj)) {
-      const source = workingObjects.find((item) => item.id === objectId);
-      if (!source || !isRectObject(source)) {
-        return;
-      }
-      const rect0 = source.rect;
-      const grab = { x: rect0.x - startPct.x, y: rect0.y - startPct.y };
-      const rectFor = (pct: Pt): RectPct => ({ ...rect0, x: pct.x + grab.x, y: pct.y + grab.y });
-      startPointerDrag(event, {
-        onMove: (pct, moveEvent) => {
-          const next = rectFor(pct);
-          const rawDx = next.x - rect0.x;
-          const rawDy = next.y - rect0.y;
-          const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
-          setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
-        },
-        onEnd: (pct, moved, endEvent) => {
-          setInteractionObjects(null);
-          setSnapGuides([]);
-          if (!moved) {
-            if (clickThroughId) {
-              setSelectedIds(additive
-                ? (selectedIds.includes(clickThroughId)
-                  ? selectedIds.filter((id) => id !== clickThroughId)
-                  : [...selectedIds, clickThroughId])
-                : [clickThroughId]);
-            }
-            return;
-          }
-          const next = rectFor(pct);
-          const rawDx = next.x - rect0.x;
-          const rawDy = next.y - rect0.y;
-          const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
-          let duplicatedIds: string[] = [];
-          applyLocalChange((latest) => {
-            if (event.altKey) {
-              const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
-              duplicatedIds = duplicated.selectedIds;
-              return {
-                ...latest,
-                objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
-              };
-            }
-            return {
-              ...latest,
-              objects: translateObjects(latest.objects, dragIdSet, dx, dy),
-            };
-          });
-          if (event.altKey) {
-            setSelectedIds(duplicatedIds);
-          }
-        },
-      });
-      return;
-    }
-
-    // line / arrow: Option+クリックで最も近い線分に点を挿入
-    if (event.altKey) {
+    // line / arrow: Option+クリックで最も近い線分に点を挿入（複製ドラッグとは別経路）
+    if (isLineObject(obj) && event.altKey) {
+      const wasSelected = selectedIds.includes(objectId);
+      const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+      const dragIds = wasSelected ? selectedIds : [objectId];
+      setSelectedIds(additive
+        ? (wasSelected ? selectedIds.filter((id) => id !== objectId) : [...selectedIds, objectId])
+        : dragIds);
       const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
       applyLocalChange((latest) => ({
         ...latest,
@@ -1351,26 +1194,111 @@ export function AnnotationEditor({
       return;
     }
 
-    // line / arrow: 全点を平行移動
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    const originalDragIds = selectedIds.includes(objectId) ? selectedIds : [objectId];
+    const deferSelection = clickThroughId !== undefined;
+    let dragIds = originalDragIds;
+    let workingObjects = current.objects;
+    let selectionReady = !deferSelection;
+
+    const commitObjectSelection = (id: string, baseSelectedIds: readonly string[]) => {
+      const wasSelected = baseSelectedIds.includes(id);
+      const nextIds = wasSelected ? baseSelectedIds : [id];
+      return additive
+        ? (wasSelected ? baseSelectedIds.filter((item) => item !== id) : [...baseSelectedIds, id])
+        : [...nextIds];
+    };
+
+    if (!deferSelection) {
+      setSelectedIds(commitObjectSelection(objectId, selectedIds));
+      if (event.altKey) {
+        const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
+        workingObjects = duplicated.objects;
+        dragIds = duplicated.selectedIds;
+        setSelectedIds(dragIds);
+      }
+    }
+
+    const ensureDragSelection = () => {
+      if (selectionReady) {
+        return { dragIds, workingObjects, dragIdSet: new Set(dragIds) };
+      }
+      selectionReady = true;
+      setSelectedIds(commitObjectSelection(objectId, selectedIds));
+      if (event.altKey) {
+        const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
+        workingObjects = duplicated.objects;
+        dragIds = duplicated.selectedIds;
+        setSelectedIds(dragIds);
+      } else {
+        dragIds = originalDragIds;
+        workingObjects = current.objects;
+      }
+      return { dragIds, workingObjects, dragIdSet: new Set(dragIds) };
+    };
+
+    const applyDrag = (
+      objects: AnnotationObject[],
+      dragIdSet: ReadonlySet<string>,
+      rawDx: number,
+      rawDy: number,
+      altKey: boolean,
+    ) => {
+      const snapped = dragSnapDelta(objects, dragIdSet, rawDx, rawDy, getSnapThreshold(), altKey);
+      setSnapGuides(snapped.activeGuides);
+      return { dx: snapped.dx, dy: snapped.dy };
+    };
+
+    // badge/text/cursor・rect・line はいずれもポインタ差分で平行移動できる
     startPointerDrag(event, {
       onMove: (pct, moveEvent) => {
+        const state = ensureDragSelection();
         const rawDx = pct.x - startPct.x;
         const rawDy = pct.y - startPct.y;
-        const { dx, dy } = applyDrag(rawDx, rawDy, moveEvent.altKey);
-        setInteractionObjects(translateObjects(workingObjects, dragIdSet, dx, dy));
+        const { dx, dy } = applyDrag(
+          state.workingObjects,
+          state.dragIdSet,
+          rawDx,
+          rawDy,
+          moveEvent.altKey,
+        );
+        setInteractionObjects(translateObjects(state.workingObjects, state.dragIdSet, dx, dy));
       },
       onEnd: (pct, moved, endEvent) => {
         setInteractionObjects(null);
         setSnapGuides([]);
         if (!moved) {
+          if (clickThroughId) {
+            setSelectedIds(commitObjectSelection(clickThroughId, selectedIds));
+          }
           return;
         }
+        const state = ensureDragSelection();
         const rawDx = pct.x - startPct.x;
         const rawDy = pct.y - startPct.y;
-        const { dx, dy } = applyDrag(rawDx, rawDy, endEvent.altKey);
+        const { dx, dy } = applyDrag(
+          state.workingObjects,
+          state.dragIdSet,
+          rawDx,
+          rawDy,
+          endEvent.altKey,
+        );
+        if (event.altKey) {
+          let duplicatedIds: string[] = [];
+          applyLocalChange((latest) => {
+            const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
+            duplicatedIds = duplicated.selectedIds;
+            return {
+              ...latest,
+              objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
+            };
+          });
+          setSelectedIds(duplicatedIds);
+          return;
+        }
         applyLocalChange((latest) => ({
           ...latest,
-          objects: translateObjects(latest.objects, dragIdSet, dx, dy),
+          objects: translateObjects(latest.objects, state.dragIdSet, dx, dy),
         }));
       },
     });
