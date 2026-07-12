@@ -497,12 +497,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     }
 
     // line / arrow: 全点を平行移動
-    const points0 = obj.points;
-    const pointsFor = (pct: Pt): Pt[] =>
-      points0.map((point) => ({
-        x: point.x + pct.x - startPct.x,
-        y: point.y + pct.y - startPct.y,
-      }));
     startPointerDrag(event, {
       onMove: (pct) => {
         setInteractionObjects(translateObjects(
@@ -913,18 +907,28 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     if (!selected || !isEditable(selected) || selected.type !== "image") {
       return;
     }
+    const objectId = selected.id;
+    const wasUnlocked = isEditable(selected);
     try {
       const replacement = await readImageFile(file);
       const payload = await replaceAnnotationImage(
         project,
         annotationId,
-        selected.id,
+        objectId,
         replacement.data,
         replacement.width,
         replacement.height,
       );
       applyPayload({ ...payload, theme });
-      setSelectedIds([selected.id]);
+      if (wasUnlocked) {
+        applyLocalChange((current) => ({
+          ...current,
+          objects: current.objects.map((obj) =>
+            obj.id === objectId && obj.type === "image" ? { ...obj, locked: false } : obj,
+          ),
+        }));
+      }
+      setSelectedIds([objectId]);
       setStatus("画像を置換しました");
       setTimeout(() => setStatus(""), 2000);
     } catch (err) {
