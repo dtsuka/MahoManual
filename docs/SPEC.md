@@ -62,6 +62,9 @@ baseUrl: https://example.com        # レシピの相対URLの基準(任意)
 annotation:                         # 注釈テーマの上書き(任意)
   color: "#E91E8C"                  # 全注釈の既定色(--mm-color)
   fontSize: 14                      # badge/text の既定フォントサイズpx(--mm-font-size)
+  defaults:                         # 種類別の作成既定値(任意)
+    badge: { color: "#E91E8C", size: 22 }
+    frame: { strokeWidth: 2 }
 ```
 
 ## 4. データモデル(注釈JSON)
@@ -469,6 +472,9 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 - ライブリロード: サーバーがchokidarでプロジェクトを監視し、SSEでクライアントへ通知(AI/CLIによるファイル変更が開いている画面に即反映)
 - Phase 5: CodeMirror 6のmdエディタ+プレビュー(左右分割)、プレビュー内figureクリックで注釈エディタへ、renumber結果と本文①②…の整合チェック表示
 - マニュアル編集: カーソル位置へ `<!-- toc -->` または `annotated-image` フェンスを挿入できる(既存注釈の参照、または新規画像取り込み)
+- Phase 10-2: ビジュアルクロップ、矩形選択、整列・等間隔、スマートガイド(6画面px)、Alt+ドラッグ複製、`[`/`]`でレイヤー移動
+- Phase 10-3: `annotation.defaults` と localStorage 直近スタイル、⌘⌥C/V スタイルコピー、一覧の一時非表示・単独表示、前後注釈移動と未保存移動バナー、テキストのインライン編集
+- Phase 10-4: 矢印キー移動の履歴統合(250ms)、外部変更時の3-wayマージとオブジェクト単位競合解決UI
 
 ## 12. 決定事項の要約(迷ったらここ)
 
