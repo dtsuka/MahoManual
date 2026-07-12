@@ -85,7 +85,24 @@ body {
 
 /* 注釈エディタの操作用スタイル */
 .mm-editor-figure {
+  width: 100%;
+  height: 100%;
   user-select: none;
+}
+
+.mm-editor-figure > figure {
+  width: 100%;
+  height: 100%;
+}
+
+.annotation-tool[aria-pressed="true"] {
+  background: #2563eb;
+  color: #fff;
+}
+
+.annotation-tool[aria-pressed="true"]:hover {
+  background: #1d4ed8;
+  color: #fff;
 }
 
 /* スクショ画像がネイティブドラッグ・選択されてオブジェクト操作を妨げないようにする */
@@ -175,6 +192,70 @@ body {
   background: #2563eb;
   border-color: #fff;
   box-shadow: 0 0 0 2px #2563eb;
+}
+
+/* 作成ツールのゴースト表示。注釈データへ追加する前の一時表示だけに使う */
+.mm-creation-preview {
+  position: absolute;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  color: var(--mm-color, #e91e8c);
+  opacity: 0.78;
+}
+
+.mm-creation-preview--badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--mm-color, #e91e8c);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mm-creation-preview--text {
+  border: 1px dashed #2563eb;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 1px 4px;
+  color: var(--mm-color, #e91e8c);
+  font-size: 14px;
+}
+
+.mm-creation-preview-rect {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  border: 2px dashed #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.mm-creation-preview-rect--mosaic {
+  background-color: rgba(37, 99, 235, 0.12);
+  background-image:
+    linear-gradient(45deg, rgba(37, 99, 235, 0.18) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(37, 99, 235, 0.18) 25%, transparent 25%);
+  background-size: 8px 8px;
+}
+
+.mm-creation-preview-line {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.mm-creation-preview-line polyline {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
 }
 
 /* ============================================================

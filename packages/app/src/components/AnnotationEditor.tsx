@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  WheelEvent as ReactWheelEvent,
+} from "react";
 import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import { renderFigure } from "@mahomanual/core/render";
 import { expandCanvas } from "@mahomanual/core/expand-canvas";
@@ -39,6 +43,10 @@ import {
   translateObjects,
 } from "../lib/annotation-operations.js";
 import {
+  fitCanvasZoom,
+  stepZoom,
+} from "../lib/annotation-viewport.js";
+import {
   IconArrowLeft,
   IconArrowLine,
   IconBadge,
@@ -46,9 +54,13 @@ import {
   IconFrame,
   IconImage,
   IconLine,
+  IconFit,
+  IconMinus,
   IconMosaic,
   IconPointer,
+  IconPlus,
   IconRedo,
+  IconSelect,
   IconType,
   IconUndo,
 } from "./icons.js";
@@ -75,6 +87,8 @@ import {
 const SNAP_THRESHOLD_PCT = 0.7;
 const SNAP_RELEASE_PCT = 1.5;
 const MAX_HISTORY = 100;
+// 表示倍率により1画面pxが0.1%以上になる場合も、クリック位置を安定した値へ揃える。
+const roundCreationPct = (value: number) => Math.round(value * 2) / 2;
 
 interface AnnotationEditorProps {
   project: string;
@@ -83,7 +97,8 @@ interface AnnotationEditorProps {
   onRenamed?: (id: string) => void;
 }
 
-type MovableObject = Extract<AnnotationObject, { type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" }>;
+type CreationTool = "badge" | "text" | "cursor" | "frame" | "mosaic" | "line" | "arrow";
+type EditorTool = "select" | CreationTool;
 
 interface Pt {
   x: number;
@@ -108,6 +123,15 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [dirty, setDirty] = useState(false);
   const [, setHistoryVersion] = useState(0);
   const [interactionObjects, setInteractionObjects] = useState<AnnotationObject[] | null>(null);
+  const [activeTool, setActiveTool] = useState<EditorTool>("select");
+  const [hoverPoint, setHoverPoint] = useState<Pt | null>(null);
+  const [rectDraft, setRectDraft] = useState<{ type: "frame" | "mosaic"; rect: RectPct } | null>(null);
+  const [lineDraft, setLineDraft] = useState<{ type: "line" | "arrow"; points: Pt[] } | null>(null);
+  const [zoom, setZoom] = useState(25);
+  const [zoomMode, setZoomMode] = useState<"fit" | "manual">("fit");
+  const [isSpaceHeld, setIsSpaceHeld] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [viewportReady, setViewportReady] = useState(false);
   const [marginDraft, setMarginDraft] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
   const [dragListIndex, setDragListIndex] = useState<number | null>(null);
@@ -116,6 +140,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   const [externalPayload, setExternalPayload] = useState<AnnotationPayload | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const figureRef = useRef<HTMLDivElement>(null);
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
   const annotationRef = useRef<AnnotationFile | null>(null);
   const dirtyRef = useRef(false);
   const savedAnnotationJsonRef = useRef("");
@@ -124,6 +149,7 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     future: AnnotationFile[];
   }>({ past: [], future: [] });
   const copiedIdsRef = useRef<string[]>([]);
+  const spaceHeldRef = useRef(false);
   const [imagePickerMode, setImagePickerMode] = useState<"add" | "replace" | null>(null);
   const selectedId = selectedIds.at(-1) ?? null;
 
@@ -229,6 +255,155 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     restoreHistoryAnnotation(next);
   };
 
+  const handleSave = async () => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    try {
+      const saved = await saveAnnotation(project, annotationId, current);
+      // サーバーで zod 正規化された内容を保持し、保存エコーの同一判定を確実にする
+      annotationRef.current = saved.annotation;
+      savedAnnotationJsonRef.current = JSON.stringify(saved.annotation);
+      setAnnotation(saved.annotation);
+      dirtyRef.current = false;
+      setDirty(false);
+      setStatus("保存しました");
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "保存に失敗しました");
+    }
+  };
+
+  const resetCreation = () => {
+    setActiveTool("select");
+    setRectDraft(null);
+    setLineDraft(null);
+    setHoverPoint(null);
+  };
+
+  const activateTool = (tool: EditorTool) => {
+    setActiveTool(tool);
+    setRectDraft(null);
+    setLineDraft(null);
+    setHoverPoint(null);
+    // モザイクは選択中imageを対象にするため、ツール切替時もその選択だけは保持する。
+    if (tool !== "select" && tool !== "mosaic") {
+      setSelectedIds([]);
+    }
+  };
+
+  const createPointObject = (type: "badge" | "text" | "cursor", at: Pt) => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const id = createObjectId(type, current.objects);
+    const roundedAt = { x: roundCreationPct(at.x), y: roundCreationPct(at.y) };
+    const object: AnnotationObject = type === "badge"
+      ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt }
+      : type === "text"
+        ? { id, type, source: "manual", content: "テキスト", at: roundedAt }
+        : { id, type, source: "manual", icon: "pointer", at: roundedAt, size: 28 };
+    applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
+    setSelectedIds([id]);
+    if (type !== "badge") {
+      resetCreation();
+    }
+  };
+
+  const createRectObject = (type: "frame" | "mosaic", rect: RectPct) => {
+    const current = annotationRef.current;
+    if (!current) {
+      return;
+    }
+    const id = createObjectId(type, current.objects);
+    let object: AnnotationObject;
+    if (type === "frame") {
+      object = { id, type, source: "manual", rect };
+    } else {
+      const selectedImage = current.objects.find((obj) => obj.id === selectedId && obj.type === "image");
+      const target = selectedImage ?? [...current.objects].reverse().find(
+        (obj): obj is Extract<AnnotationObject, { type: "image" }> => obj.type === "image",
+      );
+      if (!target) {
+        setStatus("モザイク対象の画像がありません");
+        resetCreation();
+        return;
+      }
+      object = {
+        id,
+        type,
+        source: "manual",
+        targetImageId: target.id,
+        rect,
+        blockSize: 12,
+      };
+    }
+    applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
+    setSelectedIds([id]);
+    resetCreation();
+  };
+
+  const finishLineDraft = () => {
+    const current = annotationRef.current;
+    if (!current || !lineDraft || lineDraft.points.length < 2) {
+      return;
+    }
+    const id = createObjectId(lineDraft.type, current.objects);
+    const object: AnnotationObject = lineDraft.type === "arrow"
+      ? { id, type: "arrow", source: "manual", arrowHeads: "end", points: lineDraft.points }
+      : { id, type: "line", source: "manual", points: lineDraft.points };
+    applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
+    setSelectedIds([id]);
+    resetCreation();
+  };
+
+  const setViewportZoom = (
+    nextZoom: number,
+    mode: "fit" | "manual",
+    anchor?: { clientX: number; clientY: number },
+  ) => {
+    const viewport = canvasViewportRef.current;
+    const wrap = wrapRef.current;
+    const before = wrap?.getBoundingClientRect();
+    const anchorPct = anchor && before
+      ? {
+          x: (anchor.clientX - before.left) / before.width,
+          y: (anchor.clientY - before.top) / before.height,
+        }
+      : null;
+    setZoom(nextZoom);
+    setZoomMode(mode);
+    if (!viewport || !anchor || !anchorPct) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const after = wrapRef.current?.getBoundingClientRect();
+      if (!after) {
+        return;
+      }
+      const nextClientX = after.left + after.width * anchorPct.x;
+      const nextClientY = after.top + after.height * anchorPct.y;
+      viewport.scrollLeft += nextClientX - anchor.clientX;
+      viewport.scrollTop += nextClientY - anchor.clientY;
+    });
+  };
+
+  const showActualSize = () => setViewportZoom(100, "manual");
+
+  const showFit = () => {
+    const viewport = canvasViewportRef.current;
+    const current = annotationRef.current;
+    if (!viewport || !current) {
+      return;
+    }
+    setViewportZoom(fitCanvasZoom(current.canvas, {
+      width: viewport.clientWidth,
+      height: viewport.clientHeight,
+    }, 64), "fit");
+  };
+
   // SPEC §4.5: キャンバス余白。全オブジェクトの%座標を再計算して見た目位置を維持する
   const applyCanvasMargin = () => {
     const { top, right, bottom, left } = marginDraft;
@@ -246,6 +421,9 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
 
   useEffect(() => {
     setNextAnnotationId(annotationId);
+    setViewportReady(false);
+    resetCreation();
+    setZoomMode("fit");
     void fetchPayload()
       .then(applyPayload)
       .catch((err: Error) => setError(err.message));
@@ -277,16 +455,68 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
   }, [selectedId]);
 
   useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport || !annotation || zoomMode !== "fit") {
+      return;
+    }
+    const update = () => {
+      setZoom(fitCanvasZoom(annotation.canvas, {
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      }, 64));
+      requestAnimationFrame(() => setViewportReady(true));
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [annotation?.canvas.width, annotation?.canvas.height, zoomMode]);
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const active = document.activeElement;
-      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
-        return;
-      }
       if (!annotationRef.current) {
         return;
       }
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (commandKey && key === "s") {
+        event.preventDefault();
+        void handleSave();
+        return;
+      }
+      const isTextInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+      if (!isTextInput && event.code === "Space" && !commandKey) {
+        event.preventDefault();
+        spaceHeldRef.current = true;
+        setIsSpaceHeld(true);
+        return;
+      }
+      if (!isTextInput && commandKey && key === "0") {
+        event.preventDefault();
+        showFit();
+        return;
+      }
+      if (!isTextInput && commandKey && key === "1") {
+        event.preventDefault();
+        showActualSize();
+        return;
+      }
+      if (!isTextInput && (activeTool === "line" || activeTool === "arrow")) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finishLineDraft();
+          return;
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          resetCreation();
+          return;
+        }
+      }
+      if (isTextInput) {
+        return;
+      }
       if (commandKey && key === "z") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -305,6 +535,13 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         return;
       }
       const selected = new Set(selectedIds);
+      if (commandKey && key === "d") {
+        event.preventDefault();
+        const result = duplicateObjects(annotationRef.current.objects, selectedIds, 1);
+        applyLocalChange((current) => ({ ...current, objects: result.objects }));
+        setSelectedIds(result.selectedIds);
+        return;
+      }
       if (commandKey && key === "c") {
         event.preventDefault();
         copiedIdsRef.current = [...selectedIds];
@@ -353,13 +590,26 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         }));
       }
     };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") {
+        return;
+      }
+      spaceHeldRef.current = false;
+      setIsSpaceHeld(false);
+      setIsPanning(false);
+    };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [selectedIds]);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [activeTool, lineDraft, selectedIds]);
 
   // ポインタ座標 → figure 内の%座標
   const pctFromClient = (clientX: number, clientY: number): Pt => {
-    const box = wrapRef.current?.getBoundingClientRect();
+    const figure = figureRef.current?.querySelector("figure");
+    const box = figure?.getBoundingClientRect() ?? wrapRef.current?.getBoundingClientRect();
     if (!box) {
       return { x: 0, y: 0 };
     }
@@ -395,13 +645,151 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     window.addEventListener("pointerup", onPointerUp);
   };
 
+  const normalizeDraftRect = (start: Pt, end: Pt): RectPct => ({
+    x: roundCreationPct(Math.min(start.x, end.x)),
+    y: roundCreationPct(Math.min(start.y, end.y)),
+    w: roundCreationPct(Math.abs(end.x - start.x)),
+    h: roundCreationPct(Math.abs(end.y - start.y)),
+  });
+
+  const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const point = pctFromClient(event.clientX, event.clientY);
+    if (activeTool === "badge" || activeTool === "text" || activeTool === "cursor") {
+      const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
+      if (activeTool === "badge" && targetId && selectedIds.includes(targetId)) {
+        return;
+      }
+      createPointObject(activeTool, point);
+      return;
+    }
+    if (activeTool === "line" || activeTool === "arrow") {
+      if (event.detail >= 2) {
+        finishLineDraft();
+        return;
+      }
+      setLineDraft((current) => current?.type === activeTool
+        ? { ...current, points: [...current.points, {
+            x: roundCreationPct(point.x),
+            y: roundCreationPct(point.y),
+          }] }
+        : { type: activeTool, points: [{
+            x: roundCreationPct(point.x),
+            y: roundCreationPct(point.y),
+          }] });
+      return;
+    }
+    if (activeTool !== "select") {
+      return;
+    }
+    const element = event.target as HTMLElement;
+    if (element.closest(".mm-editor-handle")) {
+      return;
+    }
+    const target = element.closest<HTMLElement>("[data-mm-id]");
+    if (!target) {
+      setSelectedIds([]);
+      return;
+    }
+    const id = target.dataset.mmId;
+    if (!id) {
+      return;
+    }
+    const current = annotationRef.current;
+    const obj = current?.objects.find((item) => item.id === id);
+    // 編集可能オブジェクトの選択は pointerDown で処理。ロック中のみ click で選択する
+    if (!obj || isEditable(obj)) {
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      setSelectedIds((ids) => ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id]);
+    } else {
+      setSelectedIds([id]);
+    }
+  };
+
+  const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const targetId = (event.target as Element).closest<HTMLElement>("[data-mm-id]")?.dataset.mmId;
+    const editingSelectedBadge = activeTool === "badge"
+      && targetId !== undefined
+      && selectedIds.includes(targetId);
+    if (activeTool !== "select" && event.buttons === 0 && !editingSelectedBadge) {
+      setHoverPoint(pctFromClient(event.clientX, event.clientY));
+    }
+  };
+
+  const handleCanvasWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (!event.metaKey && !event.ctrlKey) {
+      return;
+    }
+    event.preventDefault();
+    const direction = event.deltaY < 0 ? 1 : -1;
+    setViewportZoom(stepZoom(zoom, direction), "manual", event);
+  };
+
+  const handleViewportPointerDownCapture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport || !spaceHeldRef.current || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setIsPanning(true);
+    const start = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    };
+    const move = (moveEvent: PointerEvent) => {
+      viewport.scrollLeft = start.scrollLeft - (moveEvent.clientX - start.clientX);
+      viewport.scrollTop = start.scrollTop - (moveEvent.clientY - start.clientY);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      setIsPanning(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+  };
+
   // figure 上のドラッグはイベント委任で受ける。
   // 要素ごとのリスナー配線は innerHTML 差し替えとのタイミングで外れることが
   // あるため、コンテナ1箇所で受けて常に annotationRef(最新値)から対象を解決する
   const handleFigurePointerDown = (event: ReactPointerEvent) => {
-    const target = (event.target as Element).closest("[data-mm-id]");
     const current = annotationRef.current;
-    if (!target || !current) {
+    if (!current) {
+      return;
+    }
+    if (activeTool === "frame" || activeTool === "mosaic") {
+      event.preventDefault();
+      event.stopPropagation();
+      const type = activeTool;
+      const start = pctFromClient(event.clientX, event.clientY);
+      setRectDraft({ type, rect: { x: start.x, y: start.y, w: 0, h: 0 } });
+      startPointerDrag(event, {
+        onMove: (point) => setRectDraft({ type, rect: normalizeDraftRect(start, point) }),
+        onEnd: (point, moved) => {
+          const rect = normalizeDraftRect(start, point);
+          setRectDraft(null);
+          if (moved && rect.w >= 0.5 && rect.h >= 0.5) {
+            createRectObject(type, rect);
+          }
+        },
+      });
+      return;
+    }
+    const target = (event.target as Element).closest("[data-mm-id]");
+    const targetId = target?.getAttribute("data-mm-id");
+    const editsSelectedBadge = activeTool === "badge"
+      && typeof targetId === "string"
+      && selectedIds.includes(targetId);
+    if (activeTool !== "select" && !editsSelectedBadge) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (!target) {
       return;
     }
     const objectId = target.getAttribute("data-mm-id");
@@ -567,91 +955,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         obj.id === objectId ? { ...obj, locked: !obj.locked } : obj,
       ),
     }));
-  };
-
-  const addObject = (type: Exclude<MovableObject["type"], "image" | "mosaic">) => {
-    const id = createObjectId(type, annotation.objects);
-    let newObject: AnnotationObject;
-    switch (type) {
-      case "badge":
-        newObject = {
-          id,
-          type: "badge",
-          source: "manual",
-          n: nextBadgeNumber(annotation.objects),
-          at: { x: 50, y: 50 },
-        };
-        break;
-      case "text":
-        newObject = {
-          id,
-          type: "text",
-          source: "manual",
-          content: "テキスト",
-          at: { x: 50, y: 50 },
-        };
-        break;
-      case "cursor":
-        newObject = {
-          id,
-          type: "cursor",
-          source: "manual",
-          icon: "pointer",
-          at: { x: 50, y: 50 },
-          size: 28,
-        };
-        break;
-      case "frame":
-        newObject = {
-          id,
-          type: "frame",
-          source: "manual",
-          rect: { x: 40, y: 40, w: 20, h: 10 },
-        };
-        break;
-      default: {
-        const _exhaustive: never = type;
-        return _exhaustive;
-      }
-    }
-    applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
-    setSelectedIds([id]);
-  };
-
-  const addMosaic = () => {
-    const selectedImage = selected?.type === "image" ? selected : null;
-    const target = selectedImage ?? [...annotation.objects].reverse().find(
-      (obj): obj is Extract<AnnotationObject, { type: "image" }> => obj.type === "image",
-    );
-    if (!target) {
-      setError("モザイク対象の画像がありません");
-      return;
-    }
-    const id = createObjectId("mosaic", annotation.objects);
-    const mosaic: AnnotationObject = {
-      id,
-      type: "mosaic",
-      source: "manual",
-      targetImageId: target.id,
-      rect: { x: 20, y: 70, w: 25, h: 15 },
-      blockSize: 12,
-    };
-    applyLocalChange((current) => ({ ...current, objects: [...current.objects, mosaic] }));
-    setSelectedIds([id]);
-  };
-
-  const addLine = (type: "line" | "arrow") => {
-    const id = createObjectId(type, annotation.objects);
-    const points = [
-      { x: 20, y: 80 },
-      { x: 50, y: 80 },
-      { x: 50, y: 20 },
-    ];
-    const newObject: AnnotationObject = type === "arrow"
-      ? { id, type, source: "manual", arrowHeads: "end", points }
-      : { id, type, source: "manual", points };
-    applyLocalChange((current) => ({ ...current, objects: [...current.objects, newObject] }));
-    setSelectedIds([id]);
   };
 
   const beginRectResize = (event: ReactPointerEvent, dir: string) => {
@@ -887,22 +1190,6 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
     );
   };
 
-  const handleSave = async () => {
-    try {
-      const saved = await saveAnnotation(project, annotationId, annotationRef.current ?? annotation);
-      // サーバーで zod 正規化された内容を保持し、保存エコーの同一判定を確実にする
-      annotationRef.current = saved.annotation;
-      savedAnnotationJsonRef.current = JSON.stringify(saved.annotation);
-      setAnnotation(saved.annotation);
-      dirtyRef.current = false;
-      setDirty(false);
-      setStatus("保存しました");
-      setTimeout(() => setStatus(""), 2000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "保存に失敗しました");
-    }
-  };
-
   const handleReplaceImage = async (file: File) => {
     if (!selected || !isEditable(selected) || selected.type !== "image") {
       return;
@@ -1004,9 +1291,21 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
           `${(point.x / 100) * annotation.canvas.width},${(point.y / 100) * annotation.canvas.height}`,
       )
       .join(" ");
+  const toolClass = (tool: EditorTool) => activeTool === tool
+    ? "annotation-tool bg-blue-600 text-white hover:bg-blue-700 hover:text-white"
+    : "annotation-tool";
+  const previewLinePoints = lineDraft
+    ? [...lineDraft.points, ...(hoverPoint ? [hoverPoint] : [])]
+    : [];
+  const previewPoint = activeTool === "badge" || activeTool === "text" || activeTool === "cursor"
+    ? hoverPoint
+    : null;
 
   return (
-    <div className="flex h-screen min-h-0 flex-col" data-testid="annotation-editor">
+    <div
+      className="flex h-screen min-h-0 flex-col"
+      data-testid={viewportReady ? "annotation-editor" : undefined}
+    >
       <style>{THEME_FIGURE_CSS}</style>
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
@@ -1102,115 +1401,235 @@ export function AnnotationEditor({ project, annotationId, onBack, onRenamed }: A
         {/* オブジェクト追加ツールレール(キャンバス左端にフロート)。
             ツール名は SPEC の注釈用語に合わせ、CSS ツールチップで表示する */}
         <div className="absolute left-3 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
-          <IconButton label="丸数字" tip data-testid="add-badge" onClick={() => addObject("badge")}>
+          <IconButton
+            label="選択"
+            tip
+            data-testid="tool-select"
+            aria-pressed={activeTool === "select"}
+            className={toolClass("select")}
+            onClick={() => activateTool("select")}
+          >
+            <IconSelect />
+          </IconButton>
+          <div className="my-0.5 h-px bg-slate-200" aria-hidden="true" />
+          <IconButton
+            label="丸数字"
+            tip
+            data-testid="add-badge"
+            aria-pressed={activeTool === "badge"}
+            className={toolClass("badge")}
+            onClick={() => activateTool("badge")}
+          >
             <IconBadge />
           </IconButton>
-          <IconButton label="テキスト" tip onClick={() => addObject("text")}>
+          <IconButton
+            label="テキスト"
+            tip
+            data-testid="add-text"
+            aria-pressed={activeTool === "text"}
+            className={toolClass("text")}
+            onClick={() => activateTool("text")}
+          >
             <IconType />
           </IconButton>
-          <IconButton label="カーソル" tip data-testid="add-cursor" onClick={() => addObject("cursor")}>
+          <IconButton
+            label="カーソル"
+            tip
+            data-testid="add-cursor"
+            aria-pressed={activeTool === "cursor"}
+            className={toolClass("cursor")}
+            onClick={() => activateTool("cursor")}
+          >
             <IconPointer />
           </IconButton>
-          <IconButton label="強調枠" tip onClick={() => addObject("frame")}>
+          <IconButton
+            label="強調枠"
+            tip
+            data-testid="add-frame"
+            aria-pressed={activeTool === "frame"}
+            className={toolClass("frame")}
+            onClick={() => activateTool("frame")}
+          >
             <IconFrame />
           </IconButton>
-          <IconButton label="罫線" tip onClick={() => addLine("line")}>
+          <IconButton
+            label="罫線"
+            tip
+            data-testid="add-line"
+            aria-pressed={activeTool === "line"}
+            className={toolClass("line")}
+            onClick={() => activateTool("line")}
+          >
             <IconLine />
           </IconButton>
-          <IconButton label="矢印" tip onClick={() => addLine("arrow")}>
+          <IconButton
+            label="矢印"
+            tip
+            data-testid="add-arrow"
+            aria-pressed={activeTool === "arrow"}
+            className={toolClass("arrow")}
+            onClick={() => activateTool("arrow")}
+          >
             <IconArrowLine />
           </IconButton>
           <IconButton label="画像" tip data-testid="add-image" onClick={() => setImagePickerMode("add")}>
             <IconImage />
           </IconButton>
-          <IconButton label="モザイク" tip data-testid="add-mosaic" onClick={addMosaic}>
+          <IconButton
+            label="モザイク"
+            tip
+            data-testid="add-mosaic"
+            aria-pressed={activeTool === "mosaic"}
+            className={toolClass("mosaic")}
+            onClick={() => activateTool("mosaic")}
+          >
             <IconMosaic />
           </IconButton>
         </div>
-        <div className="editor-canvas relative flex-1 overflow-auto p-8 pl-16">
-          <div
-            ref={wrapRef}
-            className="relative mx-auto bg-white shadow-md ring-1 ring-slate-900/10"
-            style={{ maxWidth: annotation.canvas.width }}
-            onPointerDown={handleFigurePointerDown}
-            onClick={(event) => {
-              const element = event.target as HTMLElement;
-              if (element.closest(".mm-editor-handle")) {
-                return;
-              }
-              const target = element.closest<HTMLElement>("[data-mm-id]");
-              if (!target) {
-                setSelectedIds([]);
-                return;
-              }
-              const id = target.dataset.mmId;
-              if (!id) {
-                return;
-              }
-              const obj = annotation.objects.find((item) => item.id === id);
-              // 編集可能オブジェクトの選択は pointerDown で処理。ロック中のみ click で選択する
-              if (!obj || isEditable(obj)) {
-                return;
-              }
-              if (event.metaKey || event.ctrlKey || event.shiftKey) {
-                setSelectedIds((current) =>
-                  current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-                );
-              } else {
-                setSelectedIds([id]);
-              }
-            }}
-          >
+        <div
+          ref={canvasViewportRef}
+          data-testid="canvas-viewport"
+          data-zoom-mode={zoomMode}
+          className="editor-canvas relative flex-1 overflow-auto"
+          style={{ cursor: isPanning ? "grabbing" : isSpaceHeld ? "grab" : undefined }}
+          onWheel={handleCanvasWheel}
+          onPointerDownCapture={handleViewportPointerDownCapture}
+        >
+          <div className="flex min-h-full w-max min-w-full items-center justify-center p-8 pl-16">
             <div
-              ref={figureRef}
-              className="mm-editor-figure"
-              dangerouslySetInnerHTML={{ __html: figureHtml }}
-            />
-            {/* 編集ハンドル・ヒット領域は figure と同じ%座標系のオーバーレイに描く */}
-            <div className="pointer-events-none absolute inset-0">
-              <svg
-                className="mm-editor-hit-layer"
-                viewBox={`0 0 ${annotation.canvas.width} ${annotation.canvas.height}`}
-                preserveAspectRatio="none"
-              >
-                {lineObjects.map((obj) => (
-                  <polyline
-                    key={obj.id}
-                    data-mm-id={obj.id}
-                    points={toCanvasPoints(obj.points)}
+              ref={wrapRef}
+              className="relative shrink-0 bg-white shadow-md ring-1 ring-slate-900/10"
+              style={{
+                width: annotation.canvas.width * zoom / 100,
+                maxWidth: "none",
+                aspectRatio: `${annotation.canvas.width} / ${annotation.canvas.height}`,
+              }}
+              onPointerDown={handleFigurePointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerLeave={() => setHoverPoint(null)}
+              onClick={handleCanvasClick}
+              onDoubleClick={(event) => event.preventDefault()}
+            >
+              <div
+                ref={figureRef}
+                className="mm-editor-figure"
+                dangerouslySetInnerHTML={{ __html: figureHtml }}
+              />
+              {/* 編集ハンドル・ヒット領域は figure と同じ%座標系のオーバーレイに描く */}
+              <div className="pointer-events-none absolute inset-0">
+                <svg
+                  className="mm-editor-hit-layer"
+                  viewBox={`0 0 ${annotation.canvas.width} ${annotation.canvas.height}`}
+                  preserveAspectRatio="none"
+                >
+                  {lineObjects.map((obj) => (
+                    <polyline
+                      key={obj.id}
+                      data-mm-id={obj.id}
+                      points={toCanvasPoints(obj.points)}
+                    />
+                  ))}
+                </svg>
+                {activeFrameRect
+                  ? FRAME_HANDLES.map((handle) => (
+                      <div
+                        key={handle.dir}
+                        data-testid={`frame-handle-${handle.dir}`}
+                        className="mm-editor-handle"
+                        style={{
+                          left: `${activeFrameRect.x + activeFrameRect.w * handle.fx}%`,
+                          top: `${activeFrameRect.y + activeFrameRect.h * handle.fy}%`,
+                          cursor: handle.cursor,
+                        }}
+                        onPointerDown={(event) => beginRectResize(event, handle.dir)}
+                      />
+                    ))
+                  : null}
+                {activeLinePoints
+                  ? activeLinePoints.map((point, index) => (
+                      <div
+                        key={index}
+                        data-testid={`point-handle-${index}`}
+                        className={`mm-editor-handle mm-editor-handle--point ${
+                          selectedPointIndex === index ? "is-active" : ""
+                        }`}
+                        style={{ left: `${point.x}%`, top: `${point.y}%`, cursor: "move" }}
+                        onPointerDown={(event) => beginPointDrag(event, index)}
+                      />
+                    ))
+                  : null}
+                {previewPoint ? (
+                  <div
+                    data-testid="creation-preview"
+                    className={`mm-creation-preview mm-creation-preview--${activeTool}`}
+                    style={{ left: `${previewPoint.x}%`, top: `${previewPoint.y}%` }}
+                  >
+                    {activeTool === "badge"
+                      ? nextBadgeNumber(annotation.objects)
+                      : activeTool === "text"
+                        ? "テキスト"
+                        : <IconPointer size={20} />}
+                  </div>
+                ) : null}
+                {rectDraft ? (
+                  <div
+                    data-testid="creation-preview"
+                    className={`mm-creation-preview-rect mm-creation-preview-rect--${rectDraft.type}`}
+                    style={{
+                      left: `${rectDraft.rect.x}%`,
+                      top: `${rectDraft.rect.y}%`,
+                      width: `${rectDraft.rect.w}%`,
+                      height: `${rectDraft.rect.h}%`,
+                    }}
                   />
-                ))}
-              </svg>
-              {activeFrameRect
-                ? FRAME_HANDLES.map((handle) => (
-                    <div
-                      key={handle.dir}
-                      data-testid={`frame-handle-${handle.dir}`}
-                      className="mm-editor-handle"
-                      style={{
-                        left: `${activeFrameRect.x + activeFrameRect.w * handle.fx}%`,
-                        top: `${activeFrameRect.y + activeFrameRect.h * handle.fy}%`,
-                        cursor: handle.cursor,
-                      }}
-                      onPointerDown={(event) => beginRectResize(event, handle.dir)}
-                    />
-                  ))
-                : null}
-              {activeLinePoints
-                ? activeLinePoints.map((point, index) => (
-                    <div
-                      key={index}
-                      data-testid={`point-handle-${index}`}
-                      className={`mm-editor-handle mm-editor-handle--point ${
-                        selectedPointIndex === index ? "is-active" : ""
-                      }`}
-                      style={{ left: `${point.x}%`, top: `${point.y}%`, cursor: "move" }}
-                      onPointerDown={(event) => beginPointDrag(event, index)}
-                    />
-                  ))
-                : null}
+                ) : null}
+                {previewLinePoints.length > 0 ? (
+                  <svg
+                    data-testid="creation-preview"
+                    className="mm-creation-preview-line"
+                    viewBox={`0 0 ${annotation.canvas.width} ${annotation.canvas.height}`}
+                    preserveAspectRatio="none"
+                  >
+                    <polyline points={toCanvasPoints(previewLinePoints)} />
+                  </svg>
+                ) : null}
+              </div>
             </div>
           </div>
+        </div>
+        <div className="absolute bottom-3 left-16 z-10 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-md">
+          <IconButton
+            label="縮小"
+            size="sm"
+            data-testid="zoom-out"
+            disabled={zoom <= 25}
+            onClick={() => setViewportZoom(stepZoom(zoom, -1), "manual")}
+          >
+            <IconMinus size={14} />
+          </IconButton>
+          <output
+            data-testid="zoom-value"
+            className="w-12 text-center font-mono text-[11px] font-medium text-slate-700"
+            aria-label="表示倍率"
+          >
+            {Math.round(zoom)}%
+          </output>
+          <IconButton
+            label="拡大"
+            size="sm"
+            data-testid="zoom-in"
+            disabled={zoom >= 400}
+            onClick={() => setViewportZoom(stepZoom(zoom, 1), "manual")}
+          >
+            <IconPlus size={14} />
+          </IconButton>
+          <div className="mx-0.5 h-5 w-px bg-slate-200" aria-hidden="true" />
+          <Button size="sm" variant="ghost" data-testid="zoom-actual" onClick={showActualSize}>
+            100%
+          </Button>
+          <IconButton label="全体表示" size="sm" data-testid="zoom-fit" onClick={showFit}>
+            <IconFit size={14} />
+          </IconButton>
         </div>
         <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white">
           <AnnotationObjectList

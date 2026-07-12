@@ -519,8 +519,9 @@ export function AnnotationProperties({
         ) : null}
       </section>
       <footer className="mt-auto border-t border-slate-100 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
-        <Kbd>⌘Z</Kbd> 取り消し ・ <Kbd>⌘C</Kbd>
-        <Kbd>⌘V</Kbd> 複製 ・ <Kbd>Delete</Kbd> 削除 ・ 矢印キーで 0.1% 移動(
+        <Kbd>⌘S</Kbd> 保存 ・ <Kbd>⌘Z</Kbd> 取り消し ・ <Kbd>⌘D</Kbd> 複製 ・
+        <Kbd>⌘C</Kbd><Kbd>⌘V</Kbd> コピー/貼り付け ・ <Kbd>Delete</Kbd> 削除 ・
+        矢印キーで 0.1% 移動(
         <Kbd>⇧</Kbd> で 1%)
       </footer>
     </>

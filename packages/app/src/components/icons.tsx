@@ -118,6 +118,34 @@ export function IconPointer(props: IconProps) {
   );
 }
 
+export function IconSelect(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m3 2.5 4.3 10.8 1.4-4.7 4.8-1.3z" fill="currentColor" stroke="currentColor" />
+      <path d="m9 9 2.8 3" />
+    </Icon>
+  );
+}
+
+export function IconMinus(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3.5 8h9" />
+    </Icon>
+  );
+}
+
+export function IconFit(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M6 3H3v3" />
+      <path d="M10 3h3v3" />
+      <path d="M6 13H3v-3" />
+      <path d="M10 13h3v-3" />
+    </Icon>
+  );
+}
+
 export function IconFrame(props: IconProps) {
   return (
     <Icon {...props}>
