@@ -82,6 +82,15 @@ test("annotation editor: tools create objects directly on the canvas", async ({ 
     await page.getByTestId("add-text").click();
     await clickCanvas(page, 42, 32);
     await expect(objectItems).toHaveCount(initialCount + 3);
+    const text = page.locator(".mm-editor-figure .mm-text").last();
+    await expect(text).toHaveAttribute("style", /width:/);
+    await expect(text).toHaveAttribute("style", /height:/);
+    await text.dblclick();
+    const inlineEditor = page.getByTestId("inline-text-editor");
+    await expect(inlineEditor).toBeVisible();
+    await inlineEditor.fill("キャンバス編集");
+    await inlineEditor.press("Control+Enter");
+    await expect(text).toContainText("キャンバス編集");
     await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
 
     await page.getByTestId("add-frame").click();

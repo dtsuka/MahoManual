@@ -39,6 +39,22 @@ describe("translateObjects", () => {
     expect(translated[0]).toMatchObject({ at: { x: 12, y: 17 } });
     expect(translated[2]).toEqual(locked[2]);
   });
+
+  it("moves a textbox rectangle and keeps its anchor in sync", () => {
+    const text: AnnotationObject = {
+      id: "text-1",
+      type: "text",
+      source: "manual",
+      content: "メモ",
+      at: { x: 20, y: 25 },
+      rect: { x: 10, y: 20, w: 20, h: 10 },
+    };
+    const translated = translateObjects([text], new Set([text.id]), 3, -2)[0];
+    expect(translated).toMatchObject({
+      at: { x: 23, y: 23 },
+      rect: { x: 13, y: 18, w: 20, h: 10 },
+    });
+  });
 });
 
 describe("duplicateObjects", () => {
@@ -125,6 +141,17 @@ describe("objectsInRect", () => {
 describe("objectBounds", () => {
   it("returns AABB for line objects", () => {
     expect(objectBounds(objects[3]!)).toEqual({ x: 5, y: 6, w: 10, h: 10 });
+  });
+
+  it("uses the textbox rectangle for selection and snapping", () => {
+    expect(objectBounds({
+      id: "text-1",
+      type: "text",
+      source: "manual",
+      content: "メモ",
+      at: { x: 20, y: 25 },
+      rect: { x: 10, y: 20, w: 20, h: 10 },
+    })).toEqual({ x: 10, y: 20, w: 20, h: 10 });
   });
 });
 

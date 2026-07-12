@@ -65,6 +65,27 @@ describe("parseAnnotation", () => {
     })).toThrow(/arrowHeads/);
   });
 
+  it("parses text objects with a textbox rectangle while keeping the legacy anchor", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 800, height: 600 },
+      objects: [{
+        id: "t1",
+        type: "text",
+        source: "manual",
+        content: "複数行\nテキスト",
+        at: { x: 30, y: 25 },
+        rect: { x: 20, y: 20, w: 30, h: 12 },
+      }],
+    });
+
+    expect(annotation.objects[0]).toMatchObject({
+      type: "text",
+      at: { x: 30, y: 25 },
+      rect: { x: 20, y: 20, w: 30, h: 12 },
+    });
+  });
+
   it("parses mosaic objects and validates their image target and block size", () => {
     const base = {
       version: 1,

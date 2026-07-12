@@ -67,6 +67,29 @@ describe("renderFigure", () => {
     expect(lineMatch?.[0]).not.toContain("marker-end");
   });
 
+  it("renders text as a wrapping textbox when rect is present", () => {
+    const annotation = parseAnnotation({
+      version: 1,
+      canvas: { width: 1000, height: 800 },
+      objects: [{
+        id: "t1",
+        type: "text",
+        source: "manual",
+        content: "見出し\n説明",
+        at: { x: 50, y: 50 },
+        rect: { x: 20, y: 30, w: 40, h: 15 },
+      }],
+    });
+
+    const html = renderFigure(annotation, { naturalSizes: {} });
+    expect(html).toContain('class="mm-obj mm-text"');
+    expect(html).toContain("left:20%");
+    expect(html).toContain("top:30%");
+    expect(html).toContain("width:40%");
+    expect(html).toContain("height:15%");
+    expect(html).toContain("見出し");
+  });
+
   it("renders arrow heads at start, end, or both", () => {
     const base = {
       version: 1 as const,
