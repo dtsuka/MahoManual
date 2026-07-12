@@ -8,6 +8,204 @@ const annotationId = "1-1";
 // example/1-1.json を複数テストが共有するため、並列実行での汚染を防ぐ
 test.describe.configure({ mode: "serial" });
 
+async function canvasPoint(page: import("@playwright/test").Page, xPct: number, yPct: number) {
+  const figure = page.locator(".mm-editor-figure figure");
+  const box = await figure.boundingBox();
+  if (!box) {
+    throw new Error("figure has no bounding box");
+  }
+  return {
+    x: box.x + box.width * xPct / 100,
+    y: box.y + box.height * yPct / 100,
+  };
+}
+
+async function clickCanvas(page: import("@playwright/test").Page, xPct: number, yPct: number) {
+  const point = await canvasPoint(page, xPct, yPct);
+  await page.mouse.click(point.x, point.y);
+}
+
+async function dragCanvas(
+  page: import("@playwright/test").Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  const start = await canvasPoint(page, from.x, from.y);
+  const end = await canvasPoint(page, to.x, to.y);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 4 });
+  await page.mouse.up();
+}
+
+test("annotation editor: tools create objects directly on the canvas", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; type: string; n?: number }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    const objectItems = page.locator('[data-testid^="object-item-"]');
+    const initialCount = await objectItems.count();
+    const maxBadge = Math.max(0, ...before.objects.filter((obj) => obj.type === "badge").map((obj) => obj.n ?? 0));
+
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("add-badge").click();
+    await expect(page.getByTestId("add-badge")).toHaveAttribute("aria-pressed", "true");
+    await expect(objectItems).toHaveCount(initialCount);
+
+    const previewPoint = await canvasPoint(page, 24, 18);
+    await page.mouse.move(previewPoint.x, previewPoint.y);
+    await expect(page.getByTestId("creation-preview")).toBeVisible();
+    await page.mouse.click(previewPoint.x, previewPoint.y);
+    await expect(objectItems).toHaveCount(initialCount + 1);
+    await expect(page.getByTestId("prop-at-x")).toHaveValue(/24/);
+    await expect(page.getByTestId("prop-at-y")).toHaveValue(/18/);
+    await expect(page.getByTestId("add-badge")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".mm-editor-figure .mm-badge").last()).toHaveText(String(maxBadge + 1));
+
+    await clickCanvas(page, 36, 28);
+    await expect(objectItems).toHaveCount(initialCount + 2);
+    await expect(page.locator(".mm-editor-figure .mm-badge").last()).toHaveText(String(maxBadge + 2));
+
+    await page.getByTestId("add-text").click();
+    await clickCanvas(page, 42, 32);
+    await expect(objectItems).toHaveCount(initialCount + 3);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("add-frame").click();
+    await dragCanvas(page, { x: 12, y: 14 }, { x: 32, y: 26 });
+    await expect(objectItems).toHaveCount(initialCount + 4);
+    await expect(page.getByTestId("prop-rect-x")).toHaveValue(/12/);
+    await expect(page.getByTestId("prop-rect-y")).toHaveValue(/14/);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
+test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; type: string }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    const lineCount = () => page.locator(".mm-editor-figure .mm-lines polyline").count();
+    const initialLines = await lineCount();
+
+    await page.getByTestId("add-line").click();
+    await clickCanvas(page, 14, 18);
+    const hover = await canvasPoint(page, 40, 30);
+    await page.mouse.move(hover.x, hover.y);
+    await expect(page.getByTestId("creation-preview")).toBeVisible();
+    await page.mouse.click(hover.x, hover.y);
+    await page.keyboard.press("Enter");
+    await expect.poll(lineCount).toBe(initialLines + 1);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("add-arrow").click();
+    await clickCanvas(page, 20, 22);
+    const arrowEnd = await canvasPoint(page, 48, 38);
+    await page.mouse.dblclick(arrowEnd.x, arrowEnd.y);
+    await expect.poll(lineCount).toBe(initialLines + 2);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+
+    await page.getByTestId("add-line").click();
+    await clickCanvas(page, 10, 10);
+    await page.keyboard.press("Escape");
+    await expect.poll(lineCount).toBe(initialLines + 2);
+    await expect(page.getByTestId("tool-select")).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
+test("annotation editor: zoom, fit, pointer zoom and space pan only change the viewport", async ({ page }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const beforeJson = readFileSync(annotationPath, "utf8");
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const viewport = page.getByTestId("canvas-viewport");
+  const zoomValue = page.getByTestId("zoom-value");
+  await expect(viewport).toHaveAttribute("data-zoom-mode", "fit");
+  const largeFit = await zoomValue.textContent();
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await expect.poll(() => zoomValue.textContent()).not.toBe(largeFit);
+
+  await page.keyboard.press("Control+1");
+  await expect(zoomValue).toHaveText("100%");
+  await page.getByTestId("zoom-in").click();
+  await expect(zoomValue).toHaveText("125%");
+  await page.getByTestId("zoom-out").click();
+  await expect(zoomValue).toHaveText("100%");
+
+  await page.keyboard.press("Control+0");
+  await expect(viewport).toHaveAttribute("data-zoom-mode", "fit");
+  const pointer = await canvasPoint(page, 35, 35);
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.mouse.wheel(0, -120);
+  const pointAfter = await canvasPoint(page, 35, 35);
+  expect(Math.abs(pointAfter.x - pointer.x)).toBeLessThan(4);
+  expect(Math.abs(pointAfter.y - pointer.y)).toBeLessThan(4);
+
+  await page.keyboard.press("Control+1");
+  const viewportBox = await viewport.boundingBox();
+  if (!viewportBox) {
+    throw new Error("canvas viewport has no bounding box");
+  }
+  const beforePan = await viewport.evaluate((element) => ({ x: element.scrollLeft, y: element.scrollTop }));
+  await page.keyboard.down("Space");
+  await page.mouse.move(viewportBox.x + viewportBox.width / 2, viewportBox.y + viewportBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(viewportBox.x + viewportBox.width / 2 - 100, viewportBox.y + viewportBox.height / 2 - 70, { steps: 4 });
+  await page.mouse.up();
+  await page.keyboard.up("Space");
+  const afterPan = await viewport.evaluate((element) => ({ x: element.scrollLeft, y: element.scrollTop }));
+  expect(afterPan.x).toBeGreaterThan(beforePan.x);
+  expect(afterPan.y).toBeGreaterThan(beforePan.y);
+  expect(readFileSync(annotationPath, "utf8")).toBe(beforeJson);
+});
+
+test("annotation editor: Cmd/Ctrl+D duplicates and Cmd/Ctrl+S saves from an input", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
+    objects: Array<{ id: string; at?: { x: number; y: number } }>;
+  };
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-item-b1").click();
+    const originalX = Number(await page.getByTestId("prop-at-x").inputValue());
+    const originalY = Number(await page.getByTestId("prop-at-y").inputValue());
+    const initialCount = await page.locator('[data-testid^="object-item-"]').count();
+    await page.keyboard.press("Control+d");
+    await expect(page.locator('[data-testid^="object-item-"]')).toHaveCount(initialCount + 1);
+    await expect(page.getByTestId("prop-at-x")).toHaveValue(String(originalX + 1));
+    await expect(page.getByTestId("prop-at-y")).toHaveValue(String(originalY + 1));
+
+    const xInput = page.getByTestId("prop-at-x");
+    await xInput.fill(String(originalX + 3));
+    const saveResponsePromise = page.waitForResponse(
+      (response) => response.url().includes(`/annotations/${annotationId}`) && response.request().method() === "PUT",
+    );
+    await page.keyboard.press("Control+s");
+    expect((await saveResponsePromise).ok()).toBeTruthy();
+    await expect(page.getByText("保存しました")).toBeVisible();
+    await expect(page.getByText(/⌘S.*保存/)).toBeVisible();
+    await expect(page.getByText(/⌘D.*複製/)).toBeVisible();
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: add badge, drag, save, external reload", async ({ page, request }) => {
   await page.goto("/");
   await page.getByTestId(`project-${testProject}`).click();
@@ -22,6 +220,7 @@ test("annotation editor: add badge, drag, save, external reload", async ({ page,
   ) as { objects: Array<{ id: string; type: string; at?: { x: number; y: number } }> };
 
   await page.getByTestId("add-badge").click();
+  await clickCanvas(page, 24, 18);
   const newBadge = page.locator('[data-mm-id^="b"]').last();
   await expect(newBadge).toBeVisible();
   const badgeId = await newBadge.getAttribute("data-mm-id");
@@ -157,6 +356,7 @@ test("annotation editor: add and configure a mosaic", async ({ page, request }) 
   try {
     const mosaicCountBefore = before.objects.filter((obj) => obj.type === "mosaic").length;
     await page.getByTestId("add-mosaic").click();
+    await dragCanvas(page, { x: 20, y: 70 }, { x: 45, y: 85 });
     const mosaicItems = page.locator('[data-testid^="object-item-m"]');
     await expect(mosaicItems).toHaveCount(mosaicCountBefore + 1);
     const mosaicItem = mosaicItems.last();
@@ -703,6 +903,7 @@ test("annotation editor: external change while dirty shows banner instead of dis
   try {
     // ローカル編集(未保存 = dirty)
     await page.getByTestId("add-badge").click();
+    await clickCanvas(page, 50, 50);
     await expect(page.locator("text=未保存")).toBeVisible();
 
     // 外部から別内容を書き込む
@@ -896,6 +1097,7 @@ test("annotation editor: cursor can be added, configured and saved as inline SVG
 
   try {
     await page.getByTestId("add-cursor").click();
+    await clickCanvas(page, 50, 50);
     await expect(page.locator(".mm-editor-figure .mm-cursor svg")).toBeVisible();
     await page.getByTestId("cursor-icon").selectOption("move");
     await page.getByTestId("cursor-size").fill("36");
@@ -940,6 +1142,7 @@ test("annotation editor: undo and redo restore edits and dirty state", async ({ 
   await expect(page.getByTestId("redo-button")).toBeDisabled();
 
   await page.getByTestId("add-badge").click();
+  await clickCanvas(page, 50, 50);
   await expect(objectItems).toHaveCount(initialCount + 1);
   await expect(page.getByText("未保存")).toBeVisible();
 
