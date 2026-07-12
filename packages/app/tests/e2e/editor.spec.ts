@@ -86,6 +86,55 @@ test("annotation editor: tools create objects directly on the canvas", async ({ 
   }
 });
 
+test("annotation editor: visibility controls use accessible stroke icons", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const visibility = page.getByTestId("object-visibility-img-main");
+  const solo = page.getByTestId("object-solo-img-main");
+  await expect(visibility).toHaveAttribute("aria-label", "img-mainを一時的に非表示");
+  await expect(visibility.locator("svg")).toHaveCount(1);
+  await expect(solo).toHaveAttribute("aria-label", "img-mainだけを表示");
+  await expect(solo.locator("svg")).toHaveCount(1);
+
+  await visibility.click();
+  await expect(visibility).toHaveAttribute("aria-label", "img-mainを表示");
+  await expect(visibility).toHaveAttribute("aria-pressed", "true");
+});
+
+test("annotation editor: visual crop drag is reverted by one undo", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8"));
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("object-lock-img-main").click();
+    await page.getByTestId("object-item-img-main").click();
+    const initialW = await page.getByTestId("crop-w").inputValue();
+    const initialH = await page.getByTestId("crop-h").inputValue();
+
+    await page.getByTestId("open-visual-crop").click();
+    const handle = page.getByTestId("crop-handle-se");
+    const box = await handle.boundingBox();
+    if (!box) {
+      throw new Error("crop handle has no bounding box");
+    }
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 80, box.y - 60, { steps: 5 });
+    await page.mouse.up();
+    await page.getByTestId("crop-confirm").click();
+    await expect(page.getByTestId("crop-w")).not.toHaveValue(initialW);
+
+    await page.keyboard.press("Meta+z");
+    await expect(page.getByTestId("crop-w")).toHaveValue(initialW);
+    await expect(page.getByTestId("crop-h")).toHaveValue(initialH);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {

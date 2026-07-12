@@ -43,4 +43,33 @@ describe("mergeAnnotationEdits", () => {
     const resolved = resolveConflicts(merged.merged, { b1: "remote" }, { local, remote });
     expect(resolved.objects[0]).toMatchObject({ at: { x: 14, y: 10 } });
   });
+
+  it("uses the selected side when both sides reorder objects differently", () => {
+    const objects = [
+      { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 10, y: 10 } },
+      { id: "b2", type: "badge", source: "manual", n: 2, at: { x: 20, y: 20 } },
+      { id: "b3", type: "badge", source: "manual", n: 3, at: { x: 30, y: 30 } },
+    ];
+    const base = file(objects);
+    const local = file([objects[1], objects[0], objects[2]]);
+    const remote = file([objects[0], objects[2], objects[1]]);
+    const merged = mergeAnnotationEdits(base, local, remote);
+
+    expect(merged.conflicts).toContainEqual(expect.objectContaining({ id: "(order)", reason: "order_conflict" }));
+    expect(resolveConflicts(merged.merged, { "(order)": "local" }, { local, remote }).objects.map((obj) => obj.id))
+      .toEqual(["b2", "b1", "b3"]);
+    expect(resolveConflicts(merged.merged, { "(order)": "remote" }, { local, remote }).objects.map((obj) => obj.id))
+      .toEqual(["b1", "b3", "b2"]);
+  });
+
+  it("reports modification-versus-deletion conflicts from the correct side", () => {
+    const baseObject = { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 10, y: 10 } };
+    const modifiedObject = { ...baseObject, at: { x: 12, y: 10 } };
+
+    const localDeleted = mergeAnnotationEdits(file([baseObject]), file([]), file([modifiedObject]));
+    expect(localDeleted.conflicts[0]?.reason).toBe("local_deleted_remote_modified");
+
+    const remoteDeleted = mergeAnnotationEdits(file([baseObject]), file([modifiedObject]), file([]));
+    expect(remoteDeleted.conflicts[0]?.reason).toBe("local_modified_remote_deleted");
+  });
 });
