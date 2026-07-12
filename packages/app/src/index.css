@@ -93,6 +93,8 @@ body {
 .mm-editor-figure > figure {
   width: 100%;
   height: 100%;
+  /* coreレンダラーの納品用max-widthをエディタ内だけ解除し、100%超ズームでも比率を維持する */
+  max-width: none !important;
 }
 
 .annotation-tool[aria-pressed="true"] {
