@@ -99,15 +99,26 @@ export function AnnotationProperties({
             オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
           </p>
         ) : null}
+        {editableSelected && editableSelected.type !== "image" && onApplyProjectDefault ? (
+          <div className="mb-3 rounded-md bg-slate-50 px-2.5 py-2">
+            <div className="mb-1.5 text-[11px] font-medium text-slate-600">選択中のスタイル</div>
+            <Button
+              size="sm"
+              variant="secondary"
+              data-testid="project-default-apply"
+              onClick={onApplyProjectDefault}
+            >
+              デフォルトに戻す
+            </Button>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              色・サイズなどをプロジェクトの既定値に戻します。
+            </p>
+          </div>
+        ) : null}
         {editableSelected && editableSelected.type !== "image" && onSaveProjectDefault ? (
           <div className="mb-3 rounded-md bg-slate-50 px-2.5 py-2">
             <div className="mb-1.5 text-[11px] font-medium text-slate-600">新規オブジェクトの既定スタイル</div>
             <div className="flex flex-wrap gap-1">
-              {onApplyProjectDefault ? (
-                <Button size="sm" variant="secondary" data-testid="project-default-apply" onClick={onApplyProjectDefault}>
-                  規定スタイルを適用
-                </Button>
-              ) : null}
               <Button size="sm" variant="secondary" data-testid="project-default-save" onClick={onSaveProjectDefault}>
                 選択中を既定に保存
               </Button>
