@@ -165,6 +165,24 @@ body {
   outline-offset: 2px;
 }
 
+/* translate された点オブジェクトでは outline が描画されないことがあるため、
+   要素と一緒に移動する疑似要素で選択枠を確実に表示する */
+.mm-editor-figure .mm-badge.is-selected,
+.mm-editor-figure .mm-text.is-selected,
+.mm-editor-figure .mm-cursor.is-selected {
+  outline: none;
+}
+
+.mm-editor-figure .mm-badge.is-selected::before,
+.mm-editor-figure .mm-text.is-selected::before,
+.mm-editor-figure .mm-cursor.is-selected::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 2px dashed #2563eb;
+  pointer-events: none;
+}
+
 /* polyline には outline が効かないため選択表示は drop-shadow で行う */
 .mm-editor-figure polyline.is-selected {
   filter: drop-shadow(0 0 3px #2563eb);
