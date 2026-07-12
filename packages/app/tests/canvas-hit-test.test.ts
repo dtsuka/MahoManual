@@ -83,9 +83,9 @@ describe("classifySelectPointerGesture", () => {
       isSelectMode: true,
       isEditableFrame: () => true,
     })).toEqual({
-      kind: "drag",
-      objectId: "f1",
-      clickThroughId: "b1",
+      kind: "frame-over-point",
+      frameId: "f1",
+      pointId: "b1",
     });
   });
 

@@ -54,11 +54,12 @@ export function resolveCanvasObjectElement(
 
 export type SelectPointerGesture =
   | { kind: "none" }
+  | { kind: "drag"; objectId: string }
   | {
-      kind: "drag";
-      objectId: string;
-      /** 透明フレーム下の点。クリック(!moved)時のみ選択する */
-      clickThroughId?: string;
+      /** 透明フレーム下の点: move=フレームドラッグ、!moved=点選択 */
+      kind: "frame-over-point";
+      frameId: string;
+      pointId: string;
     };
 
 /**
@@ -83,7 +84,7 @@ export function classifySelectPointerGesture(
     && pointId
     && options.isEditableFrame(frameId)
   ) {
-    return { kind: "drag", objectId: frameId, clickThroughId: pointId };
+    return { kind: "frame-over-point", frameId, pointId };
   }
 
   const preferred = targets.point ?? targets.direct;
