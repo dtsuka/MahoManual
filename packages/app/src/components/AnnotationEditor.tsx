@@ -8,6 +8,11 @@ import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder }
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
 import { rectAtPixelSize } from "@mahomanual/core/object-geometry";
 import {
+  fullImageCrop,
+  rectFromCropInReveal,
+  revealRectForCropEdit,
+} from "@mahomanual/core/crop-math";
+import {
   applyObjectStyle,
   copyObjectStyle,
   extractObjectStyle,
@@ -210,8 +215,13 @@ export function AnnotationEditor({
   const [cropEdit, setCropEdit] = useState<{
     imageId: string;
     crop: { x: number; y: number; w: number; h: number };
+    revealRect: { x: number; y: number; w: number; h: number };
     start: AnnotationFile;
   } | null>(null);
+  const cropEditActionsRef = useRef<{
+    commit: () => void;
+    cancel: () => void;
+  }>({ commit: () => undefined, cancel: () => undefined });
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [soloId, setSoloId] = useState<string | null>(null);
   const [pendingNavigation, setPendingNavigation] = useState<string | "back" | null>(null);
@@ -667,16 +677,14 @@ export function AnnotationEditor({
             return;
           }
           event.preventDefault();
-          applyTransientChange(() => cropEdit.start);
-          setCropEdit(null);
+          cropEditActionsRef.current.cancel();
           return;
         case "crop-commit":
           if (!cropEdit) {
             return;
           }
           event.preventDefault();
-          commitTransientChange(cropEdit.start);
-          setCropEdit(null);
+          cropEditActionsRef.current.commit();
           return;
         case "select-all":
           event.preventDefault();
@@ -898,12 +906,59 @@ export function AnnotationEditor({
       return;
     }
     const crop = image.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
+    const revealRect = revealRectForCropEdit(image.rect, crop, natural, current.canvas);
+    const start = structuredClone(current);
+    // 編集中はフル画像を正しい縦横比で見せ、crop のライブ適用による引き伸ばしを防ぐ
+    applyTransientChange(() => ({
+      ...current,
+      objects: current.objects.map((obj) =>
+        obj.id === imageId && obj.type === "image"
+          ? { ...obj, crop: fullImageCrop(natural), rect: revealRect }
+          : obj,
+      ),
+    }));
+    setSelectedIds([imageId]);
     setCropEdit({
       imageId,
       crop: { ...crop },
-      start: structuredClone(current),
+      revealRect,
+      start,
     });
   };
+
+  const commitVisualCrop = () => {
+    if (!cropEdit) {
+      return;
+    }
+    const image = cropEdit.start.objects.find(
+      (obj): obj is Extract<AnnotationObject, { type: "image" }> =>
+        obj.id === cropEdit.imageId && obj.type === "image",
+    );
+    const natural = image ? naturalSizes[image.src] : undefined;
+    if (!natural) {
+      return;
+    }
+    const nextRect = rectFromCropInReveal(cropEdit.revealRect, cropEdit.crop, natural);
+    applyTransientChange((current) => ({
+      ...current,
+      objects: current.objects.map((obj) =>
+        obj.id === cropEdit.imageId && obj.type === "image"
+          ? { ...obj, crop: cropEdit.crop, rect: nextRect }
+          : obj,
+      ),
+    }));
+    commitTransientChange(cropEdit.start);
+    setCropEdit(null);
+  };
+
+  const cancelVisualCrop = () => {
+    if (!cropEdit) {
+      return;
+    }
+    applyTransientChange(() => cropEdit.start);
+    setCropEdit(null);
+  };
+  cropEditActionsRef.current = { commit: commitVisualCrop, cancel: cancelVisualCrop };
 
   const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (marqueeJustFinishedRef.current) {
@@ -1827,6 +1882,41 @@ export function AnnotationEditor({
           onWheel={handleCanvasWheel}
           onPointerDownCapture={handleViewportPointerDownCapture}
         >
+          {cropEdit && cropEditNatural ? (
+            <div
+              className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50/95 px-3 py-2 shadow-sm backdrop-blur-sm"
+              data-testid="crop-edit-banner"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-blue-900">クロップを編集中</p>
+                <p className="text-[11px] text-blue-800/80">
+                  ハンドルで範囲を調整し、「確定」で反映します（Enterで確定 / Escで取消）
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-testid="crop-reset-full"
+                  onClick={() => {
+                    setCropEdit((current) =>
+                      current && cropEditNatural
+                        ? { ...current, crop: fullImageCrop(cropEditNatural) }
+                        : current,
+                    );
+                  }}
+                >
+                  全体に戻す
+                </Button>
+                <Button size="sm" variant="secondary" data-testid="crop-cancel" onClick={cancelVisualCrop}>
+                  取消
+                </Button>
+                <Button size="sm" variant="primary" data-testid="crop-confirm" onClick={commitVisualCrop}>
+                  確定
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="flex min-h-full w-max min-w-full items-center justify-center p-8 pl-16">
             <div
               ref={wrapRef}
@@ -1998,23 +2088,9 @@ export function AnnotationEditor({
                   natural={cropEditNatural}
                   crop={cropEdit.crop}
                   onCropChange={(nextCrop) => {
+                    // 編集中は annotation の crop を変えず、オーバーレイ状態だけ更新する
+                    // (ライブ適用すると固定 rect への引き伸ばしで縦横比が崩れる)
                     setCropEdit((current) => current ? { ...current, crop: nextCrop } : current);
-                    applyTransientChange((current) => ({
-                      ...current,
-                      objects: current.objects.map((obj) =>
-                        obj.id === cropEdit.imageId && obj.type === "image"
-                          ? { ...obj, crop: nextCrop }
-                          : obj,
-                      ),
-                    }));
-                  }}
-                  onConfirm={() => {
-                    commitTransientChange(cropEdit.start);
-                    setCropEdit(null);
-                  }}
-                  onCancel={() => {
-                    applyTransientChange(() => cropEdit.start);
-                    setCropEdit(null);
                   }}
                 />
               ) : null}
@@ -2063,7 +2139,11 @@ export function AnnotationEditor({
             soloId={soloId}
             dragListIndex={dragListIndex}
             dropListIndex={dropListIndex}
+            selectionLocked={!!cropEdit}
             onSelect={(id, additive) => {
+              if (cropEdit) {
+                return;
+              }
               if (additive) {
                 setSelectedIds((current) =>
                   current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
@@ -2096,28 +2176,41 @@ export function AnnotationEditor({
             onChange={setMarginDraft}
             onApply={applyCanvasMargin}
           />
-          <AnnotationProperties
-            selected={selected}
-            annotation={annotation}
-            naturalSizes={naturalSizes}
-            theme={theme}
-            selectedPointIndex={selectedPointIndex}
-            setSelectedPointIndex={setSelectedPointIndex}
-            updateObject={updateObject}
-            onOpenReplaceImage={() => setImagePickerMode("replace")}
-            onOpenVisualCrop={selected?.type === "image" && isEditable(selected)
-              ? () => openVisualCrop(selected.id)
-              : undefined}
-            hasProjectDefault={selected && selected.type !== "image"
-              ? annotationDefaults[selected.type as keyof AnnotationDefaults] !== undefined
-              : false}
-            onSaveProjectDefault={saveSelectedAsProjectDefault}
-            onClearProjectDefault={clearSelectedProjectDefault}
-            onApplyProjectDefault={applyDefaultsToSelected}
-            onResetImageSize={selected?.type === "image" && isEditable(selected)
-              ? resetImageToOriginalSize
-              : undefined}
-          />
+          {cropEdit ? (
+            <section className="border-b border-slate-100 p-3" data-testid="crop-edit-side-hint">
+              <h2 className="mb-1 text-xs font-semibold text-slate-700">プロパティ</h2>
+              <p className="text-[12px] leading-relaxed text-slate-600">
+                クロップ編集中です。キャンバス上部のバーから「確定」または「取消」してください。
+              </p>
+              <p className="mt-2 font-mono text-[11px] text-slate-500">
+                {cropEdit.crop.w} × {cropEdit.crop.h} px
+                （x:{cropEdit.crop.x}, y:{cropEdit.crop.y}）
+              </p>
+            </section>
+          ) : (
+            <AnnotationProperties
+              selected={selected}
+              annotation={annotation}
+              naturalSizes={naturalSizes}
+              theme={theme}
+              selectedPointIndex={selectedPointIndex}
+              setSelectedPointIndex={setSelectedPointIndex}
+              updateObject={updateObject}
+              onOpenReplaceImage={() => setImagePickerMode("replace")}
+              onOpenVisualCrop={selected?.type === "image" && isEditable(selected)
+                ? () => openVisualCrop(selected.id)
+                : undefined}
+              hasProjectDefault={selected && selected.type !== "image"
+                ? annotationDefaults[selected.type as keyof AnnotationDefaults] !== undefined
+                : false}
+              onSaveProjectDefault={saveSelectedAsProjectDefault}
+              onClearProjectDefault={clearSelectedProjectDefault}
+              onApplyProjectDefault={applyDefaultsToSelected}
+              onResetImageSize={selected?.type === "image" && isEditable(selected)
+                ? resetImageToOriginalSize
+                : undefined}
+            />
+          )}
         </aside>
       </div>
       <ImageFilePickerModal

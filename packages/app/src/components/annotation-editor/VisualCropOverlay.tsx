@@ -1,7 +1,6 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { fullImageCrop, resizeCrop, type CropHandle } from "@mahomanual/core/crop-math";
+import { clampCrop, resizeCrop, type CropHandle } from "@mahomanual/core/crop-math";
 import type { AnnotationObject } from "@mahomanual/core/schema";
-import { Button } from "../ui.js";
 import { FRAME_HANDLES } from "./helpers.js";
 
 interface PixelRect {
@@ -22,8 +21,6 @@ interface VisualCropOverlayProps {
   natural: NaturalSize;
   crop: PixelRect;
   onCropChange: (crop: PixelRect) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
 }
 
 function cropToOverlayStyle(
@@ -78,8 +75,6 @@ export function VisualCropOverlay({
   natural,
   crop,
   onCropChange,
-  onConfirm,
-  onCancel,
 }: VisualCropOverlayProps) {
   const imageRect = image.rect;
   const cropStyle = cropToOverlayStyle(imageRect, crop, natural);
@@ -112,6 +107,41 @@ export function VisualCropOverlay({
     window.addEventListener("pointerup", onUp);
   };
 
+  const startCropMove = (event: ReactPointerEvent) => {
+    if ((event.target as HTMLElement).closest(".mm-crop-handle")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const figure = (event.currentTarget as HTMLElement)
+      .closest("[data-editor-canvas]")
+      ?.querySelector(".mm-editor-figure figure");
+    const box = figure?.getBoundingClientRect();
+    if (!box) {
+      return;
+    }
+    const startClient = { x: event.clientX, y: event.clientY };
+    const crop0 = { ...crop };
+    const onMove = (moveEvent: PointerEvent) => {
+      const startPx = clientToSourcePixels(startClient.x, startClient.y, box, imageRect, canvas, natural);
+      const currentPx = clientToSourcePixels(moveEvent.clientX, moveEvent.clientY, box, imageRect, canvas, natural);
+      const dx = currentPx.x - startPx.x;
+      const dy = currentPx.y - startPx.y;
+      onCropChange(clampCrop({
+        x: crop0.x + dx,
+        y: crop0.y + dy,
+        w: crop0.w,
+        h: crop0.h,
+      }, natural));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
   return (
     <div
       className="pointer-events-auto absolute inset-0 z-20"
@@ -121,8 +151,12 @@ export function VisualCropOverlay({
       onDoubleClick={(event) => event.stopPropagation()}
     >
       <div className="mm-crop-full" style={fullStyle} />
-      <div className="mm-crop-dim" style={fullStyle} />
-      <div className="mm-crop-window" style={cropStyle}>
+      <div
+        className="mm-crop-window"
+        style={cropStyle}
+        data-testid="crop-window"
+        onPointerDown={startCropMove}
+      >
         {FRAME_HANDLES.map((handle) => (
           <div
             key={handle.dir}
@@ -136,17 +170,6 @@ export function VisualCropOverlay({
             onPointerDown={(event) => startHandleDrag(event, handle.dir as CropHandle)}
           />
         ))}
-      </div>
-      <div className="mm-crop-toolbar">
-        <Button size="sm" variant="secondary" data-testid="crop-reset-full" onClick={() => onCropChange(fullImageCrop(natural))}>
-          全体に戻す
-        </Button>
-        <Button size="sm" variant="primary" data-testid="crop-confirm" onClick={onConfirm}>
-          確定
-        </Button>
-        <Button size="sm" variant="secondary" data-testid="crop-cancel" onClick={onCancel}>
-          取消
-        </Button>
       </div>
     </div>
   );
