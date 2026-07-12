@@ -82,12 +82,17 @@ test("annotation editor: tools create objects directly on the canvas", async ({ 
     await page.getByTestId("add-text").click();
     await clickCanvas(page, 42, 32);
     await expect(objectItems).toHaveCount(initialCount + 3);
+    await expect(page.getByTestId("prop-rect-x")).toHaveValue(/42/);
+    await expect(page.getByTestId("prop-rect-y")).toHaveValue(/32/);
     const text = page.locator(".mm-editor-figure .mm-text").last();
     await expect(text).toHaveAttribute("style", /width:/);
     await expect(text).toHaveAttribute("style", /height:/);
     await text.dblclick();
     const inlineEditor = page.getByTestId("inline-text-editor");
     await expect(inlineEditor).toBeVisible();
+    await inlineEditor.click({ position: { x: 110, y: 10 } });
+    const caretPosition = await inlineEditor.evaluate((element) => (element as HTMLTextAreaElement).selectionStart ?? 0);
+    expect(caretPosition).toBeGreaterThan(0);
     await inlineEditor.fill("キャンバス編集");
     await inlineEditor.press("Control+Enter");
     await expect(text).toContainText("キャンバス編集");
@@ -102,6 +107,24 @@ test("annotation editor: tools create objects directly on the canvas", async ({ 
   } finally {
     await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
   }
+});
+
+test("annotation editor: status notifications do not resize the canvas viewport", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const viewport = page.getByTestId("canvas-viewport");
+  const before = await viewport.boundingBox();
+  if (!before) {
+    throw new Error("canvas viewport has no bounding box");
+  }
+  await page.getByTestId("save-button").click();
+  await expect(page.getByText("保存しました")).toBeVisible();
+  const during = await viewport.boundingBox();
+  if (!during) {
+    throw new Error("canvas viewport has no bounding box after status");
+  }
+  expect(Math.abs(during.height - before.height)).toBeLessThan(1);
 });
 
 test("annotation editor: selected point objects show a dashed selection frame", async ({ page }) => {
