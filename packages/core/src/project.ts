@@ -124,11 +124,14 @@ export function writeAnnotationDefaults(
   const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
   const hasValues = Object.keys(defaults).length > 0;
   if (hasValues) {
+    if (!(doc.get("annotation", true) instanceof YAMLMap)) {
+      doc.set("annotation", doc.createNode({}));
+    }
     doc.setIn(["annotation", "defaults"], defaults);
-  } else {
+  } else if (doc.get("annotation", true) instanceof YAMLMap) {
     doc.deleteIn(["annotation", "defaults"]);
   }
-  const annotation = doc.get("annotation");
+  const annotation = doc.get("annotation", true);
   if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
     doc.delete("annotation");
   }
@@ -160,12 +163,15 @@ export function writeProjectTheme(projectRoot: string, theme: AnnotationTheme): 
     ["fontSize", theme.fontSize],
   ] as const) {
     if (value !== undefined) {
+      if (!(doc.get("annotation", true) instanceof YAMLMap)) {
+        doc.set("annotation", doc.createNode({}));
+      }
       doc.setIn(["annotation", key], value);
-    } else {
+    } else if (doc.get("annotation", true) instanceof YAMLMap) {
       doc.deleteIn(["annotation", key]);
     }
   }
-  const annotation = doc.get("annotation");
+  const annotation = doc.get("annotation", true);
   if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
     doc.delete("annotation");
   }

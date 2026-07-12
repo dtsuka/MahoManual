@@ -29,6 +29,9 @@ interface AnnotationPropertiesProps {
   removePoint: (index: number) => void;
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
+  hasProjectDefault?: boolean;
+  onSaveProjectDefault?: () => void;
+  onClearProjectDefault?: () => void;
 }
 
 function RectPositionFields({
@@ -72,6 +75,9 @@ export function AnnotationProperties({
   removePoint,
   onOpenReplaceImage,
   onOpenVisualCrop,
+  hasProjectDefault,
+  onSaveProjectDefault,
+  onClearProjectDefault,
 }: AnnotationPropertiesProps) {
   const editableSelected = selected && isEditable(selected) ? selected : null;
 
@@ -88,6 +94,21 @@ export function AnnotationProperties({
           <p className="rounded-md bg-slate-50 px-3 py-4 text-xs leading-relaxed text-slate-500">
             オブジェクトをクリックして選択してください。バッジ・テキスト・枠・線はドラッグで移動できます。
           </p>
+        ) : null}
+        {editableSelected && editableSelected.type !== "image" && onSaveProjectDefault ? (
+          <div className="mb-3 rounded-md bg-slate-50 px-2.5 py-2">
+            <div className="mb-1.5 text-[11px] font-medium text-slate-600">新規オブジェクトの既定スタイル</div>
+            <div className="flex flex-wrap gap-1">
+              <Button size="sm" variant="secondary" data-testid="project-default-save" onClick={onSaveProjectDefault}>
+                選択中を既定に保存
+              </Button>
+              {hasProjectDefault && onClearProjectDefault ? (
+                <Button size="sm" variant="ghost" data-testid="project-default-clear" onClick={onClearProjectDefault}>
+                  既定を解除
+                </Button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
         {editableSelected?.type === "badge" ? (
           <div className="space-y-3 text-sm">

@@ -1,6 +1,7 @@
 import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
 import { taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import type { AnnotationTheme } from "@mahomanual/core/theme";
+import type { AnnotationDefaults } from "@mahomanual/core/annotation-defaults";
 
 export interface ProjectInfo {
   name: string;
@@ -54,7 +55,7 @@ export function saveManual(project: string, body: string): Promise<{ ok: boolean
   });
 }
 
-export function fetchProjectTheme(project: string): Promise<{ theme: AnnotationTheme }> {
+export function fetchProjectTheme(project: string): Promise<{ theme: AnnotationTheme; defaults?: AnnotationDefaults }> {
   return request(`/api/projects/${encodeURIComponent(project)}/theme`);
 }
 
@@ -62,11 +63,12 @@ export function fetchProjectTheme(project: string): Promise<{ theme: AnnotationT
 export function saveProjectTheme(
   project: string,
   theme: AnnotationTheme,
-): Promise<{ theme: AnnotationTheme }> {
+  defaults?: AnnotationDefaults,
+): Promise<{ theme: AnnotationTheme; defaults?: AnnotationDefaults }> {
   return request(`/api/projects/${encodeURIComponent(project)}/theme`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(theme),
+    body: JSON.stringify(defaults === undefined ? theme : { ...theme, defaults }),
   });
 }
 

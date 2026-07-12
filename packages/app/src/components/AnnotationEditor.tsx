@@ -34,6 +34,7 @@ import {
   saveAnnotation,
   replaceAnnotationImage,
   renameAnnotation,
+  saveProjectTheme,
   subscribeProjectWatch,
 } from "../lib/api.js";
 import { moveItem } from "../lib/collection.js";
@@ -687,7 +688,7 @@ export function AnnotationEditor({
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [annotation?.canvas.width, annotation?.canvas.height, zoomMode]);
+  }, [annotation?.canvas.width, annotation?.canvas.height, annotationId, zoomMode]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -1370,6 +1371,39 @@ export function AnnotationEditor({
   }
 
   const selected = annotation.objects.find((obj) => obj.id === selectedId) ?? null;
+
+  const persistProjectDefaults = async (next: AnnotationDefaults, message: string) => {
+    try {
+      const response = await saveProjectTheme(project, theme, next);
+      setAnnotationDefaults(response.defaults ?? next);
+      setStatus(message);
+      setTimeout(() => setStatus(""), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "既定スタイルの保存に失敗しました");
+    }
+  };
+
+  const saveSelectedAsProjectDefault = () => {
+    if (!selected || selected.type === "image") {
+      return;
+    }
+    const style = resolveCreationDefaults(selected.type, {
+      objectPatch: extractObjectStyle(selected),
+      projectDefaults: annotationDefaults,
+      theme,
+    });
+    const next = { ...annotationDefaults, [selected.type]: style } as AnnotationDefaults;
+    void persistProjectDefaults(next, "プロジェクト既定を保存しました");
+  };
+
+  const clearSelectedProjectDefault = () => {
+    if (!selected || selected.type === "image") {
+      return;
+    }
+    const next = { ...annotationDefaults };
+    delete (next as Record<string, unknown>)[selected.type];
+    void persistProjectDefaults(next, "プロジェクト既定を解除しました");
+  };
 
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
     applyLocalChange((current) => ({
@@ -2290,6 +2324,11 @@ export function AnnotationEditor({
             onOpenVisualCrop={selected?.type === "image" && isEditable(selected)
               ? () => openVisualCrop(selected.id)
               : undefined}
+            hasProjectDefault={selected && selected.type !== "image"
+              ? annotationDefaults[selected.type as keyof AnnotationDefaults] !== undefined
+              : false}
+            onSaveProjectDefault={saveSelectedAsProjectDefault}
+            onClearProjectDefault={clearSelectedProjectDefault}
           />
         </aside>
       </div>

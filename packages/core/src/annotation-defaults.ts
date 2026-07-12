@@ -28,21 +28,30 @@ export type ObjectStylePatch = Partial<{
   blockSize: number;
 }>;
 
-const STYLE_KEYS = [
-  "color",
-  "size",
-  "fontSize",
-  "background",
-  "strokeWidth",
-  "radius",
-  "icon",
-  "arrowHeads",
-  "blockSize",
-] as const;
+const STYLE_KEYS_BY_TYPE: Record<AnnotationObject["type"], readonly (keyof ObjectStylePatch)[]> = {
+  badge: ["color", "size", "fontSize"],
+  text: ["color", "fontSize", "background"],
+  cursor: ["color", "size", "icon"],
+  frame: ["color", "strokeWidth", "radius"],
+  line: ["color", "strokeWidth"],
+  arrow: ["color", "strokeWidth", "arrowHeads"],
+  mosaic: ["blockSize"],
+  image: [],
+};
+
+function filterStyle(type: AnnotationObject["type"], style: ObjectStylePatch): ObjectStylePatch {
+  const filtered: ObjectStylePatch = {};
+  for (const key of STYLE_KEYS_BY_TYPE[type]) {
+    if (style[key] !== undefined) {
+      (filtered as Record<string, unknown>)[key] = style[key];
+    }
+  }
+  return filtered;
+}
 
 export function extractObjectStyle(obj: AnnotationObject): ObjectStylePatch {
   const style: ObjectStylePatch = {};
-  for (const key of STYLE_KEYS) {
+  for (const key of STYLE_KEYS_BY_TYPE[obj.type]) {
     if (key in obj && obj[key as keyof AnnotationObject] !== undefined) {
       (style as Record<string, unknown>)[key] = obj[key as keyof AnnotationObject];
     }
@@ -52,7 +61,7 @@ export function extractObjectStyle(obj: AnnotationObject): ObjectStylePatch {
 
 export function applyObjectStyle(obj: AnnotationObject, style: ObjectStylePatch): AnnotationObject {
   const next = { ...obj } as AnnotationObject & ObjectStylePatch;
-  for (const key of STYLE_KEYS) {
+  for (const key of STYLE_KEYS_BY_TYPE[obj.type]) {
     if (style[key] !== undefined) {
       (next as Record<string, unknown>)[key] = style[key];
     }
@@ -88,12 +97,12 @@ export function resolveCreationDefaults<T extends AnnotationObject["type"]>(
     mosaic: { blockSize: 12 },
     image: {},
   };
-  return {
+  return filterStyle(type, {
     ...coreDefaults[type],
     ...themeDefaults,
     ...typeDefaults,
     ...objectPatch,
-  };
+  });
 }
 
 export function parseAnnotationDefaults(value: unknown): AnnotationDefaults {
