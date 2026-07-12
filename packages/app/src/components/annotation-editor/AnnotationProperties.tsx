@@ -29,9 +29,11 @@ interface AnnotationPropertiesProps {
   removePoint: (index: number) => void;
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
+  onResetImageSize?: () => void;
   hasProjectDefault?: boolean;
   onSaveProjectDefault?: () => void;
   onClearProjectDefault?: () => void;
+  onApplyProjectDefault?: () => void;
 }
 
 function RectPositionFields({
@@ -75,9 +77,11 @@ export function AnnotationProperties({
   removePoint,
   onOpenReplaceImage,
   onOpenVisualCrop,
+  onResetImageSize,
   hasProjectDefault,
   onSaveProjectDefault,
   onClearProjectDefault,
+  onApplyProjectDefault,
 }: AnnotationPropertiesProps) {
   const editableSelected = selected && isEditable(selected) ? selected : null;
 
@@ -99,6 +103,11 @@ export function AnnotationProperties({
           <div className="mb-3 rounded-md bg-slate-50 px-2.5 py-2">
             <div className="mb-1.5 text-[11px] font-medium text-slate-600">新規オブジェクトの既定スタイル</div>
             <div className="flex flex-wrap gap-1">
+              {onApplyProjectDefault ? (
+                <Button size="sm" variant="secondary" data-testid="project-default-apply" onClick={onApplyProjectDefault}>
+                  規定スタイルを適用
+                </Button>
+              ) : null}
               <Button size="sm" variant="secondary" data-testid="project-default-save" onClick={onSaveProjectDefault}>
                 選択中を既定に保存
               </Button>
@@ -342,12 +351,28 @@ export function AnnotationProperties({
                 />
               </div>
             </div>
-            <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。</p>
+            <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。Shift+ドラッグで縦横比を維持します。</p>
           </div>
         ) : null}
         {editableSelected?.type === "image" ? (
           <div className="space-y-3 text-sm">
             <RectPositionFields rect={editableSelected.rect} label="配置 (%)" onChange={updateRect} />
+            {onResetImageSize ? (
+              <div className="space-y-1">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full"
+                  data-testid="reset-image-size"
+                  onClick={onResetImageSize}
+                >
+                  元のサイズに戻す
+                </Button>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  クロップ範囲をキャンバス上で1px=1pxの大きさに戻します。中心位置は維持されます。リサイズ時は Shift で縦横比を維持できます。
+                </p>
+              </div>
+            ) : null}
             {(() => {
               const natural = naturalSizes[editableSelected.src];
               if (!natural) {

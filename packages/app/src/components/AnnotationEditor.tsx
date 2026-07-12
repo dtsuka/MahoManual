@@ -40,6 +40,7 @@ import {
 import { moveItem } from "../lib/collection.js";
 import {
   nearestSegmentIndex,
+  rectAtPixelSize,
   resizeRect,
   snapAngle,
   stickySnap,
@@ -69,6 +70,11 @@ import {
   resolveCanvasObjectElement,
   resolveCanvasObjectTargets,
 } from "../lib/canvas-hit-test.js";
+import {
+  nextSelectionIds,
+  prepareObjectDragSession,
+  type PreparedObjectDragSession,
+} from "../lib/object-drag-session.js";
 import {
   IconArrowLeft,
   IconArrowLine,
@@ -626,6 +632,12 @@ export function AnnotationEditor({
   }, [selectedId]);
 
   useEffect(() => {
+    if (selectedIds.length === 0) {
+      setSnapGuides([]);
+    }
+  }, [selectedIds]);
+
+  useEffect(() => {
     return subscribeProjectWatch(project, (event) => {
       if (event.path !== `annotations/${annotationId}.json`) {
         return;
@@ -1157,151 +1169,160 @@ export function AnnotationEditor({
         return !!candidate && isEditable(candidate);
       },
     });
-    if (gesture.kind === "none") {
-      return;
-    }
-    const objectId = gesture.objectId;
-    const clickThroughId = gesture.clickThroughId;
-    const obj = current.objects.find((item) => item.id === objectId);
-    if (!obj || !isEditable(obj)) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
 
-    const startPct = pctFromClient(event.clientX, event.clientY);
-
-    // line / arrow: Option+クリックで最も近い線分に点を挿入（複製ドラッグとは別経路）
-    if (isLineObject(obj) && event.altKey) {
-      const wasSelected = selectedIds.includes(objectId);
-      const additive = event.metaKey || event.ctrlKey || event.shiftKey;
-      const dragIds = wasSelected ? selectedIds : [objectId];
-      setSelectedIds(additive
-        ? (wasSelected ? selectedIds.filter((id) => id !== objectId) : [...selectedIds, objectId])
-        : dragIds);
-      const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
-      applyLocalChange((latest) => ({
-        ...latest,
-        objects: latest.objects.map((item) =>
-          item.id === objectId && isLineObject(item)
-            ? {
-                ...item,
-                points: [...item.points.slice(0, insertAt), startPct, ...item.points.slice(insertAt)],
-              }
-            : item,
-        ),
-      }));
-      return;
-    }
+    const findEditable = (objectId: string) => {
+      const candidate = current.objects.find((item) => item.id === objectId);
+      return candidate && isEditable(candidate) ? candidate : null;
+    };
 
     const additive = event.metaKey || event.ctrlKey || event.shiftKey;
-    const originalDragIds = selectedIds.includes(objectId) ? selectedIds : [objectId];
-    const deferSelection = clickThroughId !== undefined;
-    let dragIds = originalDragIds;
-    let workingObjects = current.objects;
-    let selectionReady = !deferSelection;
+    const startPct = pctFromClient(event.clientX, event.clientY);
 
-    const commitObjectSelection = (id: string, baseSelectedIds: readonly string[]) => {
-      const wasSelected = baseSelectedIds.includes(id);
-      const nextIds = wasSelected ? baseSelectedIds : [id];
-      return additive
-        ? (wasSelected ? baseSelectedIds.filter((item) => item !== id) : [...baseSelectedIds, id])
-        : [...nextIds];
+    const beginTranslatePointerDrag = (
+      getSession: () => PreparedObjectDragSession,
+      onUnmovedClick?: () => void,
+    ) => {
+      startPointerDrag(event, {
+        onMove: (pct, moveEvent) => {
+          const session = getSession();
+          const dragIdSet = new Set(session.dragIds);
+          const rawDx = pct.x - startPct.x;
+          const rawDy = pct.y - startPct.y;
+          const snapped = dragSnapDelta(
+            session.workingObjects,
+            dragIdSet,
+            rawDx,
+            rawDy,
+            getSnapThreshold(),
+            moveEvent.altKey,
+          );
+          setSnapGuides(snapped.activeGuides);
+          setInteractionObjects(
+            translateObjects(session.workingObjects, dragIdSet, snapped.dx, snapped.dy),
+          );
+        },
+        onEnd: (pct, moved, endEvent) => {
+          setInteractionObjects(null);
+          setSnapGuides([]);
+          if (!moved) {
+            onUnmovedClick?.();
+            return;
+          }
+          const session = getSession();
+          const dragIdSet = new Set(session.dragIds);
+          const rawDx = pct.x - startPct.x;
+          const rawDy = pct.y - startPct.y;
+          const { dx, dy } = dragSnapDelta(
+            session.workingObjects,
+            dragIdSet,
+            rawDx,
+            rawDy,
+            getSnapThreshold(),
+            endEvent.altKey,
+          );
+          if (event.altKey) {
+            let duplicatedIds: string[] = [];
+            applyLocalChange((latest) => {
+              const duplicated = duplicateObjects(latest.objects, session.originalDragIds, 0);
+              duplicatedIds = duplicated.selectedIds;
+              return {
+                ...latest,
+                objects: translateObjects(
+                  duplicated.objects,
+                  new Set(duplicated.selectedIds),
+                  dx,
+                  dy,
+                ),
+              };
+            });
+            setSelectedIds(duplicatedIds);
+            return;
+          }
+          applyLocalChange((latest) => ({
+            ...latest,
+            objects: translateObjects(latest.objects, dragIdSet, dx, dy),
+          }));
+        },
+      });
     };
 
-    if (!deferSelection) {
-      setSelectedIds(commitObjectSelection(objectId, selectedIds));
-      if (event.altKey) {
-        const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
-        workingObjects = duplicated.objects;
-        dragIds = duplicated.selectedIds;
-        setSelectedIds(dragIds);
+    switch (gesture.kind) {
+      case "none":
+        return;
+      case "drag": {
+        const obj = findEditable(gesture.objectId);
+        if (!obj) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+
+        // line / arrow: Option+クリックで最も近い線分に点を挿入（複製ドラッグとは別経路）
+        if (isLineObject(obj) && event.altKey) {
+          setSelectedIds(nextSelectionIds(selectedIds, gesture.objectId, additive));
+          const insertAt = nearestSegmentIndex(obj.points, startPct) + 1;
+          applyLocalChange((latest) => ({
+            ...latest,
+            objects: latest.objects.map((item) =>
+              item.id === gesture.objectId && isLineObject(item)
+                ? {
+                    ...item,
+                    points: [
+                      ...item.points.slice(0, insertAt),
+                      startPct,
+                      ...item.points.slice(insertAt),
+                    ],
+                  }
+                : item,
+            ),
+          }));
+          return;
+        }
+
+        const session = prepareObjectDragSession({
+          objects: current.objects,
+          selectedIds,
+          objectId: gesture.objectId,
+          additive,
+          altKey: event.altKey,
+        });
+        setSelectedIds(session.nextSelectedIds);
+        beginTranslatePointerDrag(() => session);
+        return;
+      }
+      case "frame-over-point": {
+        if (!findEditable(gesture.frameId)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+
+        let session: PreparedObjectDragSession | null = null;
+        beginTranslatePointerDrag(
+          () => {
+            if (!session) {
+              session = prepareObjectDragSession({
+                objects: current.objects,
+                selectedIds,
+                objectId: gesture.frameId,
+                additive,
+                altKey: event.altKey,
+              });
+              setSelectedIds(session.nextSelectedIds);
+            }
+            return session;
+          },
+          () => {
+            setSelectedIds(nextSelectionIds(selectedIds, gesture.pointId, additive));
+          },
+        );
+        return;
+      }
+      default: {
+        const _exhaustive: never = gesture;
+        return _exhaustive;
       }
     }
-
-    const ensureDragSelection = () => {
-      if (selectionReady) {
-        return { dragIds, workingObjects, dragIdSet: new Set(dragIds) };
-      }
-      selectionReady = true;
-      setSelectedIds(commitObjectSelection(objectId, selectedIds));
-      if (event.altKey) {
-        const duplicated = duplicateObjects(current.objects, originalDragIds, 0);
-        workingObjects = duplicated.objects;
-        dragIds = duplicated.selectedIds;
-        setSelectedIds(dragIds);
-      } else {
-        dragIds = originalDragIds;
-        workingObjects = current.objects;
-      }
-      return { dragIds, workingObjects, dragIdSet: new Set(dragIds) };
-    };
-
-    const applyDrag = (
-      objects: AnnotationObject[],
-      dragIdSet: ReadonlySet<string>,
-      rawDx: number,
-      rawDy: number,
-      altKey: boolean,
-    ) => {
-      const snapped = dragSnapDelta(objects, dragIdSet, rawDx, rawDy, getSnapThreshold(), altKey);
-      setSnapGuides(snapped.activeGuides);
-      return { dx: snapped.dx, dy: snapped.dy };
-    };
-
-    // badge/text/cursor・rect・line はいずれもポインタ差分で平行移動できる
-    startPointerDrag(event, {
-      onMove: (pct, moveEvent) => {
-        const state = ensureDragSelection();
-        const rawDx = pct.x - startPct.x;
-        const rawDy = pct.y - startPct.y;
-        const { dx, dy } = applyDrag(
-          state.workingObjects,
-          state.dragIdSet,
-          rawDx,
-          rawDy,
-          moveEvent.altKey,
-        );
-        setInteractionObjects(translateObjects(state.workingObjects, state.dragIdSet, dx, dy));
-      },
-      onEnd: (pct, moved, endEvent) => {
-        setInteractionObjects(null);
-        setSnapGuides([]);
-        if (!moved) {
-          if (clickThroughId) {
-            setSelectedIds(commitObjectSelection(clickThroughId, selectedIds));
-          }
-          return;
-        }
-        const state = ensureDragSelection();
-        const rawDx = pct.x - startPct.x;
-        const rawDy = pct.y - startPct.y;
-        const { dx, dy } = applyDrag(
-          state.workingObjects,
-          state.dragIdSet,
-          rawDx,
-          rawDy,
-          endEvent.altKey,
-        );
-        if (event.altKey) {
-          let duplicatedIds: string[] = [];
-          applyLocalChange((latest) => {
-            const duplicated = duplicateObjects(latest.objects, originalDragIds, 0);
-            duplicatedIds = duplicated.selectedIds;
-            return {
-              ...latest,
-              objects: translateObjects(duplicated.objects, new Set(duplicated.selectedIds), dx, dy),
-            };
-          });
-          setSelectedIds(duplicatedIds);
-          return;
-        }
-        applyLocalChange((latest) => ({
-          ...latest,
-          objects: translateObjects(latest.objects, state.dragIdSet, dx, dy),
-        }));
-      },
-    });
   };
 
   const handleFigurePointerDown = (event: ReactPointerEvent) => {
@@ -1312,12 +1333,17 @@ export function AnnotationEditor({
     if (cropEdit) {
       return;
     }
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    // 整列ツールバーなどキャンバス上の UI はマーキー選択やオブジェクト操作の対象外
+    if (eventTarget?.closest("[data-editor-ui]")) {
+      return;
+    }
     if (isRectCreationTool(activeTool)) {
       handleRectCreationPointerDown(event, activeTool);
       return;
     }
     const targetId = resolveCanvasObjectElement(event)?.getAttribute("data-mm-id") ?? undefined;
-    if (activeTool === "select" && !targetId && !(event.target as Element).closest(".mm-editor-handle")) {
+    if (activeTool === "select" && !targetId && !eventTarget?.closest(".mm-editor-handle")) {
       startMarqueeSelection(event);
       return;
     }
@@ -1381,6 +1407,52 @@ export function AnnotationEditor({
     void persistProjectDefaults(next, "プロジェクト既定を解除しました");
   };
 
+  const applyDefaultsToSelected = () => {
+    if (!selected || selected.type === "image" || !isEditable(selected)) {
+      return;
+    }
+    const style = resolveCreationDefaults(selected.type, {
+      projectDefaults: annotationDefaults,
+      theme,
+    });
+    applyLocalChange((current) => ({
+      ...current,
+      objects: current.objects.map((obj) => {
+        if (obj.id !== selected.id || !isEditable(obj) || obj.type === "image") {
+          return obj;
+        }
+        const next = applyObjectStyle(obj, style);
+        saveRecentStyle(project, next);
+        return next;
+      }),
+    }));
+  };
+
+  const resetImageToOriginalSize = () => {
+    if (!selected || selected.type !== "image" || !isEditable(selected)) {
+      return;
+    }
+    const natural = naturalSizes[selected.src];
+    if (!natural) {
+      return;
+    }
+    const pixelSize = selected.crop
+      ? { w: selected.crop.w, h: selected.crop.h }
+      : natural;
+    applyLocalChange((current) => ({
+      ...current,
+      objects: current.objects.map((obj) => {
+        if (obj.id !== selected.id || obj.type !== "image" || !isEditable(obj)) {
+          return obj;
+        }
+        return {
+          ...obj,
+          rect: rectAtPixelSize(obj.rect, current.canvas, pixelSize),
+        };
+      }),
+    }));
+  };
+
   const updateObject = (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => {
     applyLocalChange((current) => ({
       ...current,
@@ -1418,22 +1490,25 @@ export function AnnotationEditor({
     const objectId = selectedObject.id;
     const rect0 = selectedObject.rect;
     const startPct = pctFromClient(event.clientX, event.clientY);
-    const rectFor = (pct: Pt): RectPct => resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y);
+    const rectFor = (pct: Pt, shiftKey: boolean): RectPct =>
+      resizeRect(rect0, dir, pct.x - startPct.x, pct.y - startPct.y, {
+        keepAspectRatio: shiftKey,
+      });
     startPointerDrag(event, {
-      onMove: (pct) => {
-        const next = rectFor(pct);
+      onMove: (pct, moveEvent) => {
+        const next = rectFor(pct, moveEvent.shiftKey);
         setInteractionObjects(current.objects.map((item) =>
           item.id === objectId && isEditable(item) && isRectObject(item)
             ? { ...item, rect: next }
             : item,
         ));
       },
-      onEnd: (pct, moved) => {
+      onEnd: (pct, moved, endEvent) => {
         setInteractionObjects(null);
         if (!moved) {
           return;
         }
-        const next = rectFor(pct);
+        const next = rectFor(pct, endEvent.shiftKey);
         applyLocalChange((latest) => ({
           ...latest,
           objects: latest.objects.map((item) =>
@@ -2305,6 +2380,10 @@ export function AnnotationEditor({
               : false}
             onSaveProjectDefault={saveSelectedAsProjectDefault}
             onClearProjectDefault={clearSelectedProjectDefault}
+            onApplyProjectDefault={applyDefaultsToSelected}
+            onResetImageSize={selected?.type === "image" && isEditable(selected)
+              ? resetImageToOriginalSize
+              : undefined}
           />
         </aside>
       </div>

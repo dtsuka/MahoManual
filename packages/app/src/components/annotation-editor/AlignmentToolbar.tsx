@@ -17,6 +17,9 @@ export function AlignmentToolbar({
     <div
       className="pointer-events-auto absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-md"
       data-testid="alignment-toolbar"
+      data-editor-ui
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
     >
       <Button size="sm" variant="ghost" data-testid="align-left" onClick={() => onAlign("horizontal", "start")}>
         左
