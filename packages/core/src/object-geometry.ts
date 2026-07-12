@@ -13,6 +13,22 @@ export interface RectPct {
   h: number;
 }
 
+/** 画像の実ピクセル(またはcrop)をキャンバス座標へ1:1で写し、現在矩形の中心を維持する */
+export function rectAtPixelSize(
+  current: RectPct,
+  canvas: { width: number; height: number },
+  pixelSize: { w: number; h: number },
+): RectPct {
+  const w = (pixelSize.w / canvas.width) * 100;
+  const h = (pixelSize.h / canvas.height) * 100;
+  return {
+    x: current.x + current.w / 2 - w / 2,
+    y: current.y + current.h / 2 - h / 2,
+    w,
+    h,
+  };
+}
+
 export interface ObjectBounds {
   x: number;
   y: number;

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   nearestSegmentIndex,
-  rectAtPixelSize,
   resizeRect,
   snapAngle,
   snapToGuides,
@@ -57,16 +56,6 @@ describe("resizeRect", () => {
     expect(rect.h).toBeCloseTo(15, 5);
     expect(rect.x).toBe(10);
     expect(rect.y + rect.h / 2).toBeCloseTo(15, 5);
-  });
-});
-
-describe("rectAtPixelSize", () => {
-  it("places a 1:1 pixel-sized rect centered on the current rect", () => {
-    expect(rectAtPixelSize(
-      { x: 20, y: 30, w: 40, h: 20 },
-      { width: 1000, height: 800 },
-      { w: 200, h: 100 },
-    )).toEqual({ x: 30, y: 33.75, w: 20, h: 12.5 });
   });
 });
 

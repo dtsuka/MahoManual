@@ -1,14 +1,5 @@
-export interface RectPct {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-export interface PointPct {
-  x: number;
-  y: number;
-}
+export type { PointPct, RectPct } from "@mahomanual/core/object-geometry";
+import type { PointPct, RectPct } from "@mahomanual/core/object-geometry";
 
 // リサイズ後も rect が潰れない最小サイズ(%)。スキーマは w,h > 0 を要求する
 export const MIN_RECT_PCT = 0.5;
@@ -99,22 +90,6 @@ function resizeRectKeepAspect(rect: RectPct, dir: string, dx: number, dy: number
   }
 
   return resizeRectFree(rect, dir, dx, dy);
-}
-
-// 画像の実ピクセル(またはcrop)をキャンバス座標へ1:1で写し、現在矩形の中心を維持する
-export function rectAtPixelSize(
-  current: RectPct,
-  canvas: { width: number; height: number },
-  pixelSize: { w: number; h: number },
-): RectPct {
-  const w = (pixelSize.w / canvas.width) * 100;
-  const h = (pixelSize.h / canvas.height) * 100;
-  return {
-    x: current.x + current.w / 2 - w / 2,
-    y: current.y + current.h / 2 - h / 2,
-    w,
-    h,
-  };
 }
 
 // anchor から見た角度を 45° 刻みにスナップする(距離は保存)。

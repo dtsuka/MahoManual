@@ -7,6 +7,7 @@ import {
   duplicateObjects,
   objectBounds,
   objectsInRect,
+  rectAtPixelSize,
   reorderObject,
   snapPointToGuides,
   snapThresholdPct,
@@ -124,5 +125,15 @@ describe("objectsInRect", () => {
 describe("objectBounds", () => {
   it("returns AABB for line objects", () => {
     expect(objectBounds(objects[3]!)).toEqual({ x: 5, y: 6, w: 10, h: 10 });
+  });
+});
+
+describe("rectAtPixelSize", () => {
+  it("places a 1:1 pixel-sized rect centered on the current rect", () => {
+    expect(rectAtPixelSize(
+      { x: 20, y: 30, w: 40, h: 20 },
+      { width: 1000, height: 800 },
+      { w: 200, h: 100 },
+    )).toEqual({ x: 30, y: 33.75, w: 20, h: 12.5 });
   });
 });

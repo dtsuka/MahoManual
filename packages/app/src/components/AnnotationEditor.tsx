@@ -6,6 +6,7 @@ import type {
 } from "react";
 import { isEditable, isLineObject, isRectObject, taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
+import { rectAtPixelSize } from "@mahomanual/core/object-geometry";
 import {
   applyObjectStyle,
   copyObjectStyle,
@@ -40,7 +41,6 @@ import {
 import { moveItem } from "../lib/collection.js";
 import {
   nearestSegmentIndex,
-  rectAtPixelSize,
   resizeRect,
   snapAngle,
   stickySnap,
@@ -58,7 +58,6 @@ import {
   reorderObject,
   snapThresholdPct,
 } from "../lib/annotation-operations.js";
-import { dragSnapDelta } from "../lib/editor-snap.js";
 import { resolveAnnotationNeighbors } from "../lib/annotation-navigation.js";
 import { loadRecentStyle, saveRecentStyle } from "../lib/recent-style.js";
 import {
@@ -76,9 +75,14 @@ import {
   type PreparedObjectDragSession,
 } from "../lib/object-drag-session.js";
 import {
+  commitTranslateDrag,
+  previewTranslateDrag,
+} from "../lib/object-translate-drag.js";
+import {
   IconArrowLeft,
   IconArrowLine,
   IconBadge,
+  IconChevronRight,
   IconDownload,
   IconFrame,
   IconImage,
@@ -1184,22 +1188,15 @@ export function AnnotationEditor({
     ) => {
       startPointerDrag(event, {
         onMove: (pct, moveEvent) => {
-          const session = getSession();
-          const dragIdSet = new Set(session.dragIds);
-          const rawDx = pct.x - startPct.x;
-          const rawDy = pct.y - startPct.y;
-          const snapped = dragSnapDelta(
-            session.workingObjects,
-            dragIdSet,
-            rawDx,
-            rawDy,
-            getSnapThreshold(),
-            moveEvent.altKey,
-          );
-          setSnapGuides(snapped.activeGuides);
-          setInteractionObjects(
-            translateObjects(session.workingObjects, dragIdSet, snapped.dx, snapped.dy),
-          );
+          const preview = previewTranslateDrag({
+            session: getSession(),
+            startPct,
+            currentPct: pct,
+            thresholdPct: getSnapThreshold(),
+            altKey: moveEvent.altKey,
+          });
+          setSnapGuides(preview.activeGuides);
+          setInteractionObjects(preview.objects);
         },
         onEnd: (pct, moved, endEvent) => {
           setInteractionObjects(null);
@@ -1208,40 +1205,23 @@ export function AnnotationEditor({
             onUnmovedClick?.();
             return;
           }
-          const session = getSession();
-          const dragIdSet = new Set(session.dragIds);
-          const rawDx = pct.x - startPct.x;
-          const rawDy = pct.y - startPct.y;
-          const { dx, dy } = dragSnapDelta(
-            session.workingObjects,
-            dragIdSet,
-            rawDx,
-            rawDy,
-            getSnapThreshold(),
-            endEvent.altKey,
-          );
-          if (event.altKey) {
-            let duplicatedIds: string[] = [];
-            applyLocalChange((latest) => {
-              const duplicated = duplicateObjects(latest.objects, session.originalDragIds, 0);
-              duplicatedIds = duplicated.selectedIds;
-              return {
-                ...latest,
-                objects: translateObjects(
-                  duplicated.objects,
-                  new Set(duplicated.selectedIds),
-                  dx,
-                  dy,
-                ),
-              };
+          let nextSelectedIds: string[] | undefined;
+          applyLocalChange((latest) => {
+            const result = commitTranslateDrag({
+              session: getSession(),
+              startPct,
+              currentPct: pct,
+              thresholdPct: getSnapThreshold(),
+              altKeyAtDown: event.altKey,
+              altKeyAtEnd: endEvent.altKey,
+              latestObjects: latest.objects,
             });
-            setSelectedIds(duplicatedIds);
-            return;
+            nextSelectedIds = result.selectedIds;
+            return { ...latest, objects: result.objects };
+          });
+          if (nextSelectedIds) {
+            setSelectedIds(nextSelectedIds);
           }
-          applyLocalChange((latest) => ({
-            ...latest,
-            objects: translateObjects(latest.objects, dragIdSet, dx, dy),
-          }));
         },
       });
     };
@@ -1862,27 +1842,35 @@ export function AnnotationEditor({
       <style>{THEME_FIGURE_CSS}</style>
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-        {onBack ? (
-          <IconButton label="戻る" onClick={() => requestNavigation("back")}>
-            <IconArrowLeft />
-          </IconButton>
-        ) : null}
-        <IconButton
-          label="前の注釈"
-          data-testid="nav-prev-annotation"
-          disabled={!neighbors.prev}
-          onClick={() => neighbors.prev && requestNavigation(neighbors.prev)}
-        >
-          <IconArrowLeft />
-        </IconButton>
-        <IconButton
-          label="次の注釈"
-          data-testid="nav-next-annotation"
-          disabled={!neighbors.next}
-          onClick={() => neighbors.next && requestNavigation(neighbors.next)}
-        >
-          <IconArrowLeft className="rotate-180" />
-        </IconButton>
+        <nav className="flex items-center gap-1" aria-label="注釈ナビゲーション">
+          {onBack ? (
+            <Button size="sm" variant="ghost" onClick={() => requestNavigation("back")}>
+              <IconArrowLeft size={14} />
+              戻る
+            </Button>
+          ) : null}
+          {onBack ? <Separator /> : null}
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid="nav-prev-annotation"
+            disabled={!neighbors.prev}
+            onClick={() => neighbors.prev && requestNavigation(neighbors.prev)}
+          >
+            <IconChevronRight size={14} className="rotate-180" />
+            前の注釈
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid="nav-next-annotation"
+            disabled={!neighbors.next}
+            onClick={() => neighbors.next && requestNavigation(neighbors.next)}
+          >
+            次の注釈
+            <IconChevronRight size={14} />
+          </Button>
+        </nav>
         <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
           {project} / {annotationId}
         </h1>
