@@ -78,6 +78,12 @@ describe("renderFigure", () => {
         content: "見出し\n説明",
         at: { x: 50, y: 50 },
         rect: { x: 20, y: 30, w: 40, h: 15 },
+        textAlign: "center",
+        verticalAlign: "middle",
+        padding: 8,
+        borderColor: "#112233",
+        borderWidth: 2,
+        borderRadius: 4,
       }],
     });
 
@@ -87,6 +93,11 @@ describe("renderFigure", () => {
     expect(html).toContain("top:30%");
     expect(html).toContain("width:40%");
     expect(html).toContain("height:15%");
+    expect(html).toContain("text-align:center");
+    expect(html).toContain("justify-content:center");
+    expect(html).toContain("padding:8px");
+    expect(html).toContain("border:2px solid #112233");
+    expect(html).toContain("border-radius:4px");
     expect(html).toContain("見出し");
   });
 

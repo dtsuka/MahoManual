@@ -58,6 +58,41 @@ describe("applyObjectStyle", () => {
     expect(style).toEqual({ color: "#123456", fontSize: 16 });
   });
 
+  it("copies text box presentation without copying content or geometry", () => {
+    const copied = copyObjectStyle({
+      id: "t1",
+      type: "text",
+      source: "manual",
+      content: "from",
+      at: { x: 1, y: 2 },
+      rect: { x: 2, y: 3, w: 20, h: 8 },
+      textAlign: "center",
+      verticalAlign: "middle",
+      padding: 6,
+      borderColor: "#112233",
+      borderWidth: 2,
+      borderRadius: 4,
+    }, {
+      id: "t2",
+      type: "text",
+      source: "manual",
+      content: "to",
+      at: { x: 30, y: 40 },
+      rect: { x: 10, y: 20, w: 30, h: 10 },
+    });
+    expect(copied).toMatchObject({
+      content: "to",
+      at: { x: 30, y: 40 },
+      rect: { x: 10, y: 20, w: 30, h: 10 },
+      textAlign: "center",
+      verticalAlign: "middle",
+      padding: 6,
+      borderColor: "#112233",
+      borderWidth: 2,
+      borderRadius: 4,
+    });
+  });
+
   it("ignores style fields unsupported by the target object type", () => {
     const badge = {
       id: "b1",

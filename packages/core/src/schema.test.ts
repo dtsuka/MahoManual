@@ -76,6 +76,12 @@ describe("parseAnnotation", () => {
         content: "複数行\nテキスト",
         at: { x: 30, y: 25 },
         rect: { x: 20, y: 20, w: 30, h: 12 },
+        textAlign: "center",
+        verticalAlign: "middle",
+        padding: 8,
+        borderColor: "#112233",
+        borderWidth: 2,
+        borderRadius: 4,
       }],
     });
 
@@ -83,6 +89,12 @@ describe("parseAnnotation", () => {
       type: "text",
       at: { x: 30, y: 25 },
       rect: { x: 20, y: 20, w: 30, h: 12 },
+      textAlign: "center",
+      verticalAlign: "middle",
+      padding: 8,
+      borderColor: "#112233",
+      borderWidth: 2,
+      borderRadius: 4,
     });
   });
 

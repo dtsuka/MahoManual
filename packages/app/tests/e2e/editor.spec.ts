@@ -271,6 +271,37 @@ test("annotation editor: selected object style can be reset to defaults", async 
   await expect(page.getByTestId("prop-font-size")).toHaveValue("14");
 });
 
+test("annotation editor: text box presentation and fit-height controls update the canvas", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8"));
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    await page.getByTestId("add-text").click();
+    await clickCanvas(page, 44, 36);
+    await page.getByTestId("text-align").selectOption("center");
+    await page.getByTestId("vertical-align").selectOption("middle");
+    await page.getByTestId("text-padding").fill("8");
+    await page.getByTestId("prop-border-color").fill("#112233");
+    await page.getByTestId("border-width").fill("2");
+    await page.getByTestId("border-radius").fill("4");
+    await page.getByLabel("テキスト内容").fill("行1\n行2\n行3");
+    const heightBefore = await page.getByTestId("prop-rect-h").inputValue();
+    await page.getByTestId("fit-text-height").click();
+
+    const text = page.locator(".mm-editor-figure .mm-text").last();
+    await expect(text).toHaveAttribute("style", /text-align:center/);
+    await expect(text).toHaveAttribute("style", /justify-content:center/);
+    await expect(text).toHaveAttribute("style", /padding:8px/);
+    await expect(text).toHaveAttribute("style", /border:2px solid #112233/);
+    await expect(text).toHaveAttribute("style", /border-radius:4px/);
+    await expect(page.getByTestId("prop-rect-h")).not.toHaveValue(heightBefore);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
