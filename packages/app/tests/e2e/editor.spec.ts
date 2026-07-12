@@ -135,6 +135,35 @@ test("annotation editor: visual crop drag is reverted by one undo", async ({ pag
   }
 });
 
+test("annotation editor: Alt-drag keeps the created copy selected", async ({ page, request }) => {
+  const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
+  const before = JSON.parse(readFileSync(annotationPath, "utf8"));
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  try {
+    const objectItems = page.locator('[data-testid^="object-item-"]');
+    const initialCount = await objectItems.count();
+    const badge = page.locator('.mm-editor-figure [data-mm-id="b1"]');
+    const box = await badge.boundingBox();
+    if (!box) {
+      throw new Error("badge has no bounding box");
+    }
+
+    await page.keyboard.down("Alt");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 50, box.y + box.height / 2 + 30, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up("Alt");
+
+    await expect(objectItems).toHaveCount(initialCount + 1);
+    await expect(page.locator('[data-testid^="object-item-"].border-blue-400')).toHaveCount(1);
+  } finally {
+    await request.put(`/api/projects/${testProject}/annotations/${annotationId}`, { data: before });
+  }
+});
+
 test("annotation editor: line tools finish with Enter or double click and cancel with Escape", async ({ page, request }) => {
   const annotationPath = join(process.cwd(), "../../projects/example/annotations/1-1.json");
   const before = JSON.parse(readFileSync(annotationPath, "utf8")) as {
