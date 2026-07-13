@@ -3,10 +3,15 @@ import type { AnnotationObject } from "./schema.js";
 import {
   applyDefaultImageLocks,
   collectImageSources,
+  editableRect,
+  hasEditableRect,
   isAddedImage,
   isBaseImage,
   mosaicsForImage,
+  setTextBoxRect,
   taggableObjectsInDisplayOrder,
+  textBoxRect,
+  withEditableRect,
 } from "./annotation-objects.js";
 
 const objects: AnnotationObject[] = [
@@ -167,5 +172,43 @@ describe("applyDefaultImageLocks", () => {
     }, "1-2");
 
     expect(result.objects[0]).toMatchObject({ id: "img-left", locked: true });
+  });
+});
+
+describe("editableRect / withEditableRect", () => {
+  it("treats text and frame/image/mosaic as editable rectangles", () => {
+    const text = {
+      id: "t1",
+      type: "text" as const,
+      source: "manual" as const,
+      content: "a",
+      at: { x: 10, y: 20 },
+      rect: { x: 0, y: 10, w: 20, h: 20 },
+    };
+    const frame = {
+      id: "f1",
+      type: "frame" as const,
+      source: "manual" as const,
+      rect: { x: 1, y: 2, w: 3, h: 4 },
+    };
+    expect(hasEditableRect(text)).toBe(true);
+    expect(hasEditableRect(frame)).toBe(true);
+    expect(hasEditableRect(objects[0]!)).toBe(false);
+    expect(editableRect(text)).toEqual(text.rect);
+    expect(editableRect(frame)).toEqual(frame.rect);
+  });
+
+  it("updates text at when writing a new rect", () => {
+    const text = {
+      id: "t1",
+      type: "text" as const,
+      source: "manual" as const,
+      content: "a",
+      at: { x: 10, y: 20 },
+      rect: { x: 0, y: 10, w: 20, h: 20 },
+    };
+    const next = withEditableRect(text, { x: 5, y: 15, w: 30, h: 10 });
+    expect(next).toEqual(setTextBoxRect(text, { x: 5, y: 15, w: 30, h: 10 }));
+    expect(textBoxRect(next as typeof text)).toEqual({ x: 5, y: 15, w: 30, h: 10 });
   });
 });

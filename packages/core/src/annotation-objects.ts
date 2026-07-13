@@ -57,6 +57,29 @@ export function normalizeTextBoxes(annotation: AnnotationFile): AnnotationFile {
   };
 }
 
+/** リサイズ・余白・プロパティで共通に扱う矩形オブジェクト */
+export type EditableRectObject = RectObject | TextObject;
+
+export function hasEditableRect(obj: AnnotationObject): obj is EditableRectObject {
+  return isRectObject(obj) || obj.type === "text";
+}
+
+/** text / frame / image / mosaic の編集対象矩形を返す */
+export function editableRect(obj: EditableRectObject): Rect {
+  return obj.type === "text" ? textBoxRect(obj) : obj.rect;
+}
+
+/** 編集対象矩形を書き戻す(text は at も同期) */
+export function withEditableRect(obj: AnnotationObject, rect: Rect): AnnotationObject {
+  if (obj.type === "text") {
+    return setTextBoxRect(obj, rect);
+  }
+  if (isRectObject(obj)) {
+    return { ...obj, rect };
+  }
+  return obj;
+}
+
 export function collectImageSources(
   annotation: Pick<AnnotationFile, "objects">,
 ): string[] {

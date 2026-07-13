@@ -1,4 +1,5 @@
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
+import { setTextBoxRect, textBoxRect } from "./annotation-objects.js";
 
 // SPEC §4.5: キャンバス余白。canvasを拡張し、全オブジェクトの%座標を
 // 再計算して見た目上の位置を維持する(crop・size・fontSize等のpx値は不変)
@@ -51,13 +52,19 @@ export function expandCanvas(annotation: AnnotationFile, margin: CanvasMargin): 
       case "frame":
       case "mosaic":
         return { ...obj, rect: mapRect(obj.rect) };
-      case "badge":
       case "text":
+        // 描画・編集の正本は rect。at はボックス中心として同期する
+        return setTextBoxRect(obj, mapRect(textBoxRect(obj)));
+      case "badge":
       case "cursor":
         return { ...obj, at: mapPoint(obj.at) };
       case "line":
       case "arrow":
         return { ...obj, points: obj.points.map(mapPoint) };
+      default: {
+        const _exhaustive: never = obj;
+        return _exhaustive;
+      }
     }
   });
 

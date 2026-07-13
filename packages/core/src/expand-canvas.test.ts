@@ -99,6 +99,31 @@ describe("expandCanvas", () => {
     expect(arrow.points[2]!.y).toBeCloseTo(25, 10);
   });
 
+  it("remaps text.rect and keeps at as the box center", () => {
+    const withBox = parseAnnotation({
+      ...baseAnnotation(),
+      objects: [
+        {
+          id: "t-box",
+          type: "text",
+          source: "manual",
+          content: "矩形",
+          at: { x: 30, y: 40 },
+          rect: { x: 20, y: 30, w: 20, h: 20 },
+        },
+      ],
+    });
+    const result = expandCanvas(withBox, { left: 320 });
+    const text = findObject(result, "t-box", "text");
+    expect(text.rect).toBeDefined();
+    expect(text.rect!.x).toBeCloseTo((20 * 12.8 + 320) / 16, 10);
+    expect(text.rect!.y).toBeCloseTo(30, 10);
+    expect(text.rect!.w).toBeCloseTo(16, 10); // 20% * 1280 / 1600
+    expect(text.rect!.h).toBeCloseTo(20, 10);
+    expect(text.at.x).toBeCloseTo(text.rect!.x + text.rect!.w / 2, 10);
+    expect(text.at.y).toBeCloseTo(text.rect!.y + text.rect!.h / 2, 10);
+  });
+
   it("adds top margin: y coordinates are remapped, x unchanged", () => {
     const result = expandCanvas(baseAnnotation(), { top: 240 });
 

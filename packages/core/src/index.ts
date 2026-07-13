@@ -19,6 +19,10 @@ export {
   type RectObject,
   type TaggableObject,
   type TextObject,
+  editableRect,
+  hasEditableRect,
+  withEditableRect,
+  type EditableRectObject,
 } from "./annotation-objects.js";
 export {
   applyObjectStyle,
