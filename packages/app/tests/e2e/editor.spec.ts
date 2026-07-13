@@ -778,6 +778,25 @@ test("annotation editor: frame can be selected from object list and resized via 
   }
 });
 
+test("annotation editor: selected badge can be dragged through a covering frame", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+
+  const badge = page.locator('[data-mm-id="b1"]');
+  const frame = page.locator('[data-mm-id="f-menu"]');
+  await page.getByTestId("object-item-b1").click();
+  await expect(badge).toHaveClass(/is-selected/);
+
+  const badgeLeftBefore = await badge.evaluate((element) => Number.parseFloat(element.style.left));
+  const frameLeftBefore = await frame.evaluate((element) => Number.parseFloat(element.style.left));
+  await dragCanvas(page, { x: 8.5, y: 22 }, { x: 11.5, y: 24 });
+
+  await expect.poll(() => badge.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBeGreaterThan(badgeLeftBefore);
+  await expect.poll(() => frame.evaluate((element) => Number.parseFloat(element.style.left)))
+    .toBe(frameLeftBefore);
+});
+
 test("annotation editor: objects follow the pointer while dragging and resizing", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();

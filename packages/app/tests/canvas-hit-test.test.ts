@@ -89,6 +89,14 @@ describe("classifySelectPointerGesture", () => {
     });
   });
 
+  it("drags an already-selected point object through a covering frame", () => {
+    expect(classifySelectPointerGesture(frameAndPoint, {
+      isSelectMode: true,
+      isEditableFrame: () => true,
+      isSelectedPoint: (id) => id === "b1",
+    })).toEqual({ kind: "drag", objectId: "b1" });
+  });
+
   it("does not defer when the frame is locked", () => {
     expect(classifySelectPointerGesture(frameAndPoint, {
       isSelectMode: true,
