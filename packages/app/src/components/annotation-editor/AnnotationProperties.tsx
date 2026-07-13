@@ -1,5 +1,5 @@
 import type { AnnotationFile, AnnotationObject, CursorIcon } from "@mahomanual/core/schema";
-import { isEditable, isLineObject, isRectObject, textBoxRect } from "@mahomanual/core/annotation-objects";
+import { editableRect, hasEditableRect, isEditable, isLineObject, withEditableRect } from "@mahomanual/core/annotation-objects";
 import {
   DEFAULT_ANNOTATION_COLOR,
   DEFAULT_ANNOTATION_FONT_SIZE,
@@ -82,21 +82,15 @@ export function AnnotationProperties({
   };
 
   const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
-    if (!editableSelected || (editableSelected.type !== "text" && !isRectObject(editableSelected))) {
+    if (!editableSelected || !hasEditableRect(editableSelected)) {
       return;
     }
     const clamped = key === "w" || key === "h" ? Math.max(0.5, value) : value;
     updateObject(editableSelected.id, (obj) => {
-      if (obj.type === "text") {
-        const rect = textBoxRect(obj);
-        const next = { ...rect, [key]: clamped };
-        return {
-          ...obj,
-          rect: next,
-          at: { x: next.x + next.w / 2, y: next.y + next.h / 2 },
-        };
+      if (!hasEditableRect(obj)) {
+        return obj;
       }
-      return isRectObject(obj) ? { ...obj, rect: { ...obj.rect, [key]: clamped } } : obj;
+      return withEditableRect(obj, { ...editableRect(obj), [key]: clamped });
     });
   };
 
@@ -342,7 +336,7 @@ export function AnnotationProperties({
               />
             </label>
             <RectPositionFields
-              rect={textBoxRect(editableSelected)}
+              rect={editableRect(editableSelected)}
               label="テキストボックス (%)"
               onChange={updateRect}
             />

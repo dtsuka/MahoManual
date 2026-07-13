@@ -5,15 +5,16 @@ import type {
   WheelEvent as ReactWheelEvent,
 } from "react";
 import {
+  editableRect,
+  hasEditableRect,
   isEditable,
   isLineObject,
-  isRectObject,
   normalizeTextBoxes,
   setTextBoxRect,
   taggableObjectsInDisplayOrder,
   textBoxRect,
-  textBoxRectFromAnchor,
   textBoxRectFromTopLeft,
+  withEditableRect,
 } from "@mahomanual/core/annotation-objects";
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
 import { rectAtPixelSize } from "@mahomanual/core/object-geometry";
@@ -90,6 +91,12 @@ import {
 import { useAnnotationDocument } from "../lib/use-annotation-document.js";
 import { useVisualCropEdit } from "../lib/use-visual-crop-edit.js";
 import { classifyEditorKeydown } from "../lib/editor-keyboard.js";
+import { measureTextBoxContentHeightPct } from "../lib/fit-text-box-height.js";
+import {
+  classifyTextPointerDown,
+  rememberTextPointerClick,
+  type TextPointerClickMemory,
+} from "../lib/text-edit-gesture.js";
 import type { PointPct } from "../lib/geometry.js";
 import { BackToProjectButton } from "./BackToProjectButton.js";
 import {
@@ -231,7 +238,7 @@ export function AnnotationEditor({
     merged: AnnotationFile;
   } | null>(null);
   const marqueeJustFinishedRef = useRef(false);
-  const lastTextPointerClickRef = useRef<{ id: string; timestamp: number } | null>(null);
+  const lastTextPointerClickRef = useRef<TextPointerClickMemory | null>(null);
   const copiedStyleRef = useRef<ReturnType<typeof extractObjectStyle> | null>(null);
   const selectedId = selectedIds.at(-1) ?? null;
   const onCropOpened = useCallback((imageId: string) => {
@@ -427,15 +434,20 @@ export function AnnotationEditor({
     const id = createObjectId(type, current.objects);
     const roundedAt = { x: roundCreationPct(at.x), y: roundCreationPct(at.y) };
     const style = buildCreationStyle(type);
-    const rect = type === "text"
-      ? textBoxRectFromTopLeft(roundedAt)
-      : textBoxRectFromAnchor(roundedAt);
-    const textAnchor = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
-    const object: AnnotationObject = type === "badge"
-      ? { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt, ...style }
-      : type === "text"
-        ? { id, type, source: "manual", content: "テキスト", at: textAnchor, rect, ...style }
-        : { id, type, source: "manual", icon: style.icon ?? "pointer", at: roundedAt, size: style.size ?? 28, ...style };
+    let object: AnnotationObject;
+    if (type === "badge") {
+      object = { id, type, source: "manual", n: nextBadgeNumber(current.objects), at: roundedAt, ...style };
+    } else if (type === "text") {
+      object = {
+        ...setTextBoxRect(
+          { id, type, source: "manual", content: "テキスト", at: roundedAt },
+          textBoxRectFromTopLeft(roundedAt),
+        ),
+        ...style,
+      };
+    } else {
+      object = { id, type, source: "manual", icon: style.icon ?? "pointer", at: roundedAt, size: style.size ?? 28, ...style };
+    }
     applyLocalChange((latest) => ({ ...latest, objects: [...latest.objects, object] }));
     setSelectedIds([id]);
     if (type !== "badge") {
@@ -1125,14 +1137,17 @@ export function AnnotationEditor({
         // ドラッグ開始時に click イベントが抑止されても、テキストの2回目の
         // pointerdown をダブルクリックとして扱えるようにする。
         if (isSelectMode && obj.type === "text" && !additive) {
-          const previous = lastTextPointerClickRef.current;
-          if (previous && previous.id === obj.id && event.timeStamp - previous.timestamp < 500) {
-            lastTextPointerClickRef.current = null;
+          const result = classifyTextPointerDown(
+            lastTextPointerClickRef.current,
+            obj.id,
+            event.timeStamp,
+          );
+          lastTextPointerClickRef.current = null;
+          if (result.openEdit) {
             setSelectedIds([obj.id]);
             setInlineTextEdit({ id: obj.id, value: obj.content });
             return;
           }
-          lastTextPointerClickRef.current = null;
         }
 
         // line / arrow: Option+クリックで最も近い線分に点を挿入（複製ドラッグとは別経路）
@@ -1169,7 +1184,7 @@ export function AnnotationEditor({
           () => session,
           () => {
             if (obj.type === "text" && isSelectMode && !additive) {
-              lastTextPointerClickRef.current = { id: obj.id, timestamp: event.timeStamp };
+              lastTextPointerClickRef.current = rememberTextPointerClick(obj.id, event.timeStamp);
             }
           },
         );
@@ -1359,30 +1374,10 @@ export function AnnotationEditor({
     if (!current || !selectedObject || selectedObject.type !== "text" || !isEditable(selectedObject) || !figure) {
       return;
     }
-    const textElement = Array.from(figure.querySelectorAll<HTMLElement>(".mm-text"))
-      .find((element) => element.dataset.mmId === selectedObject.id);
-    const figureBox = figure.getBoundingClientRect();
-    if (!textElement || figureBox.height <= 0) {
+    const nextHeight = measureTextBoxContentHeightPct(figure, selectedObject.id);
+    if (nextHeight === null) {
       return;
     }
-
-    const probe = textElement.cloneNode(true) as HTMLElement;
-    probe.style.left = "0%";
-    probe.style.top = "0%";
-    probe.style.height = "auto";
-    probe.style.minHeight = "0";
-    probe.style.maxHeight = "none";
-    probe.style.transform = "none";
-    probe.style.visibility = "hidden";
-    probe.style.pointerEvents = "none";
-    figure.appendChild(probe);
-    const measuredHeight = probe.getBoundingClientRect().height;
-    probe.remove();
-    if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) {
-      return;
-    }
-
-    const nextHeight = Math.max(0.5, Math.round((measuredHeight / figureBox.height) * 1000) / 10);
     updateObject(selectedObject.id, (obj) =>
       obj.type === "text"
         ? setTextBoxRect(obj, { ...textBoxRect(obj), h: nextHeight })
@@ -1407,17 +1402,10 @@ export function AnnotationEditor({
       return;
     }
     const selectedObject = current.objects.find((obj) => obj.id === selectedId);
-    if (!selectedObject || !isEditable(selectedObject)) {
+    if (!selectedObject || !isEditable(selectedObject) || !hasEditableRect(selectedObject)) {
       return;
     }
-    const rect0 = selectedObject.type === "text"
-      ? textBoxRect(selectedObject)
-      : isRectObject(selectedObject)
-        ? selectedObject.rect
-        : null;
-    if (!rect0) {
-      return;
-    }
+    const rect0 = editableRect(selectedObject);
     event.preventDefault();
     event.stopPropagation();
     const objectId = selectedObject.id;
@@ -1430,13 +1418,7 @@ export function AnnotationEditor({
       onMove: (pct, moveEvent) => {
         const next = rectFor(pct, moveEvent.shiftKey);
         setInteractionObjects(current.objects.map((item) =>
-          item.id !== objectId || !isEditable(item)
-            ? item
-            : item.type === "text"
-              ? setTextBoxRect(item, next)
-              : isRectObject(item)
-                ? { ...item, rect: next }
-                : item,
+          item.id === objectId && isEditable(item) ? withEditableRect(item, next) : item,
         ));
       },
       onEnd: (pct, moved, endEvent) => {
@@ -1448,13 +1430,7 @@ export function AnnotationEditor({
         applyLocalChange((latest) => ({
           ...latest,
           objects: latest.objects.map((item) =>
-            item.id !== objectId || !isEditable(item)
-              ? item
-              : item.type === "text"
-                ? setTextBoxRect(item, next)
-                : isRectObject(item)
-                  ? { ...item, rect: next }
-                  : item,
+            item.id === objectId && isEditable(item) ? withEditableRect(item, next) : item,
           ),
         }));
       },
@@ -1610,12 +1586,8 @@ export function AnnotationEditor({
   };
 
   const interactionSelected = interactionObjects?.find((obj) => obj.id === selectedId) ?? selected;
-  const activeFrameRect = interactionSelected && isEditable(interactionSelected)
-    ? interactionSelected.type === "text"
-      ? textBoxRect(interactionSelected)
-      : isRectObject(interactionSelected)
-        ? interactionSelected.rect
-        : null
+  const activeFrameRect = interactionSelected && isEditable(interactionSelected) && hasEditableRect(interactionSelected)
+    ? editableRect(interactionSelected)
     : null;
   const activeLinePoints =
     interactionSelected && isEditable(interactionSelected) && isLineObject(interactionSelected)
