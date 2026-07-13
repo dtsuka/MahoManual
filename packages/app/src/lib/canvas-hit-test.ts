@@ -56,7 +56,7 @@ export type SelectPointerGesture =
   | { kind: "none" }
   | { kind: "drag"; objectId: string }
   | {
-      /** 透明フレーム下の点: move=フレームドラッグ、!moved=点選択 */
+      /** 透明フレーム下の未選択の点: move=フレームドラッグ、!moved=点選択 */
       kind: "frame-over-point";
       frameId: string;
       pointId: string;
@@ -71,12 +71,17 @@ export function classifySelectPointerGesture(
   options: {
     isSelectMode: boolean;
     isEditableFrame: (objectId: string) => boolean;
+    isSelectedPoint?: (objectId: string) => boolean;
   },
 ): SelectPointerGesture {
   const frameId = targets.direct?.classList.contains("mm-frame")
     ? targets.direct.dataset.mmId
     : undefined;
   const pointId = targets.point?.dataset.mmId;
+
+  if (pointId && options.isSelectedPoint?.(pointId)) {
+    return { kind: "drag", objectId: pointId };
+  }
 
   if (
     options.isSelectMode

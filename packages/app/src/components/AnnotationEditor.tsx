@@ -1056,6 +1056,7 @@ export function AnnotationEditor({
         const candidate = current.objects.find((item) => item.id === id);
         return !!candidate && isEditable(candidate);
       },
+      isSelectedPoint: (id) => selectedIds.includes(id),
     });
 
     const findEditable = (objectId: string) => {
