@@ -3,7 +3,7 @@ dist/
 dist-server/
 **/.auth/
 .DS_Store
-projects/*
+projects/
 packages/app/test-results/
 packages/app/playwright-report/
 .playwright-mcp/
