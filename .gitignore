@@ -3,8 +3,8 @@ dist/
 dist-server/
 **/.auth/
 .DS_Store
-projects/*/dist/
-projects/app-test/
+projects/*
 packages/app/test-results/
 packages/app/playwright-report/
 .playwright-mcp/
+sample/
