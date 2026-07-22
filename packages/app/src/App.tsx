@@ -6,10 +6,12 @@ import {
   pasteImage,
   renameAnnotation,
   type ProjectInfo,
+  type ProjectOutputFilenames,
 } from "./lib/api.js";
 import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
 import { ThemeSettings } from "./components/ThemeSettings.js";
+import { OutputSettings } from "./components/OutputSettings.js";
 import {
   IconArrowLeft,
   IconBook,
@@ -165,6 +167,10 @@ function ImageImport({ project }: { project: string }) {
 
 function ProjectHome() {
   const { project } = useParams<{ project: string }>();
+  const [outputFilenames, setOutputFilenames] = useState<ProjectOutputFilenames>(() => ({
+    html: `${project}.html`,
+    pdf: `${project}.pdf`,
+  }));
   if (!project) {
     return null;
   }
@@ -183,7 +189,7 @@ function ProjectHome() {
           <div className="ml-auto flex gap-2">
             <ButtonLink
               href={`/api/projects/${encodeURIComponent(project)}/export.html`}
-              download={`${project}.html`}
+              download={outputFilenames.html}
               data-testid="export-html"
             >
               <IconDownload size={14} />
@@ -191,7 +197,7 @@ function ProjectHome() {
             </ButtonLink>
             <ButtonLink
               href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
-              download={`${project}.pdf`}
+              download={outputFilenames.pdf}
               data-testid="export-pdf"
             >
               <IconDownload size={14} />
@@ -217,6 +223,7 @@ function ProjectHome() {
           <IconChevronRight className="shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" />
         </Link>
         <ImageImport project={project} />
+        <OutputSettings project={project} onChange={setOutputFilenames} />
         <AnnotationLinks project={project} />
         <ThemeSettings project={project} />
       </div>

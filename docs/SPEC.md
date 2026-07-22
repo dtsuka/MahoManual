@@ -44,7 +44,7 @@ CMS操作マニュアルをMarkdownで作成し、HTML/PDFで納品するツー�
 
 ```
 projects/<name>/
-├── project.yaml        # プロジェクト設定(任意): title, baseUrl
+├── project.yaml        # プロジェクト設定(任意): title, baseUrl, annotation, output
 ├── manual.md           # 本文(§5の記法)
 ├── img/                # 表示用画像(captureの出力先もここ)
 │   └── raw/            # 無加工の元スクショ(非破壊クロップの原本)
@@ -66,6 +66,9 @@ annotation:                         # 注釈テーマの上書き(任意)
     badge: { color: "#E91E8C", size: 22 }
     text: { textAlign: left, verticalAlign: top, padding: 0, borderWidth: 0 }
     frame: { strokeWidth: 2 }
+output:                             # GUIからダウンロードする納品ファイル名(任意)
+  html: "操作マニュアル.html"
+  pdf: "操作マニュアル.pdf"
 ```
 
 ## 4. データモデル(注釈JSON)

@@ -19,6 +19,7 @@ import {
   readAnnotationFile,
   readAnnotationDefaults,
   readManual,
+  readProjectOutputFilenames,
   readProjectTheme,
   renameAnnotationId,
   renumberAllBadgesFiles,
@@ -26,6 +27,7 @@ import {
   writeAnnotationDefaults,
   writeAnnotationFile,
   writeProjectTheme,
+  writeProjectOutputFilenames,
 } from "@mahomanual/core/project";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -48,6 +50,20 @@ function resolveProject(name: string): string | null {
     return null;
   }
   return root;
+}
+
+function outputFilenames(root: string, project: string) {
+  return readProjectOutputFilenames(root, {
+    html: `${project}.html`,
+    pdf: `${project}.pdf`,
+  });
+}
+
+function attachmentHeader(filename: string, fallback: string): string {
+  if (/^[\x20-\x7e]+$/.test(filename)) {
+    return `attachment; filename="${filename}"`;
+  }
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 // ローカル専用ツール: ブラウザ上の別サイトからの書き込みを防ぐため
@@ -92,9 +108,10 @@ export function createApp() {
     }
     try {
       const html = await renderManualHtmlDownload(root);
+      const filename = outputFilenames(root, project).html;
       return c.body(html.toString("utf8"), 200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${project}.html"`,
+        "Content-Disposition": attachmentHeader(filename, `${project}.html`),
         "Cache-Control": "no-store",
       });
     } catch (error) {
@@ -113,9 +130,10 @@ export function createApp() {
     }
     try {
       const pdf = await renderManualPdfDownload(root);
+      const filename = outputFilenames(root, project).pdf;
       return c.body(Uint8Array.from(pdf), 200, {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${project}.pdf"`,
+        "Content-Disposition": attachmentHeader(filename, `${project}.pdf`),
         "Cache-Control": "no-store",
       });
     } catch (error) {
@@ -123,6 +141,31 @@ export function createApp() {
         { error: error instanceof Error ? error.message : "PDF export failed" },
         500,
       );
+    }
+  });
+
+  app.get("/api/projects/:project/output", (c) => {
+    const project = c.req.param("project");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    return c.json(outputFilenames(root, project));
+  });
+
+  app.put("/api/projects/:project/output", async (c) => {
+    const root = resolveProject(c.req.param("project"));
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    const body = await c.req.json<{ html?: unknown; pdf?: unknown }>();
+    if (typeof body.html !== "string" || typeof body.pdf !== "string") {
+      return c.json({ error: "HTML/PDFファイル名を文字列で指定してください" }, 400);
+    }
+    try {
+      return c.json(writeProjectOutputFilenames(root, { html: body.html, pdf: body.pdf }));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "output update failed" }, 400);
     }
   });
 

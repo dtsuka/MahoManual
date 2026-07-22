@@ -276,10 +276,10 @@ Markdownテキストを正本として維持したまま、CodeMirror 6のDecora
 
 ## Phase 11 — 納品ファイル名設定
 
-- [ ] test: `project.yaml` の出力ファイル名を読み書きし、不正なパス・拡張子を拒否する
-- [ ] test: Hono APIが設定を更新し、HTML/PDFのContent-Dispositionへ反映する
-- [ ] test(e2e): プロジェクト画面でHTML/PDFファイル名を保存し、出力ボタンへ反映する
-- [ ] 実装: `output.html` / `output.pdf` をcoreで管理し、Hono APIとGUI設定カードを追加する
+- [x] test: `project.yaml` の出力ファイル名を読み書きし、不正なパス・拡張子を拒否する
+- [x] test: Hono APIが設定を更新し、HTML/PDFのContent-Dispositionへ反映する
+- [x] test(e2e): プロジェクト画面でHTML/PDFファイル名を保存し、出力ボタンへ反映する
+- [x] 実装: `output.html` / `output.pdf` をcoreで管理し、Hono APIとGUI設定カードを追加する
 
 **受け入れ基準**: プロジェクトごとに安全なHTML/PDF納品ファイル名を設定でき、GUIのダウンロードに反映される。
 

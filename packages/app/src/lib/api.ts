@@ -16,6 +16,11 @@ export interface ManualContents {
   captures: string[];
 }
 
+export interface ProjectOutputFilenames {
+  html: string;
+  pdf: string;
+}
+
 export interface AnnotationResponse {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
@@ -52,6 +57,21 @@ export function saveManual(project: string, body: string): Promise<{ ok: boolean
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ body }),
+  });
+}
+
+export function fetchProjectOutput(project: string): Promise<ProjectOutputFilenames> {
+  return request(`/api/projects/${encodeURIComponent(project)}/output`);
+}
+
+export function saveProjectOutput(
+  project: string,
+  filenames: ProjectOutputFilenames,
+): Promise<ProjectOutputFilenames> {
+  return request(`/api/projects/${encodeURIComponent(project)}/output`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(filenames),
   });
 }
 

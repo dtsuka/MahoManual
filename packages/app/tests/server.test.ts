@@ -17,7 +17,7 @@ function setupTestProject() {
     "# Test Manual\n\n## Section\n\n```annotated-image\nsrc: test-1\n```\n",
     "utf8",
   );
-  const exampleImage = join(repoRoot, "projects/example/img/raw/1-1.png");
+  const exampleImage = join(repoRoot, "packages/core/tests/fixtures/projects/demo/img/demo.png");
   copyFileSync(exampleImage, join(testProjectRoot, "img/raw/test-1.png"));
   copyFileSync(exampleImage, join(testProjectRoot, "img/test-1.png"));
   writeFileSync(
@@ -56,7 +56,6 @@ describe("Hono API", () => {
     const response = await app.request("/api/projects");
     expect(response.status).toBe(200);
     const projects = (await response.json()) as Array<{ name: string }>;
-    expect(projects.some((project) => project.name === "example")).toBe(true);
     expect(projects.some((project) => project.name === testProject)).toBe(true);
   });
 
@@ -124,16 +123,21 @@ describe("Hono API", () => {
   });
 
   it("uses configured filenames in HTML/PDF download headers", async () => {
-    writeFileSync(
-      join(testProjectRoot, "project.yaml"),
-      'title: t\noutput:\n  html: "delivery.html"\n  pdf: "delivery.pdf"\n',
-      "utf8",
-    );
-    const htmlResponse = await app.request(`/api/projects/${testProject}/export.html`);
-    expect(htmlResponse.headers.get("content-disposition")).toContain('filename="delivery.html"');
+    const before = readFileSync(join(testProjectRoot, "project.yaml"), "utf8");
+    try {
+      writeFileSync(
+        join(testProjectRoot, "project.yaml"),
+        'title: t\noutput:\n  html: "delivery.html"\n  pdf: "delivery.pdf"\n',
+        "utf8",
+      );
+      const htmlResponse = await app.request(`/api/projects/${testProject}/export.html`);
+      expect(htmlResponse.headers.get("content-disposition")).toContain('filename="delivery.html"');
 
-    const pdfResponse = await app.request(`/api/projects/${testProject}/export.pdf`);
-    expect(pdfResponse.headers.get("content-disposition")).toContain('filename="delivery.pdf"');
+      const pdfResponse = await app.request(`/api/projects/${testProject}/export.pdf`);
+      expect(pdfResponse.headers.get("content-disposition")).toContain('filename="delivery.pdf"');
+    } finally {
+      writeFileSync(join(testProjectRoot, "project.yaml"), before, "utf8");
+    }
   }, 10_000);
 
   it(

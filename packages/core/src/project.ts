@@ -46,6 +46,11 @@ export interface ManualContents {
   captures: string[];
 }
 
+export interface ProjectOutputFilenames {
+  html: string;
+  pdf: string;
+}
+
 function annotationPath(projectRoot: string, id: string): string {
   return join(projectRoot, "annotations", `${id}.json`);
 }
@@ -86,6 +91,61 @@ export function readProjectYaml(projectRoot: string): Record<string, unknown> {
     return {};
   }
   return (parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>) ?? {};
+}
+
+function isValidOutputFilename(value: unknown, extension: ".html" | ".pdf"): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > extension.length &&
+    value.length <= 255 &&
+    value.toLowerCase().endsWith(extension) &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !value.includes("..") &&
+    !/[\u0000-\u001f\u007f";]/.test(value)
+  );
+}
+
+function validateOutputFilenames(filenames: ProjectOutputFilenames): ProjectOutputFilenames {
+  if (!isValidOutputFilename(filenames.html, ".html")) {
+    throw new Error("HTMLファイル名はパスを含まない.html形式で指定してください");
+  }
+  if (!isValidOutputFilename(filenames.pdf, ".pdf")) {
+    throw new Error("PDFファイル名はパスを含まない.pdf形式で指定してください");
+  }
+  return filenames;
+}
+
+export function readProjectOutputFilenames(
+  projectRoot: string,
+  defaults: ProjectOutputFilenames,
+): ProjectOutputFilenames {
+  const yaml = readProjectYaml(projectRoot);
+  const output = yaml.output;
+  if (!output || typeof output !== "object") {
+    return defaults;
+  }
+  const { html, pdf } = output as { html?: unknown; pdf?: unknown };
+  return {
+    html: isValidOutputFilename(html, ".html") ? html : defaults.html,
+    pdf: isValidOutputFilename(pdf, ".pdf") ? pdf : defaults.pdf,
+  };
+}
+
+export function writeProjectOutputFilenames(
+  projectRoot: string,
+  filenames: ProjectOutputFilenames,
+): ProjectOutputFilenames {
+  const validated = validateOutputFilenames(filenames);
+  const path = join(projectRoot, "project.yaml");
+  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
+  if (!(doc.get("output", true) instanceof YAMLMap)) {
+    doc.set("output", doc.createNode({}));
+  }
+  doc.setIn(["output", "html"], validated.html);
+  doc.setIn(["output", "pdf"], validated.pdf);
+  writeFileSync(path, doc.toString(), "utf8");
+  return readProjectOutputFilenames(projectRoot, validated);
 }
 
 // project.yaml の annotation セクション(テーマ設定)を読む。

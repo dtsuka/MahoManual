@@ -13,6 +13,7 @@ import {
 } from "@mahomanual/core/theme";
 import {
   fetchManual,
+  fetchProjectOutput,
   fetchPreview,
   pasteImage,
   renumberAllAnnotations,
@@ -65,6 +66,10 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const [insertBusy, setInsertBusy] = useState(false);
   const [showImagePanel, setShowImagePanel] = useState(false);
   const [livePreviewEnabled, setLivePreviewEnabled] = useState(false);
+  const [outputFilenames, setOutputFilenames] = useState({
+    html: `${project}.html`,
+    pdf: `${project}.pdf`,
+  });
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -138,6 +143,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
   };
 
   useEffect(() => {
+    void fetchProjectOutput(project).then(setOutputFilenames);
     void fetchManual(project).then((manual) => {
       markdownRef.current = manual.body;
       setMarkdownText(manual.body);
@@ -361,7 +367,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
           <ButtonLink
             size="sm"
             href={`/api/projects/${encodeURIComponent(project)}/export.html`}
-            download={`${project}.html`}
+            download={outputFilenames.html}
             data-testid="export-html"
           >
             <IconDownload size={14} />
@@ -370,7 +376,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
           <ButtonLink
             size="sm"
             href={`/api/projects/${encodeURIComponent(project)}/export.pdf`}
-            download={`${project}.pdf`}
+            download={outputFilenames.pdf}
             data-testid="export-pdf"
           >
             <IconDownload size={14} />
