@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   createManualProject,
   readAnnotationFile,
+  readProjectOutputFilenames,
   readProjectTheme,
   renumberAllBadgesFiles,
   renumberBadges,
   writeProjectTheme,
+  writeProjectOutputFilenames,
 } from "./project.js";
 
 describe("createManualProject", () => {
@@ -74,6 +76,62 @@ describe("readProjectTheme", () => {
       expect(readProjectTheme(root)).toEqual({});
       rmSync(join(root, "project.yaml"));
       expect(readProjectTheme(root)).toEqual({});
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("project output filenames", () => {
+  it("reads configured HTML/PDF filenames and falls back to the supplied defaults", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-output-read-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        'title: t\noutput:\n  html: "納品マニュアル.html"\n  pdf: "納品マニュアル.pdf"\n',
+        "utf8",
+      );
+      expect(
+        readProjectOutputFilenames(root, { html: "project.html", pdf: "project.pdf" }),
+      ).toEqual({ html: "納品マニュアル.html", pdf: "納品マニュアル.pdf" });
+
+      writeFileSync(join(root, "project.yaml"), "title: t\n", "utf8");
+      expect(
+        readProjectOutputFilenames(root, { html: "project.html", pdf: "project.pdf" }),
+      ).toEqual({ html: "project.html", pdf: "project.pdf" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("writes filenames while preserving unrelated YAML and rejects unsafe names", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-output-write-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        '# 手書きコメント\ntitle: 元のタイトル\nbaseUrl: "https://example.com"\n',
+        "utf8",
+      );
+      expect(
+        writeProjectOutputFilenames(root, {
+          html: "操作マニュアル.html",
+          pdf: "操作マニュアル.pdf",
+        }),
+      ).toEqual({ html: "操作マニュアル.html", pdf: "操作マニュアル.pdf" });
+
+      const yaml = readFileSync(join(root, "project.yaml"), "utf8");
+      expect(yaml).toContain("# 手書きコメント");
+      expect(yaml).toContain("https://example.com");
+      expect(yaml).toContain("操作マニュアル.html");
+
+      for (const filenames of [
+        { html: "../manual.html", pdf: "manual.pdf" },
+        { html: "manual.txt", pdf: "manual.pdf" },
+        { html: "manual.html", pdf: "folder/manual.pdf" },
+        { html: "manual.html", pdf: "manual.txt" },
+      ]) {
+        expect(() => writeProjectOutputFilenames(root, filenames)).toThrow(/ファイル名/);
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

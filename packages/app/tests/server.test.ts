@@ -96,6 +96,46 @@ describe("Hono API", () => {
     expect(html).toContain("data:image/webp;base64,");
   });
 
+  it("GET/PUT /api/projects/:project/output manages export filenames", async () => {
+    writeFileSync(join(testProjectRoot, "project.yaml"), "title: 出力設定\n", "utf8");
+
+    const initial = await app.request(`/api/projects/${testProject}/output`);
+    expect(initial.status).toBe(200);
+    expect(await initial.json()).toEqual({
+      html: `${testProject}.html`,
+      pdf: `${testProject}.pdf`,
+    });
+
+    const updated = await app.request(`/api/projects/${testProject}/output`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html: "納品版.html", pdf: "納品版.pdf" }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toEqual({ html: "納品版.html", pdf: "納品版.pdf" });
+    expect(readFileSync(join(testProjectRoot, "project.yaml"), "utf8")).toContain("納品版.html");
+
+    const invalid = await app.request(`/api/projects/${testProject}/output`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html: "../manual.html", pdf: "manual.pdf" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
+  it("uses configured filenames in HTML/PDF download headers", async () => {
+    writeFileSync(
+      join(testProjectRoot, "project.yaml"),
+      'title: t\noutput:\n  html: "delivery.html"\n  pdf: "delivery.pdf"\n',
+      "utf8",
+    );
+    const htmlResponse = await app.request(`/api/projects/${testProject}/export.html`);
+    expect(htmlResponse.headers.get("content-disposition")).toContain('filename="delivery.html"');
+
+    const pdfResponse = await app.request(`/api/projects/${testProject}/export.pdf`);
+    expect(pdfResponse.headers.get("content-disposition")).toContain('filename="delivery.pdf"');
+  }, 10_000);
+
   it(
     "GET /api/projects/:project/export.pdf downloads a PDF",
     async () => {
