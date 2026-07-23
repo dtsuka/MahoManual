@@ -19,7 +19,7 @@ export const THEME_FONT_LINKS_HTML = `<link rel="preconnect" href="https://fonts
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">`;
 
 // 本文タイポグラフィ。納品 HTML と GUI プレビューで共有する。
-// UA 既定に近い余白を明示し、Tailwind Preflight 等で margin が消えても見た目を揃える。
+// UA 既定に近い余白・リンク色を明示し、Tailwind Preflight 等で消えても見た目を揃える。
 export const THEME_TYPOGRAPHY_CSS = `h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
 h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }
 h3 { font-size: 1.17em; font-weight: bold; margin: 1em 0; }
@@ -29,6 +29,7 @@ h6 { font-size: 0.67em; font-weight: bold; margin: 2.33em 0; }
 p, ul, ol, blockquote, pre { margin: 1em 0; }
 ul, ol { padding-left: 40px; }
 li { margin: 0.25em 0; }
+a { color: #00e; text-decoration: underline; }
 blockquote { padding-left: 1em; border-left: 4px solid #ccc; color: #444; }
 table { border-collapse: collapse; margin: 1em 0; width: 100%; }
 th, td { border: 1px solid #666; padding: 0.4em 0.75em; text-align: left; vertical-align: top; }

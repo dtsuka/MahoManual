@@ -30,10 +30,17 @@ describe("THEME_TYPOGRAPHY_CSS", () => {
     expect(THEME_PAGE_CSS).toContain(THEME_TYPOGRAPHY_CSS.trim());
   });
 
+  it("restores default link color and underline", () => {
+    expect(THEME_TYPOGRAPHY_CSS).toMatch(
+      /a\s*\{[^}]*color:\s*#00e[^}]*text-decoration:\s*underline/,
+    );
+  });
+
   it("scopes typography selectors for the preview pane", () => {
     const scoped = scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane");
     expect(scoped).toContain(".preview-pane h1");
     expect(scoped).toContain(".preview-pane th, .preview-pane td");
+    expect(scoped).toContain(".preview-pane a");
     expect(scoped).not.toMatch(/(^|\n)h1\s*\{/);
   });
 });
