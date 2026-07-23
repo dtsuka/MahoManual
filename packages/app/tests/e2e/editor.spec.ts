@@ -718,15 +718,30 @@ test("manual editor: clicking an annotated image in live preview opens its edito
 });
 
 test("annotation editor: back returns to the project page", async ({ page }) => {
-  await page.goto(`/projects/${testProject}/manual`);
-  await expect(page.locator(".cm-content")).toContainText("アイケア様");
-
-  await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
   await expect(page.getByTestId("annotation-editor")).toBeVisible();
 
   await page.getByTestId("back-to-project").click();
   await expect(page.getByRole("link", { name: "マニュアル編集" })).toBeVisible();
   await expect(page.getByRole("heading", { name: testProject })).toBeVisible();
+});
+
+test("manual editor: figure click opens annotation modal and close returns to manual", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await expect(page.locator(".cm-content")).toContainText("アイケア様");
+
+  await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
+  await expect(page.getByTestId("annotation-modal")).toBeVisible();
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await expect(page).toHaveURL(/\/manual\?annotation=1-1/);
+
+  // md-editor is still in the DOM (not remounted)
+  await expect(page.getByTestId("md-editor")).toBeAttached();
+
+  await page.getByTestId("annotation-modal-close").click();
+  await expect(page.getByTestId("annotation-modal")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/manual$/);
+  await expect(page.locator(".cm-content")).toContainText("アイケア様");
 });
 
 test("annotation editor: frame can be selected from object list and resized via handles", async ({

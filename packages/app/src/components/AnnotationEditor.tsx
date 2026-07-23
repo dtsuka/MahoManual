@@ -159,6 +159,10 @@ interface AnnotationEditorProps {
   onBack?: () => void;
   onRenamed?: (id: string) => void;
   onNavigateToAnnotation?: (id: string) => void;
+  presentation?: "page" | "modal";
+  onClose?: () => void;
+  onSaved?: () => void;
+  hostMarkdownDirty?: boolean;
 }
 
 interface AnnotationPayload {
@@ -174,6 +178,10 @@ export function AnnotationEditor({
   onBack,
   onRenamed,
   onNavigateToAnnotation,
+  presentation = "page",
+  onClose,
+  onSaved,
+  hostMarkdownDirty,
 }: AnnotationEditorProps) {
   const {
     annotation,
@@ -334,7 +342,11 @@ export function AnnotationEditor({
       return;
     }
     if (target === "back") {
-      onBack?.();
+      if (presentation === "modal") {
+        onClose?.();
+      } else {
+        onBack?.();
+      }
       return;
     }
     onNavigateToAnnotation?.(target);
@@ -355,7 +367,11 @@ export function AnnotationEditor({
     }
     setPendingNavigation(null);
     if (target === "back") {
-      onBack?.();
+      if (presentation === "modal") {
+        onClose?.();
+      } else {
+        onBack?.();
+      }
     } else {
       onNavigateToAnnotation?.(target);
     }
@@ -396,6 +412,7 @@ export function AnnotationEditor({
       markSaved(saved.annotation);
       setStatus("保存しました");
       setTimeout(() => setStatus(""), 2000);
+      onSaved?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存に失敗しました");
     }
@@ -680,6 +697,10 @@ export function AnnotationEditor({
 
       switch (command.kind) {
         case "none":
+          if (presentation === "modal" && event.key === "Escape") {
+            event.preventDefault();
+            requestNavigation("back");
+          }
           return;
         case "save":
           event.preventDefault();
@@ -1645,14 +1666,25 @@ export function AnnotationEditor({
 
   return (
     <div
-      className="flex h-screen min-h-0 flex-col"
+      className={presentation === "modal" ? "flex h-full min-h-0 flex-col" : "flex h-screen min-h-0 flex-col"}
       data-testid={viewportReady ? "annotation-editor" : undefined}
     >
       <style>{THEME_FIGURE_CSS}</style>
       {annotationThemeCss(theme) ? <style>{annotationThemeCss(theme)}</style> : null}
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         <nav className="flex items-center gap-1" aria-label="注釈ナビゲーション">
-          <BackToProjectButton project={project} onClick={() => requestNavigation("back")} />
+          {presentation === "modal" ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid="annotation-modal-close"
+              onClick={() => requestNavigation("back")}
+            >
+              閉じる
+            </Button>
+          ) : (
+            <BackToProjectButton project={project} onClick={() => requestNavigation("back")} />
+          )}
           <Separator />
           <Button
             size="sm"
@@ -1675,7 +1707,7 @@ export function AnnotationEditor({
             <IconChevronRight size={14} />
           </Button>
         </nav>
-        <h1 className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
+        <h1 id="annotation-editor-title" className="min-w-0 truncate text-[15px] font-semibold tracking-tight">
           {project} / {annotationId}
         </h1>
         <div className="flex items-center gap-1">
@@ -1690,8 +1722,8 @@ export function AnnotationEditor({
           <Button
             size="sm"
             data-testid="rename-id-button"
-            disabled={dirty || !nextAnnotationId.trim() || nextAnnotationId.trim() === annotationId}
-            title={dirty ? "先に変更を保存してください" : "画像IDを変更"}
+            disabled={dirty || hostMarkdownDirty || !nextAnnotationId.trim() || nextAnnotationId.trim() === annotationId}
+            title={dirty ? "先に変更を保存してください" : hostMarkdownDirty ? "先にマニュアル本文を保存してください" : "画像IDを変更"}
             onClick={() => void handleRename()}
           >
             ID変更

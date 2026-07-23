@@ -285,6 +285,118 @@ Markdownテキストを正本として維持したまま、CodeMirror 6のDecora
 
 ---
 
+## Phase 12 — 注釈エディタ全画面モーダル化
+
+マニュアル編集画面から注釈付き画像をクリックしたとき、ページ遷移せず全画面モーダルで注釈エディタを開く。ManualEditorとCodeMirrorを再マウントせず、未保存Markdown・スクロール位置・ライブプレビュー状態を保持する。
+
+### 12-1. モーダル基本導線
+
+- [ ] test(e2e): 右プレビューの画像クリックで `annotation-modal` が表示される / URLが `/manual?annotation=:id` になる / `md-editor` がDOM上に残り編集内容が保たれる / モーダルを閉じるとクエリーが消え未保存内容が残る
+- [ ] 実装: `AnnotationEditorModal.tsx` 新規作成、`AnnotationEditor` に `presentation` prop追加、`ManualEditor` にクエリーパラメータとモーダル表示
+
+### 12-2. 閉じる・履歴・未保存保護
+
+- [ ] test(e2e): clean状態の閉じる / dirty状態で未保存バナー / キャンセルで維持 / 保存して閉じる / 破棄して閉じる / ブラウザ戻る・進む / `?annotation=` 付きURL直接表示
+- [ ] 実装: 既存 `requestNavigation` を再利用した閉じる処理
+
+### 12-3. プレビュー同期とID変更
+
+- [ ] test(e2e): 注釈保存後にプレビューへ反映 / ライブプレビューにも反映 / 未保存Markdownが失われない / Markdown dirty中はID変更無効 / clean時のID変更でCodeMirrorとURL更新
+- [ ] 実装: `onSaved` コールバック、`hostMarkdownDirty` によるID変更制限
+
+### 12-4. キーボード・フォーカス・回帰
+
+- [ ] test(e2e): Enter/Spaceで画像からモーダルを開ける / Tab/Shift+Tabがモーダル外へ出ない / Escの優先順位 / 閉じた後に起点へフォーカス復帰 / 前・次移動でモーダル維持 / 独立URL `/annotations/:id` は全画面 / プロジェクト画面の注釈一覧と画像取り込み直後の導線が壊れていない
+- [ ] 実装: フォーカストラップ、`inert`、キーボード起動
+
+**受け入れ基準**: マニュアル編集画面から注釈エディタをモーダルで開閉でき、未保存状態・履歴・プレビュー同期・キーボード操作が正しく動作し、既存の独立ページ表示と全e2eテストが維持される。
+
+---
+
+## Phase 12 — 注釈エディタ全画面モーダル化
+
+マニュアル編集画面から注釈付き画像をクリックしたとき、ページ遷移せず全画面モーダルで注釈エディタを開く。ManualEditorとCodeMirrorを再マウントせず、未保存Markdown・スクロール位置・ライブプレビュー状態を保持する。
+
+### 12-1. モーダル基本導線
+
+- [ ] test(e2e): 右プレビューの画像クリックで `annotation-modal` が表示される / URLが `/manual?annotation=:id` になる / `md-editor` がDOM上に残り編集内容が保たれる / モーダルを閉じるとクエリーが消え未保存内容が残る
+- [ ] 実装: `AnnotationEditorModal.tsx` 新規作成、`AnnotationEditor` に `presentation` prop追加、`ManualEditor` にクエリーパラメータとモーダル表示
+
+### 12-2. 閉じる・履歴・未保存保護
+
+- [ ] test(e2e): clean状態の閉じる / dirty状態で未保存バナー / キャンセルで維持 / 保存して閉じる / 破棄して閉じる / ブラウザ戻る・進む / `?annotation=` 付きURL直接表示
+- [ ] 実装: 既存 `requestNavigation` を再利用した閉じる処理
+
+### 12-3. プレビュー同期とID変更
+
+- [ ] test(e2e): 注釈保存後にプレビューへ反映 / ライブプレビューにも反映 / 未保存Markdownが失われない / Markdown dirty中はID変更無効 / clean時のID変更でCodeMirrorとURL更新
+- [ ] 実装: `onSaved` コールバック、`hostMarkdownDirty` によるID変更制限
+
+### 12-4. キーボード・フォーカス・回帰
+
+- [ ] test(e2e): Enter/Spaceで画像からモーダルを開ける / Tab/Shift+Tabがモーダル外へ出ない / Escの優先順位 / 閉じた後に起点へフォーカス復帰 / 前・次移動でモーダル維持 / 独立URL `/annotations/:id` は全画面 / プロジェクト画面の注釈一覧と画像取り込み直後の導線が壊れていない
+- [ ] 実装: フォーカストラップ、`inert`、キーボード起動
+
+**受け入れ基準**: マニュアル編集画面から注釈エディタをモーダルで開閉でき、未保存状態・履歴・プレビュー同期・キーボード操作が正しく動作し、既存の独立ページ表示と全e2eテストが維持される。
+
+---
+
+## Phase 12 — 注釈エディタ全画面モーダル化
+
+マニュアル編集画面から注釈付き画像をクリックしたとき、ページ遷移せず全画面モーダルで注釈エディタを開く。ManualEditorとCodeMirrorを再マウントせず、未保存Markdown・スクロール位置・ライブプレビュー状態を保持する。
+
+### 12-1. モーダル基本導線
+
+- [ ] test(e2e): 右プレビューの画像クリックで `annotation-modal` が表示される / URLが `/manual?annotation=:id` になる / `md-editor` がDOM上に残り編集内容が保たれる / モーダルを閉じるとクエリーが消え未保存内容が残る
+- [ ] 実装: `AnnotationEditorModal.tsx` 新規作成、`AnnotationEditor` に `presentation` prop追加、`ManualEditor` にクエリーパラメータとモーダル表示
+
+### 12-2. 閉じる・履歴・未保存保護
+
+- [ ] test(e2e): clean状態の閉じる / dirty状態で未保存バナー / キャンセルで維持 / 保存して閉じる / 破棄して閉じる / ブラウザ戻る・進む / `?annotation=` 付きURL直接表示
+- [ ] 実装: 既存 `requestNavigation` を再利用した閉じる処理
+
+### 12-3. プレビュー同期とID変更
+
+- [ ] test(e2e): 注釈保存後にプレビューへ反映 / ライブプレビューにも反映 / 未保存Markdownが失われない / Markdown dirty中はID変更無効 / clean時のID変更でCodeMirrorとURL更新
+- [ ] 実装: `onSaved` コールバック、`hostMarkdownDirty` によるID変更制限
+
+### 12-4. キーボード・フォーカス・回帰
+
+- [ ] test(e2e): Enter/Spaceで画像からモーダルを開ける / Tab/Shift+Tabがモーダル外へ出ない / Escの優先順位 / 閉じた後に起点へフォーカス復帰 / 前・次移動でモーダル維持 / 独立URL `/annotations/:id` は全画面 / プロジェクト画面の注釈一覧と画像取り込み直後の導線が壊れていない
+- [ ] 実装: フォーカストラップ、`inert`、キーボード起動
+
+**受け入れ基準**: マニュアル編集画面から注釈エディタをモーダルで開閉でき、未保存状態・履歴・プレビュー同期・キーボード操作が正しく動作し、既存の独立ページ表示と全e2eテストが維持される。
+
+---
+
+## Phase 12 — 注釈エディタ全画面モーダル化
+
+マニュアル編集画面から注釈付き画像をクリックしたとき、ページ遷移せず全画面モーダルで注釈エディタを開く。ManualEditorとCodeMirrorを再マウントせず、未保存Markdown・スクロール位置・ライブプレビュー状態を保持する。
+
+### 12-1. モーダル基本導線
+
+- [ ] test(e2e): 右プレビューの画像クリックで `annotation-modal` が表示される / URLが `/manual?annotation=:id` になる / `md-editor` がDOM上に残り編集内容が保たれる / モーダルを閉じるとクエリーが消え未保存内容が残る
+- [ ] 実装: `AnnotationEditorModal.tsx` 新規作成、`AnnotationEditor` に `presentation` prop追加、`ManualEditor` にクエリーパラメータとモーダル表示
+
+### 12-2. 閉じる・履歴・未保存保護
+
+- [ ] test(e2e): clean状態の閉じる / dirty状態で未保存バナー / キャンセルで維持 / 保存して閉じる / 破棄して閉じる / ブラウザ戻る・進む / `?annotation=` 付きURL直接表示
+- [ ] 実装: 既存 `requestNavigation` を再利用した閉じる処理
+
+### 12-3. プレビュー同期とID変更
+
+- [ ] test(e2e): 注釈保存後にプレビューへ反映 / ライブプレビューにも反映 / 未保存Markdownが失われない / Markdown dirty中はID変更無効 / clean時のID変更でCodeMirrorとURL更新
+- [ ] 実装: `onSaved` コールバック、`hostMarkdownDirty` によるID変更制限
+
+### 12-4. キーボード・フォーカス・回帰
+
+- [ ] test(e2e): Enter/Spaceで画像からモーダルを開ける / Tab/Shift+Tabがモーダル外へ出ない / Escの優先順位 / 閉じた後に起点へフォーカス復帰 / 前・次移動でモーダル維持 / 独立URL `/annotations/:id` は全画面 / プロジェクト画面の注釈一覧と画像取り込み直後の導線が壊れていない
+- [ ] 実装: フォーカストラップ、`inert`、キーボード起動
+
+**受け入れ基準**: マニュアル編集画面から注釈エディタをモーダルで開閉でき、未保存状態・履歴・プレビュー同期・キーボード操作が正しく動作し、既存の独立ページ表示と全e2eテストが維持される。
+
+---
+
 ## 実装時の注意
 
 - ロジックはすべて `packages/core` に置く。cli / mcp / app は薄いラッパー(SPEC §2)

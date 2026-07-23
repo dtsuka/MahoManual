@@ -2,8 +2,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { minimalSetup } from "codemirror";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   annotationThemeCss,
   scopeCss,
@@ -31,6 +31,8 @@ import {
   livePreview,
 } from "../lib/live-preview.js";
 import { BackToProjectButton } from "./BackToProjectButton.js";
+import { AnnotationEditor } from "./AnnotationEditor.js";
+import { AnnotationEditorModal } from "./AnnotationEditorModal.js";
 import {
   IconDownload,
   IconImage,
@@ -53,6 +55,9 @@ interface ManualEditorProps {
 
 export function ManualEditor({ project }: ManualEditorProps) {
   const [markdownText, setMarkdownText] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const modalAnnotationId = searchParams.get("annotation");
+  const modalOpen = modalAnnotationId !== null && modalAnnotationId !== "";
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewTheme, setPreviewTheme] = useState<AnnotationTheme>({});
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -73,6 +78,8 @@ export function ManualEditor({ project }: ManualEditorProps) {
   // 未保存編集中に外部(AI/CLI)からの変更を検知したとき、上書きせず退避して確認を挟む
   const [externalBody, setExternalBody] = useState<string | null>(null);
   const navigate = useNavigate();
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const modalTriggerRef = useRef<HTMLElement | null>(null);
   const editorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -83,6 +90,25 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const livePreviewCompartmentRef = useRef(new Compartment());
+
+  const openAnnotationModal = useCallback((annotationId: string, trigger?: HTMLElement | null) => {
+    modalTriggerRef.current = trigger ?? (document.activeElement as HTMLElement | null);
+    setSearchParams({ annotation: annotationId });
+  }, [setSearchParams]);
+
+  const closeAnnotationModal = useCallback(() => {
+    setSearchParams({});
+    requestAnimationFrame(() => {
+      modalTriggerRef.current?.focus();
+    });
+  }, [setSearchParams]);
+
+  const handleAnnotationSaved = useCallback(() => {
+    const currentMarkdown = markdownRef.current;
+    if (currentMarkdown !== null) {
+      schedulePreview(currentMarkdown, true);
+    }
+  }, []);
 
   const refreshAnnotations = async () => {
     const manual = await fetchManual(project);
@@ -190,6 +216,16 @@ export function ManualEditor({ project }: ManualEditorProps) {
   }, [project, markdownText === null]);
 
   useEffect(() => {
+    const el = mainContentRef.current;
+    if (!el) return;
+    if (modalOpen) {
+      el.setAttribute("inert", "");
+    } else {
+      el.removeAttribute("inert");
+    }
+  }, [modalOpen]);
+
+  useEffect(() => {
     const view = viewRef.current;
     if (!view) {
       return;
@@ -198,14 +234,14 @@ export function ManualEditor({ project }: ManualEditorProps) {
       ? livePreview({
           figures: extractAnnotatedFigures(previewHtml),
           onOpenAnnotation: (annotationId) => {
-            navigate(`/projects/${project}/annotations/${encodeURIComponent(annotationId)}`);
+            openAnnotationModal(annotationId);
           },
         })
       : [];
     view.dispatch({
       effects: livePreviewCompartmentRef.current.reconfigure(extension),
     });
-  }, [livePreviewEnabled, previewHtml, project, navigate]);
+  }, [livePreviewEnabled, previewHtml, project, openAnnotationModal]);
 
   useEffect(() => {
     return subscribeProjectWatch(project, (event) => {
@@ -236,13 +272,11 @@ export function ManualEditor({ project }: ManualEditorProps) {
       if (!figure?.dataset.mmAnnotation) {
         return;
       }
-      // ルート遷移にすることで、戻ったときに ManualEditor が再マウントされ
-      // CodeMirror が正しく再生成される(条件付き return での差し替えは不可)
-      navigate(`/projects/${project}/annotations/${encodeURIComponent(figure.dataset.mmAnnotation)}`);
+      openAnnotationModal(figure.dataset.mmAnnotation, figure);
     };
     container.addEventListener("click", handler);
     return () => container.removeEventListener("click", handler);
-  }, [previewHtml, project, navigate]);
+  }, [previewHtml, project, openAnnotationModal]);
 
   const handleSave = async () => {
     const value = markdownRef.current;
@@ -321,7 +355,8 @@ export function ManualEditor({ project }: ManualEditorProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <>
+    <div ref={mainContentRef} className="flex h-screen flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
         <BackToProjectButton project={project} />
         <div className="flex min-w-0 items-baseline gap-1.5">
@@ -501,5 +536,33 @@ export function ManualEditor({ project }: ManualEditorProps) {
         </section>
       </div>
     </div>
+    {modalOpen ? (
+      <AnnotationEditorModal
+        open={modalOpen}
+        onClose={closeAnnotationModal}
+        labelledBy="annotation-editor-title"
+      >
+        <AnnotationEditor
+          project={project}
+          annotationId={modalAnnotationId!}
+          presentation="modal"
+          onClose={closeAnnotationModal}
+          onSaved={handleAnnotationSaved}
+          onNavigateToAnnotation={(nextId) => {
+            setSearchParams({ annotation: nextId }, { replace: true });
+          }}
+          onRenamed={(nextId) => {
+            setSearchParams({ annotation: nextId }, { replace: true });
+            void fetchManual(project).then((manual) => {
+              if (!dirtyRef.current) {
+                applyExternal(manual.body);
+              }
+            });
+          }}
+          hostMarkdownDirty={dirty}
+        />
+      </AnnotationEditorModal>
+    ) : null}
+    </>
   );
 }
