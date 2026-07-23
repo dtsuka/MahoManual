@@ -246,7 +246,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
     });
   }, [applyExternal, project]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     const value = markdownRef.current;
     if (value === null) {
       return;
@@ -255,7 +255,23 @@ export function ManualEditor({ project }: ManualEditorProps) {
     markDirty(false);
     setStatus("manual.md を保存しました");
     setTimeout(() => setStatus(""), 2000);
-  };
+  }, [project]);
+
+  // 注釈モーダル表示中は注釈エディタ側の ⌘S に任せる
+  useEffect(() => {
+    if (modalAnnotationId) {
+      return;
+    }
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") {
+        return;
+      }
+      event.preventDefault();
+      void handleSave();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleSave, modalAnnotationId]);
 
   const handleRenumber = async () => {
     const result = await renumberAllAnnotations(project);
@@ -386,7 +402,14 @@ export function ManualEditor({ project }: ManualEditorProps) {
             PDF出力
           </ButtonLink>
           <Separator />
-          <Button size="sm" variant="primary" className="px-4" data-testid="save-manual" onClick={() => void handleSave()}>
+          <Button
+            size="sm"
+            variant="primary"
+            className="px-4"
+            title="⌘S"
+            data-testid="save-manual"
+            onClick={() => void handleSave()}
+          >
             保存
           </Button>
         </div>

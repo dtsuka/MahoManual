@@ -1453,6 +1453,28 @@ test("manual editor: HTML and PDF can be downloaded", async ({ page }) => {
   expect(pdfDownload.suggestedFilename()).toBe(`${testProject}.pdf`);
 });
 
+test("manual editor: Cmd/Ctrl+S saves from the markdown editor", async ({ page }) => {
+  const manualPath = join(process.cwd(), "../../projects/example/manual.md");
+  const before = readFileSync(manualPath, "utf8");
+  const marker = `<!-- e2e-manual-save-${Date.now()} -->`;
+
+  try {
+    await page.goto(`/projects/${testProject}/manual`);
+    await page.locator(".cm-content").click();
+    await page.keyboard.type(marker);
+
+    const saveResponsePromise = page.waitForResponse(
+      (response) => response.url().includes("/manual") && response.request().method() === "PUT",
+    );
+    await page.keyboard.press("Control+s");
+    expect((await saveResponsePromise).ok()).toBeTruthy();
+    await expect(page.getByText("manual.md を保存しました")).toBeVisible();
+    expect(readFileSync(manualPath, "utf8")).toContain(marker);
+  } finally {
+    writeFileSync(manualPath, before, "utf8");
+  }
+});
+
 test("manual editor: insert TOC marker at cursor", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await page.locator(".cm-content").click();
