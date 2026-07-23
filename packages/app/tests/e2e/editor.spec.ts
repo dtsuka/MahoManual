@@ -1453,6 +1453,25 @@ test("manual editor: HTML and PDF can be downloaded", async ({ page }) => {
   expect(pdfDownload.suggestedFilename()).toBe(`${testProject}.pdf`);
 });
 
+test("manual editor: status notifications do not resize the editor panes", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/manual`);
+  await expect(page.getByTestId("md-editor")).toBeVisible();
+
+  const editor = page.getByTestId("md-editor");
+  const before = await editor.boundingBox();
+  if (!before) {
+    throw new Error("md-editor has no bounding box");
+  }
+  await page.getByTestId("save-manual").click();
+  await expect(page.getByText("manual.md を保存しました")).toBeVisible();
+  const during = await editor.boundingBox();
+  if (!during) {
+    throw new Error("md-editor has no bounding box after status");
+  }
+  expect(Math.abs(during.height - before.height)).toBeLessThan(1);
+  expect(Math.abs(during.y - before.y)).toBeLessThan(1);
+});
+
 test("manual editor: Cmd/Ctrl+S saves from the markdown editor", async ({ page }) => {
   const manualPath = join(process.cwd(), "../../projects/example/manual.md");
   const before = readFileSync(manualPath, "utf8");

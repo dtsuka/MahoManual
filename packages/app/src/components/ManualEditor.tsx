@@ -414,9 +414,6 @@ export function ManualEditor({ project }: ManualEditorProps) {
           </Button>
         </div>
       </header>
-      {status ? <Banner kind="success">{status}</Banner> : null}
-      {warning ? <Banner kind="warning">{warning}</Banner> : null}
-      {previewError ? <Banner kind="danger">プレビューエラー: {previewError}</Banner> : null}
       {showImagePanel ? (
         <div
           className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2"
@@ -487,44 +484,65 @@ export function ManualEditor({ project }: ManualEditorProps) {
           ) : null}
         </div>
       ) : null}
-      {externalBody !== null ? (
-        <Banner kind="warning" testId="external-change-banner">
-          <span className="min-w-0 flex-1">
-            外部で manual.md が変更されました。読み込むと未保存の編集は失われます。
-          </span>
-          <Button size="sm" onClick={() => applyExternal(externalBody)}>
-            外部の内容を読み込む
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setExternalBody(null)}>
-            無視する
-          </Button>
-        </Banner>
-      ) : null}
-      <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-slate-200">
-        <section className="flex min-h-0 flex-col">
-          <div className="flex h-7 shrink-0 items-center border-b border-slate-100 bg-white px-4 text-[11px] font-medium text-slate-500">
-            Markdown
-          </div>
-          <div
-            ref={editorHostRef}
-            className="min-h-0 flex-1 overflow-hidden"
-            data-testid="md-editor"
-            data-live-preview={livePreviewEnabled}
-          />
-        </section>
-        <section className="flex min-h-0 flex-col bg-slate-100">
-          <div className="flex h-7 shrink-0 items-center border-b border-slate-200/70 bg-slate-100 px-4 text-[11px] font-medium text-slate-500">
-            プレビュー
-          </div>
-          <div className="preview-pane min-h-0 flex-1 overflow-auto p-6" data-testid="preview-pane">
-            <style>{scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane")}</style>
-            <style>{THEME_FIGURE_CSS}</style>
-            {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
-            <div className="mx-auto max-w-[860px] rounded-sm bg-white px-10 py-10 shadow-sm ring-1 ring-slate-900/5">
-              <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-40 flex flex-col">
+          {status ? (
+            <div className="pointer-events-auto">
+              <Banner kind="success">{status}</Banner>
             </div>
-          </div>
-        </section>
+          ) : null}
+          {warning ? (
+            <div className="pointer-events-auto">
+              <Banner kind="warning">{warning}</Banner>
+            </div>
+          ) : null}
+          {previewError ? (
+            <div className="pointer-events-auto">
+              <Banner kind="danger">プレビューエラー: {previewError}</Banner>
+            </div>
+          ) : null}
+          {externalBody !== null ? (
+            <div className="pointer-events-auto">
+              <Banner kind="warning" testId="external-change-banner">
+                <span className="min-w-0 flex-1">
+                  外部で manual.md が変更されました。読み込むと未保存の編集は失われます。
+                </span>
+                <Button size="sm" onClick={() => applyExternal(externalBody)}>
+                  外部の内容を読み込む
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setExternalBody(null)}>
+                  無視する
+                </Button>
+              </Banner>
+            </div>
+          ) : null}
+        </div>
+        <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-slate-200">
+          <section className="flex min-h-0 flex-col">
+            <div className="flex h-7 shrink-0 items-center border-b border-slate-100 bg-white px-4 text-[11px] font-medium text-slate-500">
+              Markdown
+            </div>
+            <div
+              ref={editorHostRef}
+              className="min-h-0 flex-1 overflow-hidden"
+              data-testid="md-editor"
+              data-live-preview={livePreviewEnabled}
+            />
+          </section>
+          <section className="flex min-h-0 flex-col bg-slate-100">
+            <div className="flex h-7 shrink-0 items-center border-b border-slate-200/70 bg-slate-100 px-4 text-[11px] font-medium text-slate-500">
+              プレビュー
+            </div>
+            <div className="preview-pane min-h-0 flex-1 overflow-auto p-6" data-testid="preview-pane">
+              <style>{scopeCss(THEME_TYPOGRAPHY_CSS, ".preview-pane")}</style>
+              <style>{THEME_FIGURE_CSS}</style>
+              {annotationThemeCss(previewTheme) ? <style>{annotationThemeCss(previewTheme)}</style> : null}
+              <div className="mx-auto max-w-[860px] rounded-sm bg-white px-10 py-10 shadow-sm ring-1 ring-slate-900/5">
+                <div ref={previewRef} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
     {modalAnnotationId ? (
