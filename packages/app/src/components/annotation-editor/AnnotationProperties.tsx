@@ -8,6 +8,7 @@ import {
 } from "@mahomanual/core/annotation-objects";
 import type { AnnotationTheme } from "@mahomanual/core/theme";
 import { clampCrop } from "../../lib/annotation-operations.js";
+import { applyLinePointRemoval } from "../../lib/line-point-selection.js";
 import { Button, Kbd } from "../ui.js";
 import { BadgeProperties } from "./properties/BadgeProperties.js";
 import { CursorProperties } from "./properties/CursorProperties.js";
@@ -23,8 +24,8 @@ interface AnnotationPropertiesProps {
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
   theme: AnnotationTheme;
-  selectedPointIndex: number | null;
-  setSelectedPointIndex: (index: number | null) => void;
+  selectedPointIndices: number[];
+  setSelectedPointIndices: (indices: number[]) => void;
   updateObject: UpdateObject;
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
@@ -41,8 +42,8 @@ function TypeProperties({
   annotation,
   naturalSizes,
   theme,
-  selectedPointIndex,
-  setSelectedPointIndex,
+  selectedPointIndices,
+  setSelectedPointIndices,
   updateObject,
   updateAt,
   updateRect,
@@ -62,8 +63,8 @@ function TypeProperties({
   annotation: AnnotationFile;
   naturalSizes: Record<string, { w: number; h: number }>;
   theme: AnnotationTheme;
-  selectedPointIndex: number | null;
-  setSelectedPointIndex: (index: number | null) => void;
+  selectedPointIndices: number[];
+  setSelectedPointIndices: (indices: number[]) => void;
   updateObject: UpdateObject;
   updateAt: (axis: "x" | "y", value: number) => void;
   updateRect: (key: RectKey, value: number) => void;
@@ -148,8 +149,8 @@ function TypeProperties({
           selected={selected}
           theme={theme}
           updateObject={updateObject}
-          selectedPointIndex={selectedPointIndex}
-          setSelectedPointIndex={setSelectedPointIndex}
+          selectedPointIndices={selectedPointIndices}
+          setSelectedPointIndices={setSelectedPointIndices}
           updatePointValue={updatePointValue}
           updateLineStyle={updateLineStyle}
           updateLineType={updateLineType}
@@ -170,8 +171,8 @@ export function AnnotationProperties({
   annotation,
   naturalSizes,
   theme,
-  selectedPointIndex,
-  setSelectedPointIndex,
+  selectedPointIndices,
+  setSelectedPointIndices,
   updateObject,
   onOpenReplaceImage,
   onOpenVisualCrop,
@@ -279,7 +280,7 @@ export function AnnotationProperties({
       return;
     }
     const objectId = editableSelected.id;
-    setSelectedPointIndex(editableSelected.points.length);
+    setSelectedPointIndices([editableSelected.points.length]);
     updateObject(objectId, (obj) => {
       if (!isLineObject(obj)) {
         return obj;
@@ -293,21 +294,18 @@ export function AnnotationProperties({
     if (!editableSelected || !isLineObject(editableSelected)) {
       return;
     }
-    updateObject(editableSelected.id, (obj) => {
-      if (!isLineObject(obj) || obj.points.length <= 2) {
-        return obj;
-      }
-      return { ...obj, points: obj.points.filter((_, i) => i !== index) };
-    });
-    setSelectedPointIndex(
-      selectedPointIndex === null
-        ? null
-        : selectedPointIndex === index
-          ? null
-          : selectedPointIndex > index
-            ? selectedPointIndex - 1
-            : selectedPointIndex,
+    const removed = applyLinePointRemoval(
+      editableSelected.points,
+      selectedPointIndices,
+      index,
     );
+    if (!removed) {
+      return;
+    }
+    updateObject(editableSelected.id, (obj) =>
+      isLineObject(obj) ? { ...obj, points: removed.points } : obj,
+    );
+    setSelectedPointIndices(removed.selectedIndices);
   };
 
   return (
@@ -361,8 +359,8 @@ export function AnnotationProperties({
             annotation={annotation}
             naturalSizes={naturalSizes}
             theme={theme}
-            selectedPointIndex={selectedPointIndex}
-            setSelectedPointIndex={setSelectedPointIndex}
+            selectedPointIndices={selectedPointIndices}
+            setSelectedPointIndices={setSelectedPointIndices}
             updateObject={updateObject}
             updateAt={updateAt}
             updateRect={updateRect}
@@ -382,9 +380,8 @@ export function AnnotationProperties({
       </section>
       <footer className="mt-auto border-t border-slate-100 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
         <Kbd>⌘S</Kbd> 保存 ・ <Kbd>⌘Z</Kbd> 取り消し ・ <Kbd>⌘D</Kbd> 複製 ・
-        <Kbd>⌘C</Kbd><Kbd>⌘V</Kbd> コピー/貼り付け ・ <Kbd>Delete</Kbd> 削除 ・
-        矢印キーで 0.1% 移動(
-        <Kbd>⇧</Kbd> で 1%)
+        <Kbd>⌘C</Kbd><Kbd>⌘V</Kbd> コピー/貼り付け ・ <Kbd>Delete</Kbd> 削除(点選択時は点) ・
+        矢印キーで 0.1% 移動(点選択時は点、<Kbd>⇧</Kbd> で 1%)
       </footer>
     </>
   );

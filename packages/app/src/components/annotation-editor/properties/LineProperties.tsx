@@ -1,5 +1,7 @@
+import type { MouseEvent as ReactMouseEvent } from "react";
 import type { LineObject } from "@mahomanual/core/annotation-objects";
 import { DEFAULT_ANNOTATION_COLOR } from "@mahomanual/core/theme";
+import { nextPointSelectionIndices } from "../../../lib/line-point-selection.js";
 import { Button, ColorInput, SelectInput, cx } from "../../ui.js";
 import { IconPlus, IconX } from "../../icons.js";
 import { NumberField } from "../helpers.js";
@@ -7,8 +9,8 @@ import type { ObjectPanelBaseProps } from "./shared.js";
 
 interface LinePropertiesProps extends ObjectPanelBaseProps {
   selected: LineObject;
-  selectedPointIndex: number | null;
-  setSelectedPointIndex: (index: number | null) => void;
+  selectedPointIndices: number[];
+  setSelectedPointIndices: (indices: number[]) => void;
   updatePointValue: (index: number, axis: "x" | "y", value: number) => void;
   updateLineStyle: (patch: { color?: string; strokeWidth?: number }) => void;
   updateLineType: (type: "line" | "arrow") => void;
@@ -20,8 +22,8 @@ interface LinePropertiesProps extends ObjectPanelBaseProps {
 export function LineProperties({
   selected,
   theme,
-  selectedPointIndex,
-  setSelectedPointIndex,
+  selectedPointIndices,
+  setSelectedPointIndices,
   updatePointValue,
   updateLineStyle,
   updateLineType,
@@ -29,6 +31,14 @@ export function LineProperties({
   addPoint,
   removePoint,
 }: LinePropertiesProps) {
+  const selectPointRow = (index: number, event: ReactMouseEvent) => {
+    setSelectedPointIndices(nextPointSelectionIndices(
+      selectedPointIndices,
+      index,
+      event.metaKey || event.ctrlKey || event.shiftKey,
+    ));
+  };
+
   return (
     <div className="space-y-3 text-sm">
       <label className="block">
@@ -82,6 +92,11 @@ export function LineProperties({
       <div>
         <div className="mb-1.5 text-xs font-medium text-slate-600">
           点({selected.points.length})
+          {selectedPointIndices.length > 1 ? (
+            <span className="ml-1 font-normal text-slate-500">
+              / {selectedPointIndices.length}選択
+            </span>
+          ) : null}
         </div>
         <ul className="mb-2 space-y-1">
           {selected.points.map((point, index) => (
@@ -90,31 +105,38 @@ export function LineProperties({
               data-testid={`point-row-${index}`}
               className={cx(
                 "flex items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150",
-                selectedPointIndex === index
+                selectedPointIndices.includes(index)
                   ? "bg-blue-100 ring-1 ring-blue-300"
                   : "hover:bg-slate-50",
               )}
-              onClick={() => setSelectedPointIndex(index)}
+              onClick={(event) => selectPointRow(index, event)}
             >
               <span className="w-3 shrink-0 text-center text-[11px] text-slate-500">{index + 1}</span>
               <NumberField
                 label="x"
                 value={point.x}
                 testId={`prop-point-${index}-x`}
-                onFocus={() => setSelectedPointIndex(index)}
+                onFocus={() => setSelectedPointIndices([index])}
                 onChange={(v) => updatePointValue(index, "x", v)}
               />
               <NumberField
                 label="y"
                 value={point.y}
-                onFocus={() => setSelectedPointIndex(index)}
+                onFocus={() => setSelectedPointIndices([index])}
                 onChange={(v) => updatePointValue(index, "y", v)}
               />
               <button
                 type="button"
                 className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors duration-150 hover:bg-slate-200 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={selected.points.length <= 2}
-                onClick={() => removePoint(index)}
+                disabled={
+                  selectedPointIndices.includes(index) && selectedPointIndices.length > 1
+                    ? selected.points.length - selectedPointIndices.length < 2
+                    : selected.points.length <= 2
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removePoint(index);
+                }}
                 title="点を削除"
                 aria-label="点を削除"
               >
@@ -129,8 +151,9 @@ export function LineProperties({
         </Button>
       </div>
       <p className="text-xs leading-relaxed text-slate-500">
-        線上を Option(Alt)+クリックで点を追加できます。点のドラッグは他の点の x/y
-        に自動吸着し、Shift 押下中は隣の点を基準に 45° 刻みでスナップします。
+        Shift / ⌘ / Ctrl+クリックで点を複数選択できます。選択点はまとめてドラッグ・矢印キー移動・Delete
+        削除できます(最低2点は残ります)。Shift+ドラッグは、単一点なら隣接点基準、複数選択なら最後に掴んだ点を基準に
+        45° 刻みスナップします。
       </p>
     </div>
   );

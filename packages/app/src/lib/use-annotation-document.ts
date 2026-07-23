@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
+import { isEditable, isLineObject } from "@mahomanual/core/annotation-objects";
 import type { AnnotationFile } from "@mahomanual/core/schema";
 import { translateObjects } from "./annotation-operations.js";
+import { translateSelectedPoints } from "./line-point-selection.js";
 
 const MAX_HISTORY = 100;
 
@@ -117,7 +119,9 @@ export function useAnnotationDocument() {
     arrowCoalesceRef.current = {};
   }, [pushPast]);
 
-  const nudgeSelection = useCallback((selectedIds: readonly string[], dx: number, dy: number) => {
+  const nudgeWithCoalesce = useCallback((
+    mutate: (latest: AnnotationFile) => AnnotationFile,
+  ) => {
     const current = annotationRef.current;
     if (!current) {
       return;
@@ -125,15 +129,42 @@ export function useAnnotationDocument() {
     if (!arrowCoalesceRef.current.start) {
       arrowCoalesceRef.current.start = structuredClone(current);
     }
-    applyTransientChange((latest) => ({
-      ...latest,
-      objects: translateObjects(latest.objects, new Set(selectedIds), dx, dy),
-    }));
+    applyTransientChange(mutate);
     if (arrowCoalesceRef.current.timer) {
       clearTimeout(arrowCoalesceRef.current.timer);
     }
     arrowCoalesceRef.current.timer = setTimeout(commitArrowCoalesce, 250);
   }, [applyTransientChange, commitArrowCoalesce]);
+
+  const nudgeSelection = useCallback((selectedIds: readonly string[], dx: number, dy: number) => {
+    nudgeWithCoalesce((latest) => ({
+      ...latest,
+      objects: translateObjects(latest.objects, new Set(selectedIds), dx, dy),
+    }));
+  }, [nudgeWithCoalesce]);
+
+  const nudgeLinePoints = useCallback((
+    objectId: string,
+    pointIndices: readonly number[],
+    dx: number,
+    dy: number,
+  ) => {
+    if (pointIndices.length === 0) {
+      return;
+    }
+    nudgeWithCoalesce((latest) => ({
+      ...latest,
+      objects: latest.objects.map((obj) => {
+        if (obj.id !== objectId || !isEditable(obj) || !isLineObject(obj)) {
+          return obj;
+        }
+        return {
+          ...obj,
+          points: translateSelectedPoints(obj.points, pointIndices, dx, dy),
+        };
+      }),
+    }));
+  }, [nudgeWithCoalesce]);
 
   const restoreHistoryAnnotation = useCallback((next: AnnotationFile) => {
     annotationRef.current = next;
@@ -199,6 +230,7 @@ export function useAnnotationDocument() {
     commitTransientChange,
     commitArrowCoalesce,
     nudgeSelection,
+    nudgeLinePoints,
     undo,
     redo,
     replaceDocument,

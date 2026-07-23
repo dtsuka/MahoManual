@@ -100,6 +100,7 @@ export function AnnotationEditor({
     applyTransientChange,
     commitTransientChange,
     nudgeSelection,
+    nudgeLinePoints,
     undo: undoDocument,
     redo: redoDocument,
     replaceDocument,
@@ -349,10 +350,13 @@ export function AnnotationEditor({
     annotationRef,
     applyLocalChange,
     nudgeSelection,
+    nudgeLinePoints,
     activeTool,
     selectedIds,
     setSelectedIds,
     selectedId,
+    selectedPointIndices: canvasInteraction.selectedPointIndices,
+    setSelectedPointIndices: canvasInteraction.setSelectedPointIndices,
     copiedIdsRef,
     copiedStyleRef,
     presentation,
@@ -748,7 +752,7 @@ export function AnnotationEditor({
                 activeTool={activeTool}
                 activeFrameRect={activeFrameRect}
                 activeLinePoints={activeLinePoints}
-                selectedPointIndex={canvasInteraction.selectedPointIndex}
+                selectedPointIndices={canvasInteraction.selectedPointIndices}
                 previewPoint={previewPoint}
                 rectDraft={canvasInteraction.rectDraft}
                 previewLinePoints={previewLinePoints}
@@ -829,8 +833,8 @@ export function AnnotationEditor({
               annotation={annotation}
               naturalSizes={naturalSizes}
               theme={theme}
-              selectedPointIndex={canvasInteraction.selectedPointIndex}
-              setSelectedPointIndex={canvasInteraction.setSelectedPointIndex}
+              selectedPointIndices={canvasInteraction.selectedPointIndices}
+              setSelectedPointIndices={canvasInteraction.setSelectedPointIndices}
               updateObject={updateObject}
               onOpenReplaceImage={() => setImagePickerMode("replace")}
               onOpenVisualCrop={selected?.type === "image" && isEditable(selected)

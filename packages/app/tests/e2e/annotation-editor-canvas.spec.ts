@@ -712,6 +712,23 @@ test("annotation editor: line can be selected by clicking near the stroke", asyn
   await expect(page.getByTestId("object-item-a1")).toHaveClass(/border-blue-400/);
 });
 
+test("annotation editor: line stays selected when clicking an unselected endpoint", async ({ page }) => {
+  await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
+  await expect(page.getByTestId("annotation-editor")).toBeVisible();
+  await expect(page.locator(".mm-editor-figure figure")).toBeVisible();
+
+  // 未選択の線の端点(ハンドル出現位置)をクリックしても選択が維持されること
+  const figure = page.locator(".mm-editor-figure figure");
+  const box = await figure.boundingBox();
+  if (!box) {
+    throw new Error("figure has no bounding box");
+  }
+  await page.mouse.click(box.x + box.width * 0.623, box.y + box.height * 0.3);
+
+  await expect(page.getByTestId("object-item-a1")).toHaveClass(/border-blue-400/);
+  await expect(page.getByTestId("point-handle-0")).toBeVisible();
+});
+
 test("annotation editor: cursor can be added, configured and saved as inline SVG", async ({
   page,
   request,

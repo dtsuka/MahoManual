@@ -9,6 +9,7 @@ const base: EditorKeyboardContext = {
   hasCopiedIds: false,
   hasCopiedStyle: false,
   hasSelectedId: true,
+  hasSelectedPoint: false,
 };
 
 describe("classifyEditorKeydown", () => {
@@ -48,6 +49,24 @@ describe("classifyEditorKeydown", () => {
       { key: "ArrowUp", code: "ArrowUp", metaKey: false, ctrlKey: false, altKey: false, shiftKey: true },
       base,
     )).toEqual({ kind: "nudge", dx: 0, dy: -1 });
+  });
+
+  it("maps Delete to delete-point when a line anchor is selected", () => {
+    expect(classifyEditorKeydown(
+      { key: "Delete", code: "Delete", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false },
+      { ...base, hasSelectedPoint: true },
+    )).toEqual({ kind: "delete-point" });
+    expect(classifyEditorKeydown(
+      { key: "Backspace", code: "Backspace", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false },
+      { ...base, hasSelectedPoint: true },
+    )).toEqual({ kind: "delete-point" });
+  });
+
+  it("maps Delete to delete when no line anchor is selected", () => {
+    expect(classifyEditorKeydown(
+      { key: "Delete", code: "Delete", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false },
+      base,
+    )).toEqual({ kind: "delete" });
   });
 
   it("returns none when there is no selection for selection-gated commands", () => {

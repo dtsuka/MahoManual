@@ -18,7 +18,6 @@ import { createObjectId } from "@mahomanual/core/annotation-ids";
 import {
   nearestSegmentIndex,
   resizeRect,
-  snapAngle,
   stickySnap,
   type PointPct,
   type RectPct,
@@ -26,7 +25,17 @@ import {
 } from "./geometry.js";
 import { objectsInRect, snapThresholdPct } from "./annotation-operations.js";
 import { stepZoom } from "./annotation-viewport.js";
-import { roundCreationPct, SNAP_THRESHOLD_PCT, SNAP_RELEASE_PCT } from "./creation-geometry.js";
+import {
+  resolveLineDraftPoint,
+  roundCreationPct,
+  SNAP_THRESHOLD_PCT,
+  SNAP_RELEASE_PCT,
+} from "./creation-geometry.js";
+import {
+  resolvePointPointerDownSelection,
+  snapDraggedLinePoint,
+  translateSelectedPoints,
+} from "./line-point-selection.js";
 import {
   classifySelectPointerGesture,
   resolveCanvasObjectElement,
@@ -103,13 +112,17 @@ export function useCanvasInteraction({
   const [marqueeDraft, setMarqueeDraft] = useState<RectPct | null>(null);
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   const [interactionObjects, setInteractionObjects] = useState<AnnotationObject[] | null>(null);
-  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+  const [selectedPointIndices, setSelectedPointIndices] = useState<number[]>([]);
   const [inlineTextEdit, setInlineTextEdit] = useState<{ id: string; value: string } | null>(null);
   const marqueeJustFinishedRef = useRef(false);
   const lastTextPointerClickRef = useRef<TextPointerClickMemory | null>(null);
+  /** 線作成中に Shift 押下/解除だけでプレビューを更新するため、直近のポインタ位置を保持する */
+  const lastPointerClientRef = useRef<{ x: number; y: number } | null>(null);
+  const selectedPointIndicesRef = useRef(selectedPointIndices);
+  selectedPointIndicesRef.current = selectedPointIndices;
 
   useEffect(() => {
-    setSelectedPointIndex(null);
+    setSelectedPointIndices([]);
   }, [selectedId]);
 
   useEffect(() => {
@@ -136,6 +149,47 @@ export function useCanvasInteraction({
       y: ((clientY - box.top) / box.height) * 100,
     };
   }, [figureRef, wrapRef]);
+
+  const resolveHoverPoint = useCallback((
+    clientX: number,
+    clientY: number,
+    shiftKey: boolean,
+  ): PointPct => {
+    const point = pctFromClient(clientX, clientY);
+    if (
+      (activeTool !== "line" && activeTool !== "arrow")
+      || !lineDraft
+      || lineDraft.points.length === 0
+    ) {
+      return point;
+    }
+    return resolveLineDraftPoint(point, lineDraft.points[lineDraft.points.length - 1], {
+      shiftKey,
+      round: false,
+    });
+  }, [activeTool, lineDraft, pctFromClient]);
+
+  useEffect(() => {
+    if (!lineDraft || lineDraft.points.length === 0) {
+      return;
+    }
+    const refreshHover = (event: KeyboardEvent) => {
+      if (event.key !== "Shift") {
+        return;
+      }
+      const last = lastPointerClientRef.current;
+      if (!last) {
+        return;
+      }
+      setHoverPoint(resolveHoverPoint(last.x, last.y, event.type === "keydown"));
+    };
+    window.addEventListener("keydown", refreshHover);
+    window.addEventListener("keyup", refreshHover);
+    return () => {
+      window.removeEventListener("keydown", refreshHover);
+      window.removeEventListener("keyup", refreshHover);
+    };
+  }, [lineDraft, resolveHoverPoint]);
 
   // ドラッグの共通処理: 3px 未満はクリック(moved=false)として扱う
   const startPointerDrag = useCallback((
@@ -250,15 +304,15 @@ export function useCanvasInteraction({
         finishLineDraft();
         return;
       }
-      setLineDraft((current) => current?.type === activeTool
-        ? { ...current, points: [...current.points, {
-            x: roundCreationPct(point.x),
-            y: roundCreationPct(point.y),
-          }] }
-        : { type: activeTool, points: [{
-            x: roundCreationPct(point.x),
-            y: roundCreationPct(point.y),
-          }] });
+      // Shift 中は直前の点を基準に 45° 刻みへスナップしてから確定する
+      setLineDraft((current) => {
+        const continuing = current?.type === activeTool ? current : null;
+        const previous = continuing?.points[continuing.points.length - 1];
+        const nextPoint = resolveLineDraftPoint(point, previous, { shiftKey: event.shiftKey });
+        return continuing
+          ? { ...continuing, points: [...continuing.points, nextPoint] }
+          : { type: activeTool, points: [nextPoint] };
+      });
       return;
     }
     if (activeTool !== "select") {
@@ -270,7 +324,7 @@ export function useCanvasInteraction({
     }
     const target = resolveCanvasObjectElement(event);
     if (!target) {
-      setSelectedIds([]);
+      // 空きキャンバスの選択解除は startMarqueeSelection の !moved に一本化
       return;
     }
     const id = target.dataset.mmId;
@@ -312,12 +366,13 @@ export function useCanvasInteraction({
   }, [activeTool, finishLineDraft, annotationRef, setSelectedIds, onOpenVisualCrop]);
 
   const handleCanvasPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
     const targetId = resolveCanvasObjectElement(event)?.dataset.mmId;
     const editingSelectedBadge = isEditingPlacedBadge(activeTool, targetId, selectedIds);
     if (activeTool !== "select" && event.buttons === 0 && !editingSelectedBadge) {
-      setHoverPoint(pctFromClient(event.clientX, event.clientY));
+      setHoverPoint(resolveHoverPoint(event.clientX, event.clientY, event.shiftKey));
     }
-  }, [activeTool, selectedIds, pctFromClient]);
+  }, [activeTool, selectedIds, resolveHoverPoint]);
 
   const handleCanvasWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     if (!event.metaKey && !event.ctrlKey) {
@@ -623,33 +678,56 @@ export function useCanvasInteraction({
     }
     event.preventDefault();
     event.stopPropagation();
-    setSelectedPointIndex(index);
+    // Shift/⌘/Ctrl+クリックは加算選択。Shift+ドラッグの角度スナップと両立するため、
+    // 既選択点の解除だけは「移動なしクリック」確定時に遅延する
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+    const resolved = resolvePointPointerDownSelection(
+      selectedPointIndicesRef.current,
+      index,
+      additive,
+    );
+    setSelectedPointIndices(resolved.immediateSelection);
     const objectId = selectedObject.id;
     const points0 = selectedObject.points;
+    const dragIndices = resolved.dragIndices;
+    const primary0 = points0[index]!;
     const startPct = pctFromClient(event.clientX, event.clientY);
     const grab = {
-      x: points0[index]!.x - startPct.x,
-      y: points0[index]!.y - startPct.y,
+      x: primary0.x - startPct.x,
+      y: primary0.y - startPct.y,
     };
-    const guides = points0.filter((_, i) => i !== index);
-    // Shift 中は隣接点を基準に 45° 刻み、通常時は他の点の x/y へ吸着
-    // (水平・垂直の線を揃えやすくする)。吸着はヒステリシス付き
+    const guides = points0.filter((_, i) => !dragIndices.includes(i));
+    // 単一点: Shift 中は隣接点基準の 45°、通常時は他点の x/y へ吸着
+    // 複数点: 掴んだ点(最後にクリックした点)の開始位置基準で移動方向を 45° 刻みへ。選択点へ同じ移動量を適用
     let snapState: StickySnapState = {};
-    const snap = (pointerPct: PointPct, shiftKey: boolean): PointPct => {
+    const primaryFor = (pointerPct: PointPct, shiftKey: boolean): PointPct => {
       const pct = { x: pointerPct.x + grab.x, y: pointerPct.y + grab.y };
       if (shiftKey) {
         snapState = {};
-        const anchor = points0[index - 1] ?? points0[index + 1];
-        return anchor ? snapAngle(pct, anchor) : pct;
+        return snapDraggedLinePoint(pct, {
+          shiftKey: true,
+          primaryIndex: index,
+          primaryStart: primary0,
+          points: points0,
+          dragIndices,
+        });
+      }
+      if (dragIndices.length !== 1) {
+        return pct;
       }
       const result = stickySnap(pct, guides, snapState, SNAP_THRESHOLD_PCT, SNAP_RELEASE_PCT);
       snapState = result.snapped;
       return result.point;
     };
-    const pointsFor = (pct: PointPct): PointPct[] => points0.map((point, i) => (i === index ? pct : point));
+    const pointsFor = (pointerPct: PointPct, shiftKey: boolean): PointPct[] => {
+      const primary = primaryFor(pointerPct, shiftKey);
+      const dx = primary.x - primary0.x;
+      const dy = primary.y - primary0.y;
+      return translateSelectedPoints(points0, dragIndices, dx, dy);
+    };
     startPointerDrag(event, {
       onMove: (pct, moveEvent) => {
-        const next = pointsFor(snap(pct, moveEvent.shiftKey));
+        const next = pointsFor(pct, moveEvent.shiftKey);
         setInteractionObjects(
           current.objects.map((item) =>
             item.id === objectId && isLineObject(item)
@@ -661,9 +739,12 @@ export function useCanvasInteraction({
       onEnd: (pct, moved, endEvent) => {
         setInteractionObjects(null);
         if (!moved) {
+          if (resolved.clickSelection) {
+            setSelectedPointIndices(resolved.clickSelection);
+          }
           return;
         }
-        const next = pointsFor(snap(pct, endEvent.shiftKey));
+        const next = pointsFor(pct, endEvent.shiftKey);
         applyLocalChange((latest) => ({
           ...latest,
           objects: latest.objects.map((item) =>
@@ -684,8 +765,8 @@ export function useCanvasInteraction({
     marqueeDraft,
     snapGuides,
     interactionObjects,
-    selectedPointIndex,
-    setSelectedPointIndex,
+    selectedPointIndices,
+    setSelectedPointIndices,
     inlineTextEdit,
     setInlineTextEdit,
     resetDrafts,

@@ -1,20 +1,33 @@
 import { useEffect } from "react";
 import type { MutableRefObject } from "react";
 import { applyObjectStyle, extractObjectStyle } from "@mahomanual/core/annotation-defaults";
-import { isEditable } from "@mahomanual/core/annotation-objects";
+import { isEditable, isLineObject } from "@mahomanual/core/annotation-objects";
 import type { AnnotationFile } from "@mahomanual/core/schema";
 import { classifyEditorKeydown } from "./editor-keyboard.js";
-import { duplicateObjects, removeUnlockedObjects, reorderObject } from "./annotation-operations.js";
+import { applyLinePointRemoval } from "./line-point-selection.js";
+import {
+  duplicateObjects,
+  removeUnlockedObjects,
+  reorderObject,
+} from "./annotation-operations.js";
 import type { EditorTool } from "../components/annotation-editor/editor-tool.js";
 
 interface UseAnnotationEditorCommandsOptions {
   annotationRef: MutableRefObject<AnnotationFile | null>;
   applyLocalChange: (updater: (current: AnnotationFile) => AnnotationFile) => void;
   nudgeSelection: (selectedIds: readonly string[], dx: number, dy: number) => void;
+  nudgeLinePoints: (
+    objectId: string,
+    pointIndices: readonly number[],
+    dx: number,
+    dy: number,
+  ) => void;
   activeTool: EditorTool;
   selectedIds: string[];
   setSelectedIds: (updater: string[] | ((ids: string[]) => string[])) => void;
   selectedId: string | null;
+  selectedPointIndices: number[];
+  setSelectedPointIndices: (indices: number[]) => void;
   copiedIdsRef: MutableRefObject<string[]>;
   copiedStyleRef: MutableRefObject<ReturnType<typeof extractObjectStyle> | null>;
   presentation: "page" | "modal";
@@ -41,10 +54,13 @@ export function useAnnotationEditorCommands({
   annotationRef,
   applyLocalChange,
   nudgeSelection,
+  nudgeLinePoints,
   activeTool,
   selectedIds,
   setSelectedIds,
   selectedId,
+  selectedPointIndices,
+  setSelectedPointIndices,
   copiedIdsRef,
   copiedStyleRef,
   presentation,
@@ -77,6 +93,7 @@ export function useAnnotationEditorCommands({
         hasCopiedIds: copiedIdsRef.current.length > 0,
         hasCopiedStyle: !!copiedStyleRef.current,
         hasSelectedId: !!selectedId,
+        hasSelectedPoint: selectedPointIndices.length > 0,
         allowDismiss: presentation === "modal",
       });
 
@@ -198,9 +215,40 @@ export function useAnnotationEditorCommands({
               return obj !== undefined && !isEditable(obj);
             }),
           );
+          setSelectedPointIndices([]);
           return;
+        case "delete-point": {
+          event.preventDefault();
+          if (selectedPointIndices.length === 0 || !selectedId) {
+            return;
+          }
+          const pointIndices = selectedPointIndices;
+          const objectId = selectedId;
+          const target = annotationRef.current.objects.find((obj) => obj.id === objectId);
+          if (!target || !isEditable(target) || !isLineObject(target)) {
+            return;
+          }
+          const removed = applyLinePointRemoval(target.points, pointIndices);
+          if (!removed) {
+            return;
+          }
+          applyLocalChange((current) => ({
+            ...current,
+            objects: current.objects.map((obj) =>
+              obj.id === objectId && isLineObject(obj)
+                ? { ...obj, points: removed.points }
+                : obj,
+            ),
+          }));
+          setSelectedPointIndices(removed.selectedIndices);
+          return;
+        }
         case "nudge":
           event.preventDefault();
+          if (selectedPointIndices.length > 0 && selectedId) {
+            nudgeLinePoints(selectedId, selectedPointIndices, command.dx, command.dy);
+            return;
+          }
           nudgeSelection(selectedIds, command.dx, command.dy);
           return;
         default: {
@@ -226,6 +274,7 @@ export function useAnnotationEditorCommands({
     onFinishLine,
     selectedIds,
     selectedId,
+    selectedPointIndices,
     visualCropActive,
     onCropCancel,
     onCropCommit,

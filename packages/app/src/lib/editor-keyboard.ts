@@ -19,6 +19,7 @@ export type EditorKeyboardCommand =
   | { kind: "copy" }
   | { kind: "paste" }
   | { kind: "delete" }
+  | { kind: "delete-point" }
   | { kind: "nudge"; dx: number; dy: number };
 
 export interface EditorKeyboardContext {
@@ -29,6 +30,8 @@ export interface EditorKeyboardContext {
   hasCopiedIds: boolean;
   hasCopiedStyle: boolean;
   hasSelectedId: boolean;
+  /** 罫線・矢印のアンカーポイントが選択されている */
+  hasSelectedPoint: boolean;
   /** モーダル表示時など、一時操作が無い Esc を閉じる要求として扱う */
   allowDismiss?: boolean;
 }
@@ -112,7 +115,7 @@ export function classifyEditorKeydown(
     return { kind: "paste" };
   }
   if (event.key === "Delete" || event.key === "Backspace") {
-    return { kind: "delete" };
+    return context.hasSelectedPoint ? { kind: "delete-point" } : { kind: "delete" };
   }
 
   const directions: Record<string, { dx: number; dy: number }> = {

@@ -19,7 +19,7 @@ interface AnnotationCanvasOverlaysProps {
   activeTool: EditorTool;
   activeFrameRect: RectPct | null;
   activeLinePoints: PointPct[] | null;
-  selectedPointIndex: number | null;
+  selectedPointIndices: number[];
   previewPoint: PointPct | null;
   rectDraft: { type: RectCreationTool; rect: RectPct } | null;
   previewLinePoints: PointPct[];
@@ -41,7 +41,7 @@ export function AnnotationCanvasOverlays({
   activeTool,
   activeFrameRect,
   activeLinePoints,
-  selectedPointIndex,
+  selectedPointIndices,
   previewPoint,
   rectDraft,
   previewLinePoints,
@@ -104,7 +104,7 @@ export function AnnotationCanvasOverlays({
               key={index}
               data-testid={`point-handle-${index}`}
               className={`mm-editor-handle mm-editor-handle--point ${
-                selectedPointIndex === index ? "is-active" : ""
+                selectedPointIndices.includes(index) ? "is-active" : ""
               }`}
               style={{ left: `${point.x}%`, top: `${point.y}%`, cursor: "move" }}
               onPointerDown={(event) => onBeginPointDrag(event, index)}
