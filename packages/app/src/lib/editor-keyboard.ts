@@ -9,6 +9,7 @@ export type EditorKeyboardCommand =
   | { kind: "select-all" }
   | { kind: "finish-line" }
   | { kind: "cancel-creation" }
+  | { kind: "dismiss" }
   | { kind: "undo" }
   | { kind: "redo" }
   | { kind: "copy-style" }
@@ -28,6 +29,8 @@ export interface EditorKeyboardContext {
   hasCopiedIds: boolean;
   hasCopiedStyle: boolean;
   hasSelectedId: boolean;
+  /** モーダル表示時など、一時操作が無い Esc を閉じる要求として扱う */
+  allowDismiss?: boolean;
 }
 
 /**
@@ -74,6 +77,9 @@ export function classifyEditorKeydown(
   }
   if (context.isTextInput) {
     return { kind: "none" };
+  }
+  if (context.allowDismiss && event.key === "Escape") {
+    return { kind: "dismiss" };
   }
   if (commandKey && key === "z") {
     return event.shiftKey ? { kind: "redo" } : { kind: "undo" };

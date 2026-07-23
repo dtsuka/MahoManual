@@ -160,7 +160,6 @@ interface AnnotationEditorProps {
   onRenamed?: (id: string) => void;
   onNavigateToAnnotation?: (id: string) => void;
   presentation?: "page" | "modal";
-  onClose?: () => void;
   onSaved?: () => void;
   hostMarkdownDirty?: boolean;
 }
@@ -179,7 +178,6 @@ export function AnnotationEditor({
   onRenamed,
   onNavigateToAnnotation,
   presentation = "page",
-  onClose,
   onSaved,
   hostMarkdownDirty,
 }: AnnotationEditorProps) {
@@ -342,11 +340,7 @@ export function AnnotationEditor({
       return;
     }
     if (target === "back") {
-      if (presentation === "modal") {
-        onClose?.();
-      } else {
-        onBack?.();
-      }
+      onBack?.();
       return;
     }
     onNavigateToAnnotation?.(target);
@@ -367,11 +361,7 @@ export function AnnotationEditor({
     }
     setPendingNavigation(null);
     if (target === "back") {
-      if (presentation === "modal") {
-        onClose?.();
-      } else {
-        onBack?.();
-      }
+      onBack?.();
     } else {
       onNavigateToAnnotation?.(target);
     }
@@ -693,14 +683,15 @@ export function AnnotationEditor({
         hasCopiedIds: copiedIdsRef.current.length > 0,
         hasCopiedStyle: !!copiedStyleRef.current,
         hasSelectedId: !!selectedId,
+        allowDismiss: presentation === "modal",
       });
 
       switch (command.kind) {
         case "none":
-          if (presentation === "modal" && event.key === "Escape") {
-            event.preventDefault();
-            requestNavigation("back");
-          }
+          return;
+        case "dismiss":
+          event.preventDefault();
+          requestNavigation("back");
           return;
         case "save":
           event.preventDefault();
@@ -839,7 +830,17 @@ export function AnnotationEditor({
       window.removeEventListener("keydown", handler);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [activeTool, lineDraft, selectedIds, selectedId, visualCrop.active, visualCrop.cancel, visualCrop.commit]);
+  }, [
+    activeTool,
+    lineDraft,
+    selectedIds,
+    selectedId,
+    visualCrop.active,
+    visualCrop.cancel,
+    visualCrop.commit,
+    presentation,
+    onBack,
+  ]);
 
   // ポインタ座標 → figure 内の%座標
   const pctFromClient = (clientX: number, clientY: number): PointPct => {
