@@ -31,8 +31,8 @@ import {
 } from "@mahomanual/core/project";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { imageSize } from "image-size";
 import { projectFileUrl, projectRoot, projectsDir } from "./paths.js";
+import { parseUploadedImage } from "./parse-uploaded-image.js";
 import { createWatchHandler } from "./watch.js";
 
 import type { AnnotationFile } from "@mahomanual/core";
@@ -391,17 +391,19 @@ export function createApp() {
     if (existsSync(join(root, "annotations", `${body.id}.json`))) {
       return c.json({ error: `注釈IDが既に存在します: ${body.id}` }, 409);
     }
-    const base64 = body.data.replace(/^data:image\/\w+;base64,/, "");
-    const buffer = Buffer.from(base64, "base64");
-    let width = body.width;
-    let height = body.height;
-    if (!width || !height) {
-      const size = imageSize(buffer);
-      width = size.width ?? 1280;
-      height = size.height ?? 960;
+    const parsed = parseUploadedImage(body.data, {
+      width: body.width,
+      height: body.height,
+      fallback: { width: 1280, height: 960 },
+    });
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
     }
     try {
-      const result = savePastedImage(root, body.id, buffer, { width, height });
+      const result = savePastedImage(root, body.id, parsed.buffer, {
+        width: parsed.width,
+        height: parsed.height,
+      });
       return c.json({
         id: body.id,
         imagePath: result.imagePath,
@@ -428,19 +430,19 @@ export function createApp() {
     if (!body.objectId || !isSafeName(id) || !isSafeName(body.objectId)) {
       return c.json({ error: "不正なIDです" }, 400);
     }
-    const match = body.data?.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/s);
-    if (!match) {
-      return c.json({ error: "画像データが不正です" }, 400);
-    }
-    const buffer = Buffer.from(match[2]!, "base64");
-    const detected = imageSize(buffer);
-    const width = body.width ?? detected.width;
-    const height = body.height ?? detected.height;
-    if (!width || !height) {
-      return c.json({ error: "画像サイズを取得できません" }, 400);
+    const parsed = parseUploadedImage(body.data, {
+      width: body.width,
+      height: body.height,
+      strictMime: true,
+    });
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
     }
     try {
-      const annotation = addPastedImageObject(root, id, body.objectId, buffer, { width, height });
+      const annotation = addPastedImageObject(root, id, body.objectId, parsed.buffer, {
+        width: parsed.width,
+        height: parsed.height,
+      });
       return c.json({
         annotation,
         naturalSizes: getNaturalSizes(root, collectImageSources(annotation)),
@@ -463,17 +465,15 @@ export function createApp() {
       return c.json({ error: "不正なIDです" }, 400);
     }
     const body = await c.req.json<{ data?: string; width?: number; height?: number }>();
-    const match = body.data?.match(/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/s);
-    if (!match) {
-      return c.json({ error: "画像データが不正です" }, 400);
+    const parsed = parseUploadedImage(body.data, {
+      width: body.width,
+      height: body.height,
+      strictMime: true,
+    });
+    if (!parsed.ok) {
+      return c.json({ error: parsed.error }, 400);
     }
-    const buffer = Buffer.from(match[2]!, "base64");
-    const detected = imageSize(buffer);
-    const width = body.width ?? detected.width;
-    const height = body.height ?? detected.height;
-    if (!width || !height) {
-      return c.json({ error: "画像サイズを取得できません" }, 400);
-    }
+    const { buffer, width, height } = parsed;
 
     try {
       const annotation = readAnnotationFile(root, id);
