@@ -1,15 +1,22 @@
-import type { AnnotationFile, AnnotationObject, CursorIcon } from "@mahomanual/core/schema";
-import { editableRect, hasEditableRect, isEditable, isLineObject, withEditableRect } from "@mahomanual/core/annotation-objects";
+import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
 import {
-  DEFAULT_ANNOTATION_COLOR,
-  DEFAULT_ANNOTATION_FONT_SIZE,
-  DEFAULT_CURSOR_COLOR,
-  type AnnotationTheme,
-} from "@mahomanual/core/theme";
+  editableRect,
+  hasEditableRect,
+  isEditable,
+  isLineObject,
+  withEditableRect,
+} from "@mahomanual/core/annotation-objects";
+import type { AnnotationTheme } from "@mahomanual/core/theme";
 import { clampCrop } from "../../lib/annotation-operations.js";
-import { IconImage, IconPlus, IconX } from "../icons.js";
-import { Button, ColorInput, Kbd, SelectInput, cx } from "../ui.js";
-import { NumberField } from "./helpers.js";
+import { Button, Kbd } from "../ui.js";
+import { BadgeProperties } from "./properties/BadgeProperties.js";
+import { CursorProperties } from "./properties/CursorProperties.js";
+import { FrameProperties } from "./properties/FrameProperties.js";
+import { ImageProperties } from "./properties/ImageProperties.js";
+import { LineProperties } from "./properties/LineProperties.js";
+import { MosaicProperties } from "./properties/MosaicProperties.js";
+import { TextProperties } from "./properties/TextProperties.js";
+import type { RectKey, UpdateObject } from "./properties/shared.js";
 
 interface AnnotationPropertiesProps {
   selected: AnnotationObject | null;
@@ -18,7 +25,7 @@ interface AnnotationPropertiesProps {
   theme: AnnotationTheme;
   selectedPointIndex: number | null;
   setSelectedPointIndex: (index: number | null) => void;
-  updateObject: (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => void;
+  updateObject: UpdateObject;
   onOpenReplaceImage: () => void;
   onOpenVisualCrop?: () => void;
   onResetImageSize?: () => void;
@@ -29,26 +36,133 @@ interface AnnotationPropertiesProps {
   onApplyProjectDefault?: () => void;
 }
 
-function RectPositionFields({
-  rect,
-  label,
-  onChange,
+function TypeProperties({
+  selected,
+  annotation,
+  naturalSizes,
+  theme,
+  selectedPointIndex,
+  setSelectedPointIndex,
+  updateObject,
+  updateAt,
+  updateRect,
+  updateCrop,
+  updatePointValue,
+  updateLineStyle,
+  updateLineType,
+  updateArrowHeads,
+  addPoint,
+  removePoint,
+  onOpenReplaceImage,
+  onOpenVisualCrop,
+  onResetImageSize,
+  onFitTextHeight,
 }: {
-  rect: { x: number; y: number; w: number; h: number };
-  label: string;
-  onChange: (key: "x" | "y" | "w" | "h", value: number) => void;
+  selected: AnnotationObject;
+  annotation: AnnotationFile;
+  naturalSizes: Record<string, { w: number; h: number }>;
+  theme: AnnotationTheme;
+  selectedPointIndex: number | null;
+  setSelectedPointIndex: (index: number | null) => void;
+  updateObject: UpdateObject;
+  updateAt: (axis: "x" | "y", value: number) => void;
+  updateRect: (key: RectKey, value: number) => void;
+  updateCrop: (key: RectKey, value: number) => void;
+  updatePointValue: (index: number, axis: "x" | "y", value: number) => void;
+  updateLineStyle: (patch: { color?: string; strokeWidth?: number }) => void;
+  updateLineType: (type: "line" | "arrow") => void;
+  updateArrowHeads: (arrowHeads: "start" | "end" | "both") => void;
+  addPoint: () => void;
+  removePoint: (index: number) => void;
+  onOpenReplaceImage: () => void;
+  onOpenVisualCrop?: () => void;
+  onResetImageSize?: () => void;
+  onFitTextHeight?: () => void;
 }) {
-  return (
-    <div>
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
-      <div className="grid grid-cols-2 gap-2">
-        <NumberField label="x" value={rect.x} testId="prop-rect-x" onChange={(v) => onChange("x", v)} />
-        <NumberField label="y" value={rect.y} testId="prop-rect-y" onChange={(v) => onChange("y", v)} />
-        <NumberField label="w" value={rect.w} min={0.5} testId="prop-rect-w" onChange={(v) => onChange("w", v)} />
-        <NumberField label="h" value={rect.h} min={0.5} testId="prop-rect-h" onChange={(v) => onChange("h", v)} />
-      </div>
-    </div>
-  );
+  switch (selected.type) {
+    case "badge":
+      return (
+        <BadgeProperties
+          selected={selected}
+          theme={theme}
+          updateObject={updateObject}
+          updateAt={updateAt}
+        />
+      );
+    case "text":
+      return (
+        <TextProperties
+          selected={selected}
+          theme={theme}
+          updateObject={updateObject}
+          updateRect={updateRect}
+          onFitTextHeight={onFitTextHeight}
+        />
+      );
+    case "cursor":
+      return (
+        <CursorProperties
+          selected={selected}
+          theme={theme}
+          updateObject={updateObject}
+          updateAt={updateAt}
+        />
+      );
+    case "frame":
+      return (
+        <FrameProperties
+          selected={selected}
+          theme={theme}
+          updateObject={updateObject}
+          updateRect={updateRect}
+        />
+      );
+    case "image":
+      return (
+        <ImageProperties
+          selected={selected}
+          theme={theme}
+          naturalSizes={naturalSizes}
+          updateObject={updateObject}
+          updateRect={updateRect}
+          updateCrop={updateCrop}
+          onOpenReplaceImage={onOpenReplaceImage}
+          onOpenVisualCrop={onOpenVisualCrop}
+          onResetImageSize={onResetImageSize}
+        />
+      );
+    case "mosaic":
+      return (
+        <MosaicProperties
+          selected={selected}
+          annotation={annotation}
+          theme={theme}
+          updateObject={updateObject}
+          updateRect={updateRect}
+        />
+      );
+    case "line":
+    case "arrow":
+      return (
+        <LineProperties
+          selected={selected}
+          theme={theme}
+          updateObject={updateObject}
+          selectedPointIndex={selectedPointIndex}
+          setSelectedPointIndex={setSelectedPointIndex}
+          updatePointValue={updatePointValue}
+          updateLineStyle={updateLineStyle}
+          updateLineType={updateLineType}
+          updateArrowHeads={updateArrowHeads}
+          addPoint={addPoint}
+          removePoint={removePoint}
+        />
+      );
+    default: {
+      const _exhaustive: never = selected;
+      return _exhaustive;
+    }
+  }
 }
 
 export function AnnotationProperties({
@@ -81,7 +195,7 @@ export function AnnotationProperties({
     );
   };
 
-  const updateRect = (key: "x" | "y" | "w" | "h", value: number) => {
+  const updateRect = (key: RectKey, value: number) => {
     if (!editableSelected || !hasEditableRect(editableSelected)) {
       return;
     }
@@ -94,7 +208,7 @@ export function AnnotationProperties({
     });
   };
 
-  const updateCrop = (key: "x" | "y" | "w" | "h", value: number) => {
+  const updateCrop = (key: RectKey, value: number) => {
     if (!editableSelected || editableSelected.type !== "image") {
       return;
     }
@@ -241,572 +355,29 @@ export function AnnotationProperties({
             </div>
           </div>
         ) : null}
-        {editableSelected?.type === "badge" ? (
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">番号 (n)</span>
-              <input
-                type="number"
-                min={1}
-                className="h-8 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm shadow-xs transition-colors duration-150 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={editableSelected.n}
-                onChange={(event) => {
-                  const n = Number.parseInt(event.target.value, 10);
-                  if (Number.isNaN(n) || n < 1) {
-                    return;
-                  }
-                  updateObject(editableSelected.id, (obj) => {
-                    if (obj.type !== "badge") {
-                      return obj;
-                    }
-                    return { ...obj, n };
-                  });
-                }}
-              />
-            </label>
-            <div>
-              <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-              <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                <ColorInput
-                  data-testid="prop-color"
-                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "badge" ? { ...obj, color } : obj,
-                    );
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">直径 (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.size ?? 22}
-                  step={1}
-                  min={8}
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "badge" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-            <div>
-              <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
-              <NumberField
-                label=""
-                value={editableSelected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
-                step={1}
-                min={6}
-                testId="prop-font-size"
-                onChange={(v) =>
-                  updateObject(editableSelected.id, (obj) =>
-                    obj.type === "badge" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
-                  )
-                }
-              />
-            </div>
-          </div>
-        ) : null}
-        {editableSelected?.type === "text" ? (
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">テキスト内容</span>
-              <textarea
-                className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-[13px] shadow-xs transition-colors duration-150 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                value={editableSelected.content}
-                onChange={(event) => {
-                  const content = event.target.value;
-                  updateObject(editableSelected.id, (obj) => {
-                    if (obj.type !== "text") {
-                      return obj;
-                    }
-                    return { ...obj, content };
-                  });
-                }}
-              />
-            </label>
-            <RectPositionFields
-              rect={editableRect(editableSelected)}
-              label="テキストボックス (%)"
-              onChange={updateRect}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">横位置</span>
-                <SelectInput
-                  data-testid="text-align"
-                  className="w-full"
-                  value={editableSelected.textAlign ?? "left"}
-                  onChange={(event) => {
-                    const textAlign = event.target.value as "left" | "center" | "right";
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, textAlign } : obj,
-                    );
-                  }}
-                >
-                  <option value="left">左揃え</option>
-                  <option value="center">中央揃え</option>
-                  <option value="right">右揃え</option>
-                </SelectInput>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">縦位置</span>
-                <SelectInput
-                  data-testid="vertical-align"
-                  className="w-full"
-                  value={editableSelected.verticalAlign ?? "top"}
-                  onChange={(event) => {
-                    const verticalAlign = event.target.value as "top" | "middle" | "bottom";
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, verticalAlign } : obj,
-                    );
-                  }}
-                >
-                  <option value="top">上揃え</option>
-                  <option value="middle">中央揃え</option>
-                  <option value="bottom">下揃え</option>
-                </SelectInput>
-              </label>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">内側余白 (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.padding ?? 0}
-                  min={0}
-                  step={1}
-                  testId="text-padding"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, padding: Math.max(0, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">ボーダー色</span>
-                <ColorInput
-                  data-testid="prop-border-color"
-                  value={editableSelected.borderColor ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                  onChange={(event) => {
-                    const borderColor = event.target.value;
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, borderColor } : obj,
-                    );
-                  }}
-                />
-              </label>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">ボーダー幅 (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.borderWidth ?? 0}
-                  min={0}
-                  step={1}
-                  testId="border-width"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, borderWidth: Math.max(0, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">角丸 (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.borderRadius ?? 0}
-                  min={0}
-                  step={1}
-                  testId="border-radius"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, borderRadius: Math.max(0, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-            {onFitTextHeight ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                data-testid="fit-text-height"
-                onClick={onFitTextHeight}
-              >
-                内容に合わせて高さを調整
-              </Button>
-            ) : null}
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">文字色</span>
-                <ColorInput
-                  data-testid="prop-color"
-                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, color } : obj,
-                    );
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">フォントサイズ (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.fontSize ?? theme.fontSize ?? DEFAULT_ANNOTATION_FONT_SIZE}
-                  step={1}
-                  min={6}
-                  testId="prop-font-size"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "text" ? { ...obj, fontSize: Math.max(6, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {editableSelected?.type === "cursor" ? (
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">カーソル種類</span>
-              <SelectInput
-                data-testid="cursor-icon"
-                className="w-full"
-                value={editableSelected.icon}
-                onChange={(event) => {
-                  const icon = event.target.value as CursorIcon;
-                  updateObject(editableSelected.id, (obj) =>
-                    obj.type === "cursor" ? { ...obj, icon } : obj,
-                  );
-                }}
-              >
-                <option value="pointer">通常 (Pointer)</option>
-                <option value="move">移動 (Move)</option>
-                <option value="grab">つかむ (Grab)</option>
-                <option value="text">テキスト (Text)</option>
-                <option value="crosshair">十字 (Crosshair)</option>
-              </SelectInput>
-            </label>
-            <div>
-              <span className="mb-1 block text-xs font-medium text-slate-600">位置 (%)</span>
-              <div className="grid grid-cols-2 gap-2">
-                <NumberField label="x" value={editableSelected.at.x} testId="prop-at-x" onChange={(v) => updateAt("x", v)} />
-                <NumberField label="y" value={editableSelected.at.y} testId="prop-at-y" onChange={(v) => updateAt("y", v)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                <ColorInput
-                  data-testid="prop-color"
-                  value={editableSelected.color ?? DEFAULT_CURSOR_COLOR}
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "cursor" ? { ...obj, color } : obj,
-                    );
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">サイズ (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.size ?? 28}
-                  step={1}
-                  min={8}
-                  testId="cursor-size"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "cursor" ? { ...obj, size: Math.max(8, Math.round(v)) } : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-            <p className="text-xs leading-relaxed text-slate-500">
-              SVGはHTMLへ直接埋め込まれるため、単体HTMLでも表示されます。
-            </p>
-          </div>
-        ) : null}
-        {editableSelected?.type === "frame" ? (
-          <div className="space-y-3 text-sm">
-            <RectPositionFields rect={editableSelected.rect} label="位置・サイズ (%)" onChange={updateRect} />
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">線色</span>
-                <ColorInput
-                  data-testid="prop-color"
-                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                  onChange={(event) => {
-                    const color = event.target.value;
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "frame" ? { ...obj, color } : obj,
-                    );
-                  }}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">線幅 (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.strokeWidth ?? 2}
-                  step={1}
-                  min={1}
-                  testId="prop-stroke-width"
-                  onChange={(v) =>
-                    updateObject(editableSelected.id, (obj) =>
-                      obj.type === "frame"
-                        ? { ...obj, strokeWidth: Math.max(1, Math.round(v)) }
-                        : obj,
-                    )
-                  }
-                />
-              </div>
-            </div>
-            <p className="text-xs leading-relaxed text-slate-500">ドラッグで移動、周囲のハンドルでリサイズできます。Shift+ドラッグで縦横比を維持します。</p>
-          </div>
-        ) : null}
-        {editableSelected?.type === "image" ? (
-          <div className="space-y-3 text-sm">
-            <RectPositionFields rect={editableSelected.rect} label="配置 (%)" onChange={updateRect} />
-            {onResetImageSize ? (
-              <div className="space-y-1">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  data-testid="reset-image-size"
-                  onClick={onResetImageSize}
-                >
-                  元のサイズに戻す
-                </Button>
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  クロップ範囲をキャンバス上で1px=1pxの大きさに戻します。中心位置は維持されます。リサイズ時は Shift で縦横比を維持できます。
-                </p>
-              </div>
-            ) : null}
-            {(() => {
-              const natural = naturalSizes[editableSelected.src];
-              if (!natural) {
-                return <p className="text-xs text-red-600">画像サイズを取得できません。</p>;
-              }
-              const crop = editableSelected.crop ?? { x: 0, y: 0, w: natural.w, h: natural.h };
-              return (
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-slate-600">クロップ (画像px)</span>
-                    <div className="flex items-center gap-1">
-                      {onOpenVisualCrop ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-1.5 text-[11px]"
-                          data-testid="open-visual-crop"
-                          onClick={onOpenVisualCrop}
-                        >
-                          クロップを編集
-                        </Button>
-                      ) : null}
-                      <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5 text-[11px]"
-                      onClick={() =>
-                        updateObject(editableSelected.id, (obj) =>
-                          obj.type === "image"
-                            ? { ...obj, crop: { x: 0, y: 0, w: natural.w, h: natural.h } }
-                            : obj,
-                        )
-                      }
-                    >
-                      全体に戻す
-                    </Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <NumberField label="x" value={crop.x} step={1} min={0} testId="crop-x" onChange={(v) => updateCrop("x", v)} />
-                    <NumberField label="y" value={crop.y} step={1} min={0} testId="crop-y" onChange={(v) => updateCrop("y", v)} />
-                    <NumberField label="w" value={crop.w} step={1} min={1} testId="crop-w" onChange={(v) => updateCrop("w", v)} />
-                    <NumberField label="h" value={crop.h} step={1} min={1} testId="crop-h" onChange={(v) => updateCrop("h", v)} />
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    元画像 {natural.w} × {natural.h}px
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-3 w-full"
-                    data-testid="replace-image-button"
-                    onClick={onOpenReplaceImage}
-                  >
-                    <IconImage size={14} />
-                    画像ファイルを置換
-                  </Button>
-                </div>
-              );
-            })()}
-          </div>
-        ) : null}
-        {editableSelected?.type === "mosaic" ? (
-          <div className="space-y-3 text-sm">
-            <RectPositionFields rect={editableSelected.rect} label="適用範囲 (%)" onChange={updateRect} />
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">対象画像</span>
-              <SelectInput
-                data-testid="mosaic-target"
-                className="w-full"
-                value={editableSelected.targetImageId}
-                onChange={(event) => {
-                  const targetImageId = event.target.value;
-                  updateObject(editableSelected.id, (obj) =>
-                    obj.type === "mosaic" ? { ...obj, targetImageId } : obj,
-                  );
-                }}
-              >
-                {annotation.objects.filter((obj) => obj.type === "image").map((image) => (
-                  <option key={image.id} value={image.id}>{image.id}</option>
-                ))}
-              </SelectInput>
-            </label>
-            <div>
-              <span className="mb-1 block text-xs font-medium text-slate-600">モザイクの粗さ (px)</span>
-              <NumberField
-                label=""
-                value={editableSelected.blockSize ?? 12}
-                step={1}
-                min={2}
-                testId="mosaic-block-size"
-                onChange={(value) => updateObject(editableSelected.id, (obj) =>
-                  obj.type === "mosaic" ? { ...obj, blockSize: Math.max(2, Math.round(value)) } : obj,
-                )}
-              />
-            </div>
-            <p className="text-xs leading-relaxed text-slate-500">
-              納品時に対象画像の画素へ実際に適用されます。元画像はプロジェクト内に非破壊で保持されます。
-            </p>
-          </div>
-        ) : null}
-        {editableSelected && isLineObject(editableSelected) ? (
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">線種</span>
-              <SelectInput
-                data-testid="line-type"
-                className="w-full"
-                value={editableSelected.type}
-                onChange={(event) => updateLineType(event.target.value as "line" | "arrow")}
-              >
-                <option value="line">Line（線）</option>
-                <option value="arrow">Arrow（矢印）</option>
-              </SelectInput>
-            </label>
-            {editableSelected.type === "arrow" ? (
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">矢印の向き</span>
-                <SelectInput
-                  data-testid="arrow-heads"
-                  className="w-full"
-                  value={editableSelected.arrowHeads ?? "end"}
-                  onChange={(event) => updateArrowHeads(event.target.value as "start" | "end" | "both")}
-                >
-                  <option value="end">終点</option>
-                  <option value="start">始点</option>
-                  <option value="both">両方</option>
-                </SelectInput>
-              </label>
-            ) : null}
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">色</span>
-                <ColorInput
-                  data-testid="prop-color"
-                  value={editableSelected.color ?? theme.color ?? DEFAULT_ANNOTATION_COLOR}
-                  onChange={(event) => updateLineStyle({ color: event.target.value })}
-                />
-              </label>
-              <div>
-                <span className="mb-1 block text-xs font-medium text-slate-600">太さ (px)</span>
-                <NumberField
-                  label=""
-                  value={editableSelected.strokeWidth ?? 2}
-                  step={1}
-                  min={1}
-                  testId="prop-stroke-width"
-                  onChange={(v) => updateLineStyle({ strokeWidth: Math.max(1, Math.round(v)) })}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="mb-1.5 text-xs font-medium text-slate-600">
-                点({editableSelected.points.length})
-              </div>
-              <ul className="mb-2 space-y-1">
-                {editableSelected.points.map((point, index) => (
-                  <li
-                    key={index}
-                    data-testid={`point-row-${index}`}
-                    className={cx(
-                      "flex items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150",
-                      selectedPointIndex === index
-                        ? "bg-blue-100 ring-1 ring-blue-300"
-                        : "hover:bg-slate-50",
-                    )}
-                    onClick={() => setSelectedPointIndex(index)}
-                  >
-                    <span className="w-3 shrink-0 text-center text-[11px] text-slate-500">{index + 1}</span>
-                    <NumberField
-                      label="x"
-                      value={point.x}
-                      testId={`prop-point-${index}-x`}
-                      onFocus={() => setSelectedPointIndex(index)}
-                      onChange={(v) => updatePointValue(index, "x", v)}
-                    />
-                    <NumberField
-                      label="y"
-                      value={point.y}
-                      onFocus={() => setSelectedPointIndex(index)}
-                      onChange={(v) => updatePointValue(index, "y", v)}
-                    />
-                    <button
-                      type="button"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition-colors duration-150 hover:bg-slate-200 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={editableSelected.points.length <= 2}
-                      onClick={() => removePoint(index)}
-                      title="点を削除"
-                      aria-label="点を削除"
-                    >
-                      <IconX size={11} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <Button size="sm" onClick={addPoint}>
-                <IconPlus size={12} />
-                点を追加
-              </Button>
-            </div>
-            <p className="text-xs leading-relaxed text-slate-500">
-              線上を Option(Alt)+クリックで点を追加できます。点のドラッグは他の点の x/y
-              に自動吸着し、Shift 押下中は隣の点を基準に 45° 刻みでスナップします。
-            </p>
-          </div>
+        {editableSelected ? (
+          <TypeProperties
+            selected={editableSelected}
+            annotation={annotation}
+            naturalSizes={naturalSizes}
+            theme={theme}
+            selectedPointIndex={selectedPointIndex}
+            setSelectedPointIndex={setSelectedPointIndex}
+            updateObject={updateObject}
+            updateAt={updateAt}
+            updateRect={updateRect}
+            updateCrop={updateCrop}
+            updatePointValue={updatePointValue}
+            updateLineStyle={updateLineStyle}
+            updateLineType={updateLineType}
+            updateArrowHeads={updateArrowHeads}
+            addPoint={addPoint}
+            removePoint={removePoint}
+            onOpenReplaceImage={onOpenReplaceImage}
+            onOpenVisualCrop={onOpenVisualCrop}
+            onResetImageSize={onResetImageSize}
+            onFitTextHeight={onFitTextHeight}
+          />
         ) : null}
       </section>
       <footer className="mt-auto border-t border-slate-100 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
