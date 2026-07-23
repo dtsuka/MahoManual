@@ -1,42 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
-const testProject = "example";
-const annotationId = "1-1";
+import {
+  annotationId,
+  canvasPoint,
+  clickCanvas,
+  dragCanvas,
+  testProject,
+} from "./helpers.js";
 
 // example/1-1.json を複数テストが共有するため、並列実行での汚染を防ぐ
 test.describe.configure({ mode: "serial" });
-
-async function canvasPoint(page: import("@playwright/test").Page, xPct: number, yPct: number) {
-  const figure = page.locator(".mm-editor-figure figure");
-  const box = await figure.boundingBox();
-  if (!box) {
-    throw new Error("figure has no bounding box");
-  }
-  return {
-    x: box.x + box.width * xPct / 100,
-    y: box.y + box.height * yPct / 100,
-  };
-}
-
-async function clickCanvas(page: import("@playwright/test").Page, xPct: number, yPct: number) {
-  const point = await canvasPoint(page, xPct, yPct);
-  await page.mouse.click(point.x, point.y);
-}
-
-async function dragCanvas(
-  page: import("@playwright/test").Page,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-) {
-  const start = await canvasPoint(page, from.x, from.y);
-  const end = await canvasPoint(page, to.x, to.y);
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 4 });
-  await page.mouse.up();
-}
 
 test("annotation editor: header navigation actions show text labels", async ({ page }) => {
   await page.goto(`/projects/${testProject}/annotations/${annotationId}`);
@@ -724,24 +698,6 @@ test("annotation editor: back returns to the project page", async ({ page }) => 
   await page.getByTestId("back-to-project").click();
   await expect(page.getByRole("link", { name: "マニュアル編集" })).toBeVisible();
   await expect(page.getByRole("heading", { name: testProject })).toBeVisible();
-});
-
-test("manual editor: figure click opens annotation modal and close returns to manual", async ({ page }) => {
-  await page.goto(`/projects/${testProject}/manual`);
-  await expect(page.locator(".cm-content")).toContainText("アイケア様");
-
-  await page.locator('.preview-pane figure[data-mm-annotation="1-1"]').click();
-  await expect(page.getByTestId("annotation-modal")).toBeVisible();
-  await expect(page.getByTestId("annotation-editor")).toBeVisible();
-  await expect(page).toHaveURL(/\/manual\?annotation=1-1/);
-
-  // md-editor is still in the DOM (not remounted)
-  await expect(page.getByTestId("md-editor")).toBeAttached();
-
-  await page.getByTestId("annotation-modal-close").click();
-  await expect(page.getByTestId("annotation-modal")).toHaveCount(0);
-  await expect(page).toHaveURL(/\/manual$/);
-  await expect(page.locator(".cm-content")).toContainText("アイケア様");
 });
 
 test("annotation editor: frame can be selected from object list and resized via handles", async ({

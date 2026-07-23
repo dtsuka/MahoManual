@@ -15,4 +15,17 @@ export default defineConfig({
       timeout: 60_000,
     },
   ],
+  projects: [
+    // example プロジェクトの 1-1.json を共有するため単一ワーカーで直列実行
+    {
+      name: "shared-example",
+      testMatch: /(editor|annotation-modal)\.spec\.ts/,
+      fullyParallel: false,
+      workers: 1,
+    },
+    {
+      name: "isolated",
+      testIgnore: /(editor|annotation-modal)\.spec\.ts/,
+    },
+  ],
 });

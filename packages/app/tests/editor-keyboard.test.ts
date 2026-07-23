@@ -56,4 +56,23 @@ describe("classifyEditorKeydown", () => {
       { ...base, hasSelection: false },
     )).toEqual({ kind: "none" });
   });
+
+  it("returns dismiss for Escape only when allowDismiss and no higher-priority mode", () => {
+    const escape = {
+      key: "Escape",
+      code: "Escape",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: false,
+    };
+    expect(classifyEditorKeydown(escape, { ...base, allowDismiss: true })).toEqual({ kind: "dismiss" });
+    expect(classifyEditorKeydown(escape, { ...base, allowDismiss: true, cropEditActive: true }))
+      .toEqual({ kind: "crop-cancel" });
+    expect(classifyEditorKeydown(escape, { ...base, allowDismiss: true, lineToolActive: true }))
+      .toEqual({ kind: "cancel-creation" });
+    expect(classifyEditorKeydown(escape, { ...base, allowDismiss: true, isTextInput: true }))
+      .toEqual({ kind: "none" });
+    expect(classifyEditorKeydown(escape, base)).toEqual({ kind: "none" });
+  });
 });
