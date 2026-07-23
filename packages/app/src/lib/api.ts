@@ -63,6 +63,21 @@ export function saveProjectOutput(
   });
 }
 
+export function fetchProjectTitle(project: string): Promise<{ name: string; title: string }> {
+  return request(`/api/projects/${encodeURIComponent(project)}/title`);
+}
+
+export function saveProjectTitle(
+  project: string,
+  title: string,
+): Promise<{ name: string; title: string }> {
+  return request(`/api/projects/${encodeURIComponent(project)}/title`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
 export function fetchProjectTheme(project: string): Promise<{ theme: AnnotationTheme; defaults?: AnnotationDefaults }> {
   return request(`/api/projects/${encodeURIComponent(project)}/theme`);
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { testProject } from "./helpers.js";
 
@@ -77,11 +77,36 @@ test("project list: a project can be created and opened", async ({ page }) => {
     await page.getByTestId("create-project").click();
 
     await expect(page).toHaveURL(`/projects/${id}`);
-    await expect(page.getByRole("heading", { name: id })).toBeVisible();
+    await expect(page.getByTestId("project-title-heading")).toHaveText(title);
     expect(existsSync(join(root, "manual.md"))).toBe(true);
     expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain(title);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("project page: display title can be updated", async ({ page }) => {
+  const before = readFileSync(
+    join(process.cwd(), `../../projects/${testProject}/project.yaml`),
+    "utf8",
+  );
+  const nextTitle = `E2E タイトル ${Date.now()}`;
+  await page.goto(`/projects/${testProject}`);
+
+  try {
+    await page.getByTestId("project-title-input").fill(nextTitle);
+    await page.getByTestId("project-title-save").click();
+    await expect(page.getByTestId("project-title-saved")).toBeVisible();
+    await expect(page.getByTestId("project-title-heading")).toHaveText(nextTitle);
+    expect(
+      readFileSync(join(process.cwd(), `../../projects/${testProject}/project.yaml`), "utf8"),
+    ).toContain(nextTitle);
+  } finally {
+    writeFileSync(
+      join(process.cwd(), `../../projects/${testProject}/project.yaml`),
+      before,
+      "utf8",
+    );
   }
 });
 

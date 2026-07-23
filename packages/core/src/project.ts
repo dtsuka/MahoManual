@@ -68,7 +68,7 @@ export function createManualProject(
   if (existsSync(projectRoot)) {
     throw new Error(`プロジェクトは既に存在します: ${name}`);
   }
-  const cleanTitle = title.replace(/\r?\n/g, " ").trim() || name;
+  const cleanTitle = normalizeProjectTitle(title, name);
 
   mkdirSync(join(projectRoot, "annotations"), { recursive: true });
   mkdirSync(join(projectRoot, "img", "raw"), { recursive: true });
@@ -92,6 +92,30 @@ export function readProjectYaml(projectRoot: string): Record<string, unknown> {
     return {};
   }
   return (parseYaml(readFileSync(path, "utf8")) as Record<string, unknown>) ?? {};
+}
+
+/** 改行を空白に潰し、空なら fallback を使う */
+export function normalizeProjectTitle(title: string, fallback: string): string {
+  return title.replace(/\r?\n/g, " ").trim() || fallback;
+}
+
+export function readProjectTitle(projectRoot: string, fallback: string): string {
+  const yaml = readProjectYaml(projectRoot);
+  return typeof yaml.title === "string"
+    ? normalizeProjectTitle(yaml.title, fallback)
+    : fallback;
+}
+
+export function writeProjectTitle(
+  projectRoot: string,
+  title: string,
+  fallback: string,
+): string {
+  const cleanTitle = normalizeProjectTitle(title, fallback);
+  updateProjectYaml(projectRoot, (doc) => {
+    doc.set("title", cleanTitle);
+  });
+  return readProjectTitle(projectRoot, fallback);
 }
 
 function isValidOutputFilename(value: unknown, extension: ".html" | ".pdf"): value is string {
@@ -236,8 +260,7 @@ export function listManuals(projectsDir: string): ProjectInfo[] {
       if (!existsSync(join(projectRoot, "manual.md"))) {
         return null;
       }
-      const yaml = readProjectYaml(projectRoot);
-      const title = typeof yaml.title === "string" ? yaml.title : entry.name;
+      const title = readProjectTitle(projectRoot, entry.name);
       const annotationsDir = join(projectRoot, "annotations");
       const imageCount = existsSync(annotationsDir)
         ? readdirSync(annotationsDir).filter((name) => name.endsWith(".json")).length

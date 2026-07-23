@@ -122,6 +122,41 @@ describe("Hono API", () => {
     expect(invalid.status).toBe(400);
   });
 
+  it("GET/PUT /api/projects/:project/title manages display title", async () => {
+    writeFileSync(join(testProjectRoot, "project.yaml"), "title: 元のタイトル\n", "utf8");
+
+    const initial = await app.request(`/api/projects/${testProject}/title`);
+    expect(initial.status).toBe(200);
+    expect(await initial.json()).toEqual({ name: testProject, title: "元のタイトル" });
+
+    const updated = await app.request(`/api/projects/${testProject}/title`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "  新しいタイトル\n " }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toEqual({ name: testProject, title: "新しいタイトル" });
+    expect(readFileSync(join(testProjectRoot, "project.yaml"), "utf8")).toContain("新しいタイトル");
+
+    const empty = await app.request(`/api/projects/${testProject}/title`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "   " }),
+    });
+    expect(empty.status).toBe(200);
+    expect(await empty.json()).toEqual({ name: testProject, title: testProject });
+
+    const invalid = await app.request(`/api/projects/${testProject}/title`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: 123 }),
+    });
+    expect(invalid.status).toBe(400);
+
+    const missing = await app.request("/api/projects/no-such-project/title");
+    expect(missing.status).toBe(404);
+  });
+
   it("uses configured filenames in HTML/PDF download headers", async () => {
     const before = readFileSync(join(testProjectRoot, "project.yaml"), "utf8");
     try {

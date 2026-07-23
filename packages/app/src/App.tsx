@@ -12,6 +12,7 @@ import { AnnotationEditor } from "./components/AnnotationEditor.js";
 import { ManualEditor } from "./components/ManualEditor.js";
 import { ThemeSettings } from "./components/ThemeSettings.js";
 import { OutputSettings } from "./components/OutputSettings.js";
+import { ProjectTitleSettings } from "./components/ProjectTitleSettings.js";
 import {
   IconArrowLeft,
   IconBook,
@@ -167,6 +168,7 @@ function ImageImport({ project }: { project: string }) {
 
 function ProjectHome() {
   const { project } = useParams<{ project: string }>();
+  const [projectTitle, setProjectTitle] = useState(project ?? "");
   const [outputFilenames, setOutputFilenames] = useState<ProjectOutputFilenames>(() => ({
     html: `${project}.html`,
     pdf: `${project}.pdf`,
@@ -185,7 +187,14 @@ function ProjectHome() {
           プロジェクト一覧
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold tracking-tight">{project}</h1>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight" data-testid="project-title-heading">
+              {projectTitle}
+            </h1>
+            {projectTitle !== project ? (
+              <p className="mt-0.5 text-xs text-slate-500">ID: {project}</p>
+            ) : null}
+          </div>
           <div className="ml-auto flex gap-2">
             <ButtonLink
               href={`/api/projects/${encodeURIComponent(project)}/export.html`}
@@ -222,6 +231,7 @@ function ProjectHome() {
           </span>
           <IconChevronRight className="shrink-0 text-slate-300 transition-colors group-hover:text-blue-500" />
         </Link>
+        <ProjectTitleSettings project={project} onChange={setProjectTitle} />
         <ImageImport project={project} />
         <OutputSettings project={project} onChange={setOutputFilenames} />
         <AnnotationLinks project={project} />

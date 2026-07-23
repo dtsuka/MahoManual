@@ -7,10 +7,12 @@ import {
   readAnnotationFile,
   readProjectOutputFilenames,
   readProjectTheme,
+  readProjectTitle,
   renumberAllBadgesFiles,
   renumberBadges,
   writeProjectTheme,
   writeProjectOutputFilenames,
+  writeProjectTitle,
 } from "./project.js";
 
 describe("createManualProject", () => {
@@ -132,6 +134,51 @@ describe("project output filenames", () => {
       ]) {
         expect(() => writeProjectOutputFilenames(root, filenames)).toThrow(/ファイル名/);
       }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("writeProjectTitle", () => {
+  it("writes title while preserving unrelated YAML and comments", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-title-write-"));
+    try {
+      writeFileSync(
+        join(root, "project.yaml"),
+        '# 手書きコメント\ntitle: 元のタイトル\nbaseUrl: "https://example.com"\n',
+        "utf8",
+      );
+      expect(writeProjectTitle(root, "新しいタイトル", "fallback")).toBe("新しいタイトル");
+      expect(readProjectTitle(root, "fallback")).toBe("新しいタイトル");
+
+      const yaml = readFileSync(join(root, "project.yaml"), "utf8");
+      expect(yaml).toContain("# 手書きコメント");
+      expect(yaml).toContain("https://example.com");
+      expect(yaml).toContain("新しいタイトル");
+      expect(yaml).not.toContain("元のタイトル");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes whitespace and falls back when empty", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-title-normalize-"));
+    try {
+      writeFileSync(join(root, "project.yaml"), "title: old\n", "utf8");
+      expect(writeProjectTitle(root, "  改行\n含む  ", "fallback")).toBe("改行 含む");
+      expect(writeProjectTitle(root, "   ", "project-id")).toBe("project-id");
+      expect(readProjectTitle(root, "project-id")).toBe("project-id");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back when title is missing", () => {
+    const root = mkdtempSync(join(tmpdir(), "mahomanual-title-missing-"));
+    try {
+      writeFileSync(join(root, "project.yaml"), "baseUrl: https://example.com\n", "utf8");
+      expect(readProjectTitle(root, "my-project")).toBe("my-project");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

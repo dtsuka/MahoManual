@@ -21,6 +21,7 @@ import {
   readManual,
   readProjectOutputFilenames,
   readProjectTheme,
+  readProjectTitle,
   renameAnnotationId,
   renumberAllBadgesFiles,
   savePastedImage,
@@ -28,6 +29,7 @@ import {
   writeAnnotationFile,
   writeProjectTheme,
   writeProjectOutputFilenames,
+  writeProjectTitle,
 } from "@mahomanual/core/project";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -167,6 +169,31 @@ export function createApp() {
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : "output update failed" }, 400);
     }
+  });
+
+  app.get("/api/projects/:project/title", (c) => {
+    const project = c.req.param("project");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    return c.json({ name: project, title: readProjectTitle(root, project) });
+  });
+
+  app.put("/api/projects/:project/title", async (c) => {
+    const project = c.req.param("project");
+    const root = resolveProject(project);
+    if (!root) {
+      return c.json({ error: "project not found" }, 404);
+    }
+    const body = await c.req.json<{ title?: unknown }>();
+    if (typeof body.title !== "string") {
+      return c.json({ error: "titleは文字列で指定してください" }, 400);
+    }
+    return c.json({
+      name: project,
+      title: writeProjectTitle(root, body.title, project),
+    });
   });
 
   app.get("/api/projects/:project/manual", (c) => {
