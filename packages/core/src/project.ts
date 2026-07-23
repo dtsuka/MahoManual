@@ -9,11 +9,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
-import { YAMLMap, parseDocument, parse as parseYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
 import { parseAnnotationDefaults, type AnnotationDefaults } from "./annotation-defaults.js";
 import { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
+import { ensureMap, hasMap, pruneEmptyMap, updateProjectYaml } from "./project-yaml.js";
 import {
   annotationObjectSchema,
   parseAnnotation,
@@ -137,14 +138,11 @@ export function writeProjectOutputFilenames(
   filenames: ProjectOutputFilenames,
 ): ProjectOutputFilenames {
   const validated = validateOutputFilenames(filenames);
-  const path = join(projectRoot, "project.yaml");
-  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
-  if (!(doc.get("output", true) instanceof YAMLMap)) {
-    doc.set("output", doc.createNode({}));
-  }
-  doc.setIn(["output", "html"], validated.html);
-  doc.setIn(["output", "pdf"], validated.pdf);
-  writeFileSync(path, doc.toString(), "utf8");
+  updateProjectYaml(projectRoot, (doc) => {
+    ensureMap(doc, "output");
+    doc.setIn(["output", "html"], validated.html);
+    doc.setIn(["output", "pdf"], validated.pdf);
+  });
   return readProjectOutputFilenames(projectRoot, validated);
 }
 
@@ -180,22 +178,16 @@ export function writeAnnotationDefaults(
   projectRoot: string,
   defaults: AnnotationDefaults,
 ): AnnotationDefaults {
-  const path = join(projectRoot, "project.yaml");
-  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
-  const hasValues = Object.keys(defaults).length > 0;
-  if (hasValues) {
-    if (!(doc.get("annotation", true) instanceof YAMLMap)) {
-      doc.set("annotation", doc.createNode({}));
+  updateProjectYaml(projectRoot, (doc) => {
+    const hasValues = Object.keys(defaults).length > 0;
+    if (hasValues) {
+      ensureMap(doc, "annotation");
+      doc.setIn(["annotation", "defaults"], defaults);
+    } else if (hasMap(doc, "annotation")) {
+      doc.deleteIn(["annotation", "defaults"]);
     }
-    doc.setIn(["annotation", "defaults"], defaults);
-  } else if (doc.get("annotation", true) instanceof YAMLMap) {
-    doc.deleteIn(["annotation", "defaults"]);
-  }
-  const annotation = doc.get("annotation", true);
-  if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
-    doc.delete("annotation");
-  }
-  writeFileSync(path, doc.toString(), "utf8");
+    pruneEmptyMap(doc, "annotation");
+  });
   return readAnnotationDefaults(projectRoot);
 }
 
@@ -216,26 +208,20 @@ export function writeProjectTheme(projectRoot: string, theme: AnnotationTheme): 
     throw new Error(`不正なフォントサイズです: ${theme.fontSize}`);
   }
 
-  const path = join(projectRoot, "project.yaml");
-  const doc = parseDocument(existsSync(path) ? readFileSync(path, "utf8") : "");
-  for (const [key, value] of [
-    ["color", theme.color],
-    ["fontSize", theme.fontSize],
-  ] as const) {
-    if (value !== undefined) {
-      if (!(doc.get("annotation", true) instanceof YAMLMap)) {
-        doc.set("annotation", doc.createNode({}));
+  updateProjectYaml(projectRoot, (doc) => {
+    for (const [key, value] of [
+      ["color", theme.color],
+      ["fontSize", theme.fontSize],
+    ] as const) {
+      if (value !== undefined) {
+        ensureMap(doc, "annotation");
+        doc.setIn(["annotation", key], value);
+      } else if (hasMap(doc, "annotation")) {
+        doc.deleteIn(["annotation", key]);
       }
-      doc.setIn(["annotation", key], value);
-    } else if (doc.get("annotation", true) instanceof YAMLMap) {
-      doc.deleteIn(["annotation", key]);
     }
-  }
-  const annotation = doc.get("annotation", true);
-  if (annotation == null || (annotation instanceof YAMLMap && annotation.items.length === 0)) {
-    doc.delete("annotation");
-  }
-  writeFileSync(path, doc.toString(), "utf8");
+    pruneEmptyMap(doc, "annotation");
+  });
   return readProjectTheme(projectRoot);
 }
 

@@ -24,6 +24,7 @@ export {
   withEditableRect,
   type EditableRectObject,
 } from "./annotation-objects.js";
+export { createObjectId, nextBadgeNumber } from "./annotation-ids.js";
 export {
   applyObjectStyle,
   copyObjectStyle,
@@ -120,6 +121,7 @@ export {
   writeAnnotationFile,
   type ManualContents,
   type ProjectInfo,
+  type ProjectOutputFilenames,
 } from "./project.js";
 export {
   arrowHeadsSchema,
