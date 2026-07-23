@@ -3,7 +3,7 @@ import { isEditable } from "@mahomanual/core/annotation-objects";
 import {
   duplicateObjects as coreDuplicateObjects,
 } from "@mahomanual/core/object-geometry";
-import { createObjectId } from "./api.js";
+import { createObjectId } from "@mahomanual/core/annotation-ids";
 
 export function removeUnlockedObjects(
   objects: AnnotationObject[],

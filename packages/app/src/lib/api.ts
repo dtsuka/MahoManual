@@ -1,25 +1,13 @@
-import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
-import { taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
+import type { AnnotationFile } from "@mahomanual/core/schema";
 import type { AnnotationTheme } from "@mahomanual/core/theme";
 import type { AnnotationDefaults } from "@mahomanual/core/annotation-defaults";
+import type {
+  ManualContents,
+  ProjectInfo,
+  ProjectOutputFilenames,
+} from "@mahomanual/core/project";
 
-export interface ProjectInfo {
-  name: string;
-  title: string;
-  pageCount: number;
-  imageCount: number;
-}
-
-export interface ManualContents {
-  body: string;
-  annotations: string[];
-  captures: string[];
-}
-
-export interface ProjectOutputFilenames {
-  html: string;
-  pdf: string;
-}
+export type { ManualContents, ProjectInfo, ProjectOutputFilenames };
 
 export interface AnnotationResponse {
   annotation: AnnotationFile;
@@ -200,64 +188,6 @@ export function replaceAnnotationImage(
 
 export function projectFileSrc(project: string, src: string): string {
   return `/api/projects/${encodeURIComponent(project)}/files/${src.split("/").map(encodeURIComponent).join("/")}`;
-}
-
-export function createObjectId(type: AnnotationObject["type"], objects: AnnotationObject[]): string {
-  const prefix =
-    type === "badge"
-      ? "b"
-      : type === "text"
-        ? "t"
-        : type === "cursor"
-          ? "c"
-          : type === "frame"
-            ? "f"
-            : type === "line"
-              ? "l"
-            : type === "image"
-              ? "img"
-              : type === "mosaic"
-                ? "m"
-                : "a";
-  let index = objects.filter((obj) => obj.type === type).length + 1;
-  let candidate = `${prefix}${index}`;
-  const ids = new Set(objects.map((obj) => obj.id));
-  while (ids.has(candidate)) {
-    index += 1;
-    candidate = `${prefix}${index}`;
-  }
-  return candidate;
-}
-
-export function nextBadgeNumber(objects: AnnotationObject[]): number {
-  const numbers = objects
-    .filter((obj): obj is Extract<AnnotationObject, { type: "badge" }> => obj.type === "badge")
-    .map((obj) => obj.n);
-  return numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
-}
-
-export function rewriteFigureHtml(html: string, project: string): string {
-  return html.replace(/src="(img\/[^"]+)"/g, (_match, src: string) => {
-    return `src="${projectFileSrc(project, src)}"`;
-  });
-}
-
-export function injectObjectIds(
-  html: string,
-  objects: AnnotationObject[],
-  selectedIds: ReadonlySet<string> = new Set(),
-): string {
-  const taggable = taggableObjectsInDisplayOrder(objects);
-  let index = 0;
-  return html.replace(/<(span|div) class="mm-obj mm-(image|badge|text|cursor|frame|mosaic)/g, (match, tag, kind) => {
-    const obj = taggable[index];
-    index += 1;
-    if (!obj) {
-      return match;
-    }
-    const selectedClass = selectedIds.has(obj.id) ? " is-selected" : "";
-    return `<${tag} data-mm-id="${obj.id}" class="mm-obj mm-${kind}${selectedClass}`;
-  });
 }
 
 export function subscribeProjectWatch(
