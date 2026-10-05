@@ -31,6 +31,7 @@ import {
 } from "../lib/live-preview.js";
 import { useAnnotationModalHost } from "../lib/use-annotation-modal-host.js";
 import { useManualDocument } from "../lib/use-manual-document.js";
+import { sanitizePreviewHtml } from "../lib/sanitize-preview-html.js";
 import { BackToProjectButton } from "./BackToProjectButton.js";
 import { AnnotationEditor } from "./AnnotationEditor.js";
 import { AnnotationEditorModal } from "./AnnotationEditorModal.js";
@@ -119,7 +120,8 @@ export function ManualEditor({ project }: ManualEditorProps) {
           if (seq !== previewSeqRef.current) {
             return;
           }
-          setPreviewHtml(result.html);
+          // manual.md の生HTMLを含むため、画面へ挿入する前に無害化する
+          setPreviewHtml(sanitizePreviewHtml(result.html));
           setPreviewTheme(result.theme ?? {});
           setPreviewError(null);
         })

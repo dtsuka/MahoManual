@@ -15,6 +15,8 @@ import {
   WidgetType,
 } from "@codemirror/view";
 
+import { sanitizePreviewHtml } from "./sanitize-preview-html.js";
+
 export interface AnnotatedImageFence {
   from: number;
   to: number;
@@ -90,7 +92,7 @@ export function extractAnnotatedFigures(html: string): Map<string, string> {
     return figures;
   }
   const template = document.createElement("template");
-  template.innerHTML = html;
+  template.innerHTML = sanitizePreviewHtml(html);
   for (const figure of template.content.querySelectorAll<HTMLElement>("figure[data-mm-annotation]")) {
     const annotationId = figure.dataset.mmAnnotation;
     if (annotationId && !figures.has(annotationId)) {
@@ -155,7 +157,7 @@ class AnnotatedImageWidget extends WidgetType {
 
     const body = document.createElement("div");
     body.className = "cm-live-figure-body";
-    body.innerHTML = this.html;
+    body.innerHTML = sanitizePreviewHtml(this.html);
     body.querySelector("figure")?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();

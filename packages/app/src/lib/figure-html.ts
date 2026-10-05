@@ -2,6 +2,15 @@ import type { AnnotationObject } from "@mahomanual/core/schema";
 import { taggableObjectsInDisplayOrder } from "@mahomanual/core/annotation-objects";
 import { projectFileSrc } from "./api.js";
 
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function rewriteFigureHtml(html: string, project: string): string {
   return html.replace(/src="(img\/[^"]+)"/g, (_match, src: string) => {
     return `src="${projectFileSrc(project, src)}"`;
@@ -22,6 +31,6 @@ export function injectObjectIds(
       return match;
     }
     const selectedClass = selectedIds.has(obj.id) ? " is-selected" : "";
-    return `<${tag} data-mm-id="${obj.id}" class="mm-obj mm-${kind}${selectedClass}`;
+    return `<${tag} data-mm-id="${escapeAttribute(obj.id)}" class="mm-obj mm-${kind}${selectedClass}`;
   });
 }
