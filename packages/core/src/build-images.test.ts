@@ -95,3 +95,37 @@ describe("buildProject: images are collected from <img> elements only", () => {
     expect(html).not.toContain("data:image/svg;");
   });
 });
+
+describe("buildProject: output folder must not overlap the project's source folders", () => {
+  function annotatedProject(): { root: string; outDir: string } {
+    const project = createProject("# T\n\n```annotated-image\nsrc: a1\n```\n");
+    mkdirSync(join(project.root, "img/raw"), { recursive: true });
+    mkdirSync(join(project.root, "annotations"), { recursive: true });
+    copyFileSync(fixtureImage, join(project.root, "img/raw/a.png"));
+    writeFileSync(
+      join(project.root, "annotations/a1.json"),
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 100, height: 50 },
+        objects: [{ id: "img", type: "image", source: "manual", src: "img/raw/a.png", rect: { x: 0, y: 0, w: 100, h: 100 } }],
+      }),
+    );
+    return project;
+  }
+
+  it("refuses the project folder itself, a folder containing it, or a source folder", async () => {
+    const { root } = annotatedProject();
+    for (const outputDir of [root, `${root}/`, join(root, "."), join(root, ".."), join(root, "img"), join(root, "annotations")]) {
+      await expect(buildProject(root, { outputDir }), outputDir).rejects.toThrow(/出力先/);
+    }
+    expect(existsSync(join(root, "img/raw/a.png"))).toBe(true);
+    expect(existsSync(join(root, "manual.html"))).toBe(false);
+  });
+
+  it("allows an output folder inside the project such as dist/", async () => {
+    const { root } = annotatedProject();
+    const result = await buildProject(root, { outputDir: join(root, "dist") });
+    expect(existsSync(result.htmlPath)).toBe(true);
+    expect(existsSync(join(root, "img/raw/a.png"))).toBe(true);
+  });
+});
