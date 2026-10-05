@@ -548,6 +548,8 @@ export function ManualEditor({ project }: ManualEditorProps) {
     {modalAnnotationId ? (
       <AnnotationEditorModal labelledBy="annotation-editor-title">
         <AnnotationEditor
+          // 注釈ごとに作り直し、選択・履歴・読み込み中の結果を前の注釈から持ち越さない
+          key={modalAnnotationId}
           project={project}
           annotationId={modalAnnotationId}
           presentation="modal"

@@ -60,6 +60,11 @@ export function useVisualCropEdit({
     setSession(null);
   }, [applyTransientChange, session]);
 
+  /** 注釈の読み込み・切り替え時にセッションだけを破棄する(ドキュメントは呼び出し側で置き換える) */
+  const reset = useCallback(() => {
+    setSession(null);
+  }, []);
+
   const setCrop = useCallback((crop: PixelRect) => {
     setSession((current) => (current ? { ...current, crop } : current));
   }, []);
@@ -74,6 +79,7 @@ export function useVisualCropEdit({
     open,
     commit,
     cancel,
+    reset,
     setCrop,
     resetFull,
   };

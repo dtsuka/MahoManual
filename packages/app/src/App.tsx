@@ -363,14 +363,16 @@ function AnnotationRoute() {
   }
   return (
     <AnnotationEditor
+      // 注釈ごとに作り直し、選択・履歴・読み込み中の結果を前の注釈から持ち越さない
+      key={`${project}/${id}`}
       project={project}
       annotationId={id}
       onBack={() => navigate(`/projects/${encodeURIComponent(project)}`)}
       onNavigateToAnnotation={(nextId) =>
-        navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`)
+        navigate(`/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(nextId)}`)
       }
       onRenamed={(nextId) =>
-        navigate(`/projects/${project}/annotations/${encodeURIComponent(nextId)}`, { replace: true })
+        navigate(`/projects/${encodeURIComponent(project)}/annotations/${encodeURIComponent(nextId)}`, { replace: true })
       }
     />
   );

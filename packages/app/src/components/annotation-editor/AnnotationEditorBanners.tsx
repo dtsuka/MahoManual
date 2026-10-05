@@ -4,6 +4,9 @@ import { MergeConflictResolver } from "./MergeConflictResolver.js";
 
 interface AnnotationEditorBannersProps {
   status: string;
+  /** 保存・画像追加など操作の失敗。編集画面は残したまま閉じられる通知で出す */
+  operationError: string;
+  onDismissOperationError: () => void;
   hasExternalPayload: boolean;
   onApplyExternal: () => void;
   onDismissExternal: () => void;
@@ -23,6 +26,8 @@ interface AnnotationEditorBannersProps {
  */
 export function AnnotationEditorBanners({
   status,
+  operationError,
+  onDismissOperationError,
   hasExternalPayload,
   onApplyExternal,
   onDismissExternal,
@@ -41,6 +46,21 @@ export function AnnotationEditorBanners({
       {status ? (
         <div className="pointer-events-auto">
           <Banner kind="success">{status}</Banner>
+        </div>
+      ) : null}
+      {operationError ? (
+        <div className="pointer-events-auto">
+          <Banner kind="danger" testId="operation-error-banner" role="alert">
+            <span className="min-w-0 flex-1">{operationError}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid="dismiss-operation-error"
+              onClick={onDismissOperationError}
+            >
+              閉じる
+            </Button>
+          </Banner>
         </div>
       ) : null}
       {hasExternalPayload ? (

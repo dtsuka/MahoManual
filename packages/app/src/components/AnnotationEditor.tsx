@@ -30,6 +30,7 @@ import type {
 } from "@mahomanual/core/schema";
 import {
   addAnnotationImage,
+  fetchProjectTheme,
   replaceAnnotationImage,
   renameAnnotation,
   saveProjectTheme,
@@ -110,7 +111,10 @@ export function AnnotationEditor({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("");
   const [nextAnnotationId, setNextAnnotationId] = useState(annotationId);
+  /** 注釈を読み込めなかったときだけ画面全体に出すエラー */
   const [error, setError] = useState<string>("");
+  /** 保存・画像追加などの操作エラー。編集画面は残し、閉じられるバナーで出す */
+  const [operationError, setOperationError] = useState<string>("");
   const [activeTool, setActiveTool] = useState<EditorTool>("select");
   const [marginDraft, setMarginDraft] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
   // オブジェクト一覧の D&D 並べ替え(表示 index = 前面から)
@@ -286,10 +290,38 @@ export function AnnotationEditor({
     try {
       applyLocalChange((current) => expandCanvas(current, marginDraft));
       setMarginDraft({ top: 0, right: 0, bottom: 0, left: 0 });
-      setError("");
+      setOperationError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "余白の適用に失敗しました");
+      setOperationError(err instanceof Error ? err.message : "余白の適用に失敗しました");
     }
+  };
+
+  // keydown ハンドラなど古いクロージャからも最新状態を参照できるよう ref に写す
+  const visualCropActiveRef = useRef(visualCrop.active);
+  visualCropActiveRef.current = visualCrop.active;
+  const inlineTextEditRef = useRef(canvasInteraction.inlineTextEdit);
+  inlineTextEditRef.current = canvasInteraction.inlineTextEdit;
+
+  /** テキストの直接編集中の入力を確定する(フォーカスアウト・⌘Enter・保存前) */
+  const commitInlineTextEdit = () => {
+    const edit = inlineTextEditRef.current;
+    if (!edit) {
+      return;
+    }
+    inlineTextEditRef.current = null;
+    applyLocalChange((current) => {
+      const target = current.objects.find((obj) => obj.id === edit.id);
+      if (!target || target.type !== "text" || !isEditable(target) || target.content === edit.value) {
+        return current;
+      }
+      const next = { ...target, content: edit.value };
+      saveRecentStyle(project, next);
+      return {
+        ...current,
+        objects: current.objects.map((obj) => (obj.id === edit.id ? next : obj)),
+      };
+    });
+    canvasInteraction.setInlineTextEdit(null);
   };
 
   const sync = useAnnotationSync({
@@ -299,12 +331,26 @@ export function AnnotationEditor({
     onBack,
     onNavigateToAnnotation,
     onSaved,
+    canSave: () => {
+      // クロップ編集中の注釈は表示用に画像全体へ広げた仮の状態なので保存しない
+      if (visualCropActiveRef.current) {
+        setOperationError("クロップ編集中は保存できません。確定(Enter)または取消(Esc)してから保存してください");
+        return false;
+      }
+      commitInlineTextEdit();
+      return true;
+    },
     resetOnLoad: () => {
       setNextAnnotationId(annotationId);
       viewport.resetForLoad();
       resetCreation();
       setHiddenIds(new Set());
       setSoloId(null);
+      setSelectedIds([]);
+      canvasInteraction.setSelectedPointIndices([]);
+      canvasInteraction.setInlineTextEdit(null);
+      visualCrop.reset();
+      setOperationError("");
     },
     onPayloadApplied: (payload) => {
       setNaturalSizes((current) => ({ ...current, ...payload.naturalSizes }));
@@ -317,7 +363,7 @@ export function AnnotationEditor({
       }
     },
     onLoadError: setError,
-    onError: setError,
+    onError: setOperationError,
     onStatus: showStatus,
   });
 
@@ -343,6 +389,14 @@ export function AnnotationEditor({
 
   const neighbors = resolveAnnotationNeighbors(sync.annotationIds, annotationId);
 
+  // 離れる前にクロップ編集を取り消す(表示用の仮状態を未保存の変更として扱わない)
+  const requestNavigation = (target: string | "back") => {
+    if (visualCropActiveRef.current) {
+      visualCrop.cancel();
+    }
+    sync.requestNavigation(target);
+  };
+
   useAnnotationEditorCommands({
     annotationRef,
     applyLocalChange,
@@ -358,7 +412,7 @@ export function AnnotationEditor({
     copiedStyleRef,
     presentation,
     visualCropActive: visualCrop.active,
-    onDismiss: () => sync.requestNavigation("back"),
+    onDismiss: () => requestNavigation("back"),
     onSave: () => void sync.handleSave(),
     onSpaceDown: () => viewport.setSpaceHeld(true),
     onSpaceUp: () => {
@@ -394,13 +448,22 @@ export function AnnotationEditor({
 
   const selected = annotation.objects.find((obj) => obj.id === selectedId) ?? null;
 
-  const persistProjectDefaults = async (next: AnnotationDefaults, message: string) => {
+  // テーマ API はテーマ全体を置き換えるため、送信直前に最新のテーマと既定スタイルを取り直し、
+  // 選択中の種類の既定だけを変えて送る(編集画面を開いた時点の古いテーマで上書きしない)
+  const persistProjectDefaults = async (
+    update: (latest: { theme: AnnotationTheme; defaults: AnnotationDefaults }) => AnnotationDefaults,
+    message: string,
+  ) => {
     try {
-      const response = await saveProjectTheme(project, theme, next);
+      const latest = await fetchProjectTheme(project);
+      const latestTheme = latest.theme ?? {};
+      const next = update({ theme: latestTheme, defaults: latest.defaults ?? {} });
+      const response = await saveProjectTheme(project, latestTheme, next);
+      setTheme(response.theme ?? latestTheme);
       setAnnotationDefaults(response.defaults ?? next);
       showStatus(message);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "既定スタイルの保存に失敗しました");
+      setOperationError(err instanceof Error ? err.message : "既定スタイルの保存に失敗しました");
     }
   };
 
@@ -408,22 +471,28 @@ export function AnnotationEditor({
     if (!selected || selected.type === "image") {
       return;
     }
-    const style = resolveCreationDefaults(selected.type, {
-      objectPatch: extractObjectStyle(selected),
-      projectDefaults: annotationDefaults,
-      theme,
-    });
-    const next = { ...annotationDefaults, [selected.type]: style } as AnnotationDefaults;
-    void persistProjectDefaults(next, "プロジェクト既定を保存しました");
+    const type = selected.type;
+    const objectPatch = extractObjectStyle(selected);
+    void persistProjectDefaults((latest) => ({
+      ...latest.defaults,
+      [type]: resolveCreationDefaults(type, {
+        objectPatch,
+        projectDefaults: latest.defaults,
+        theme: latest.theme,
+      }),
+    }) as AnnotationDefaults, "プロジェクト既定を保存しました");
   };
 
   const clearSelectedProjectDefault = () => {
     if (!selected || selected.type === "image") {
       return;
     }
-    const next = { ...annotationDefaults };
-    delete (next as Record<string, unknown>)[selected.type];
-    void persistProjectDefaults(next, "プロジェクト既定を解除しました");
+    const type = selected.type;
+    void persistProjectDefaults((latest) => {
+      const next = { ...latest.defaults };
+      delete (next as Record<string, unknown>)[type];
+      return next;
+    }, "プロジェクト既定を解除しました");
   };
 
   const applyDefaultsToSelected = () => {
@@ -534,7 +603,7 @@ export function AnnotationEditor({
       setSelectedIds([objectId]);
       showStatus("画像を置換しました");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "画像の置換に失敗しました");
+      setOperationError(err instanceof Error ? err.message : "画像の置換に失敗しました");
     }
   };
 
@@ -555,7 +624,7 @@ export function AnnotationEditor({
       setSelectedIds([objectId]);
       showStatus("画像を追加しました");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "画像の追加に失敗しました");
+      setOperationError(err instanceof Error ? err.message : "画像の追加に失敗しました");
     }
   };
 
@@ -570,7 +639,7 @@ export function AnnotationEditor({
       setStatus("画像IDを変更しました");
       onRenamed?.(result.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "画像IDの変更に失敗しました");
+      setOperationError(err instanceof Error ? err.message : "画像IDの変更に失敗しました");
     }
   };
 
@@ -657,7 +726,7 @@ export function AnnotationEditor({
         hostMarkdownDirty={hostMarkdownDirty}
         canUndo={canUndo}
         canRedo={canRedo}
-        onRequestNavigation={sync.requestNavigation}
+        onRequestNavigation={requestNavigation}
         onRename={() => void handleRename()}
         onUndo={undo}
         onRedo={redo}
@@ -666,6 +735,8 @@ export function AnnotationEditor({
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <AnnotationEditorBanners
           status={status}
+          operationError={operationError}
+          onDismissOperationError={() => setOperationError("")}
           hasExternalPayload={sync.externalPayload !== null}
           onApplyExternal={() => {
             if (sync.externalPayload) {
@@ -752,7 +823,7 @@ export function AnnotationEditor({
                 onBeginRectResize={canvasInteraction.beginRectResize}
                 onBeginPointDrag={canvasInteraction.beginPointDrag}
                 onInlineTextEditChange={canvasInteraction.setInlineTextEdit}
-                updateObject={updateObject}
+                onCommitInlineTextEdit={commitInlineTextEdit}
               />
               {cropEditSession && cropEditImage ? (
                 <VisualCropOverlay

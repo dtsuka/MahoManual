@@ -1,7 +1,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { isLineObject } from "@mahomanual/core/annotation-objects";
 import type { SnapGuide } from "@mahomanual/core/object-geometry";
-import type { AnnotationFile, AnnotationObject } from "@mahomanual/core/schema";
+import type { AnnotationFile } from "@mahomanual/core/schema";
 import { nextBadgeNumber } from "@mahomanual/core/annotation-ids";
 import type { PointPct, RectPct } from "../../lib/geometry.js";
 import { IconPointer } from "../icons.js";
@@ -29,7 +29,8 @@ interface AnnotationCanvasOverlaysProps {
   onBeginRectResize: (event: ReactPointerEvent, dir: string) => void;
   onBeginPointDrag: (event: ReactPointerEvent, index: number) => void;
   onInlineTextEditChange: (value: { id: string; value: string } | null) => void;
-  updateObject: (objectId: string, updater: (obj: AnnotationObject) => AnnotationObject) => void;
+  /** 入力中の文字を確定する(保存前の確定と同じ処理を使う) */
+  onCommitInlineTextEdit: () => void;
 }
 
 /**
@@ -51,22 +52,12 @@ export function AnnotationCanvasOverlays({
   onBeginRectResize,
   onBeginPointDrag,
   onInlineTextEditChange,
-  updateObject,
+  onCommitInlineTextEdit,
 }: AnnotationCanvasOverlaysProps) {
   const lineObjects = annotation.objects.filter(isLineObject);
   const textObj = inlineTextEdit
     ? annotation.objects.find((obj) => obj.id === inlineTextEdit.id && obj.type === "text")
     : null;
-
-  const commitInlineText = () => {
-    if (!inlineTextEdit) {
-      return;
-    }
-    updateObject(inlineTextEdit.id, (obj) =>
-      obj.type === "text" ? { ...obj, content: inlineTextEdit.value } : obj,
-    );
-    onInlineTextEditChange(null);
-  };
 
   return (
     <div className="pointer-events-none absolute inset-0">
@@ -185,11 +176,11 @@ export function AnnotationCanvasOverlays({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onInlineTextEditChange({ id: inlineTextEdit.id, value: event.target.value })}
-          onBlur={commitInlineText}
+          onBlur={onCommitInlineTextEdit}
           onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              commitInlineText();
+              onCommitInlineTextEdit();
             }
             if (event.key === "Escape") {
               event.preventDefault();
