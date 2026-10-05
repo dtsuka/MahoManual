@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseAnnotation } from "./schema.js";
+import { expandCanvas } from "./expand-canvas.js";
 import { mergeAnnotationEdits, resolveConflicts } from "./merge-annotation-edits.js";
 
 function file(objects: unknown[], canvas = { width: 1280, height: 960 }) {
@@ -71,5 +72,50 @@ describe("mergeAnnotationEdits", () => {
 
     const remoteDeleted = mergeAnnotationEdits(file([baseObject]), file([modifiedObject]), file([]));
     expect(remoteDeleted.conflicts[0]?.reason).toBe("local_modified_remote_deleted");
+  });
+  it("keeps an object deleted on one side when the other side left it unchanged", () => {
+    const image = { id: "img", type: "image", source: "manual", src: "img/raw/a.png", rect: { x: 0, y: 0, w: 100, h: 100 } };
+    const badge = { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 50, y: 50 } };
+    const base = file([image, badge]);
+    const deleted = file([image]);
+
+    const localDeleted = mergeAnnotationEdits(base, deleted, base);
+    expect(localDeleted.autoMerged).toBe(true);
+    expect(localDeleted.merged.objects.map((obj) => obj.id)).toEqual(["img"]);
+
+    const remoteDeleted = mergeAnnotationEdits(base, base, deleted);
+    expect(remoteDeleted.autoMerged).toBe(true);
+    expect(remoteDeleted.merged.objects.map((obj) => obj.id)).toEqual(["img"]);
+  });
+
+  it("treats a canvas change on one side and object changes on the other as a conflict", () => {
+    const image = { id: "img", type: "image", source: "manual", src: "img/raw/a.png", rect: { x: 0, y: 0, w: 100, h: 100 } };
+    const badge = { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 50, y: 50 } };
+    const base = file([image, badge], { width: 1000, height: 500 });
+    const expanded = expandCanvas(base, { left: 1000 });
+    // キャンバス変更前の座標系で追加したバッジ(画像上の x=900px)
+    const added = file(
+      [image, badge, { id: "b2", type: "badge", source: "manual", n: 2, at: { x: 90, y: 50 } }],
+      { width: 1000, height: 500 },
+    );
+
+    for (const [local, remote] of [[added, expanded], [expanded, added]] as const) {
+      const result = mergeAnnotationEdits(base, local, remote);
+      expect(result.autoMerged).toBe(false);
+      expect(result.conflicts).toContainEqual(expect.objectContaining({ id: "(canvas)", reason: "canvas_conflict" }));
+      // どちらを選んでも、その側の座標系のまま(%座標がずれた状態を作らない)
+      expect(resolveConflicts(result.merged, { "(canvas)": "local" }, { local, remote })).toEqual(local);
+      expect(resolveConflicts(result.merged, { "(canvas)": "remote" }, { local, remote })).toEqual(remote);
+    }
+  });
+
+  it("auto-merges a one-sided canvas change when the other side has no object changes", () => {
+    const badge = { id: "b1", type: "badge", source: "manual", n: 1, at: { x: 50, y: 50 } };
+    const base = file([badge], { width: 1000, height: 500 });
+    const expanded = expandCanvas(base, { left: 1000 });
+
+    const result = mergeAnnotationEdits(base, base, expanded);
+    expect(result.autoMerged).toBe(true);
+    expect(result.merged).toEqual(expanded);
   });
 });
