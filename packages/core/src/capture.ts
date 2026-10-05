@@ -14,7 +14,7 @@ import { expandCanvas } from "./expand-canvas.js";
 import { mergeAnnotations } from "./merge-annotations.js";
 import { assertSafeName } from "./safe-name.js";
 import {
-  parseAnnotation,
+  parseAnnotationText,
   type AnnotateItem,
   type AnnotationFile,
   type AnnotationObject,
@@ -297,7 +297,7 @@ export async function runCapture(
 
     const existingPath = annotationPath;
     const existing = existsSync(existingPath)
-      ? parseAnnotation(JSON.parse(readFileSync(existingPath, "utf8")))
+      ? parseAnnotationText(readFileSync(existingPath, "utf8"), `annotations/${output}.json`)
       : null;
     const merged = mergeAnnotations(existing, captured, recipeId);
     writeFileSync(annotationPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");

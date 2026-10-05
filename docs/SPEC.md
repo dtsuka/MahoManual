@@ -396,6 +396,8 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 - 相対パス(`<project>`・`-o`)は実行時のフォルダを基準に解決する。ルートの `pnpm manual` 経由で実行した場合はリポジトリのルートを基準にする
 - `projects/` の場所は環境変数 `MAHOMANUAL_PROJECTS_DIR` で変更できる(既定はリポジトリの `projects/`)
 - 終了コード: 成功0 / 失敗1(zodバリデーションエラーは対象ファイル名と全issueを日本語で表示)
+- 注釈JSON・撮影レシピの読み込みエラー(JSON・YAMLの構文エラーとスキーマの検査エラー)は、プロジェクトのフォルダからの相対パス(例: `annotations/1-1.json`、`captures/1-1.yaml`)をメッセージの先頭に付ける
+- `manual capture <project> <recipeId>` は指定したレシピのファイルだけを読み込む(他のレシピが壊れていても撮影できる)。recipeIdを省略した場合は全レシピを読み込み、壊れたレシピがあればファイル名付きのエラーにする
 
 ## 9. 撮影レシピ仕様(captures/*.yaml)
 
@@ -471,7 +473,7 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 | `add_annotation` | project, id, object | オブジェクト追加(スキーマ検証) |
 | `update_annotation` | project, id, objectId, patch | オブジェクト部分更新。patch に `id` / `type` を含めるとエラー(変更するときは削除して追加し直す) |
 | `remove_annotation` | project, id, objectId | オブジェクト削除 |
-| `set_crop` | project, id, objectId, crop | imageオブジェクトのcrop変更 |
+| `set_crop` | project, id, objectId, crop | imageオブジェクトのcrop変更。画像ファイルの実サイズの範囲外ならエラー(ファイルは変更しない) |
 | `expand_canvas` | project, id, margin | キャンバス余白の追加・削除(§4.5。canvas拡張+全オブジェクトの%座標再計算) |
 | `renumber_badges` | project, id | badge採番の振り直し |
 | `build_html` | project, singleFile? | 納品HTML生成、出力パスを返す |

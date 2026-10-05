@@ -19,12 +19,15 @@ import { ensureMap, hasMap, pruneEmptyMap, updateProjectYaml } from "./project-y
 import {
   annotationObjectSchema,
   parseAnnotation,
-  parseRecipe,
+  parseAnnotationText,
+  parseRecipeText,
   type CaptureRecipe,
 } from "./schema.js";
 import { applyDefaultImageLocks } from "./annotation-objects.js";
 import { renameAnnotatedImageSrc } from "./annotated-image-fences.js";
-import { annotationFilePath, assertSafeName, resolveProjectRoot } from "./safe-name.js";
+import { annotationFilePath, assertSafeName, resolveInside, resolveProjectRoot } from "./safe-name.js";
+import { validateCrop } from "./crop-math.js";
+import { imageSize } from "image-size";
 
 export function renumberBadges(annotation: AnnotationFile): AnnotationFile {
   let counter = 1;
@@ -297,7 +300,7 @@ export function readAnnotationFile(projectRoot: string, id: string): AnnotationF
   if (!existsSync(path)) {
     throw new Error(`注釈ファイルが見つかりません: ${id}`);
   }
-  const annotation = parseAnnotation(JSON.parse(readFileSync(path, "utf8")));
+  const annotation = parseAnnotationText(readFileSync(path, "utf8"), `annotations/${id}.json`);
   return applyDefaultImageLocks(annotation, id);
 }
 
@@ -513,7 +516,17 @@ export function setCrop(
   if (current.type !== "image") {
     throw new Error(`object is not image: ${objectId}`);
   }
-  return updateAnnotationObject(projectRoot, id, objectId, { crop });
+  // 画像の範囲外の crop を書くとビルドが必ず失敗するため、書き込む前に画像の実サイズで検査する
+  const imagePath = resolveInside(projectRoot, current.src);
+  if (!existsSync(imagePath)) {
+    throw new Error(`画像ファイルが見つかりません: ${current.src}`);
+  }
+  const size = imageSize(readFileSync(imagePath));
+  if (!size.width || !size.height) {
+    throw new Error(`画像のサイズを読み取れません: ${current.src}`);
+  }
+  const validated = validateCrop(crop, { w: size.width, h: size.height }, current.src);
+  return updateAnnotationObject(projectRoot, id, objectId, { crop: validated });
 }
 
 export function expandCanvasFile(
@@ -558,26 +571,30 @@ export function renumberAllBadgesFiles(projectRoot: string): RenumberAllResult {
   };
 }
 
-export function loadRecipeFile(recipePath: string): CaptureRecipe {
-  return parseRecipe(readFileSync(recipePath, "utf8"));
+export function loadRecipeFile(recipePath: string, fileLabel = recipePath): CaptureRecipe {
+  return parseRecipeText(readFileSync(recipePath, "utf8"), fileLabel);
 }
 
-export function listRecipeFiles(projectRoot: string): Array<{ id: string; path: string; recipe: CaptureRecipe }> {
+function recipeFileNames(projectRoot: string): Array<{ id: string; name: string; path: string }> {
   const capturesDir = join(projectRoot, "captures");
   if (!existsSync(capturesDir)) {
     return [];
   }
   return readdirSync(capturesDir)
     .filter((name) => name.endsWith(".yaml") || name.endsWith(".yml"))
-    .map((name) => {
-      const path = join(capturesDir, name);
-      const recipe = loadRecipeFile(path);
-      return {
-        id: basename(name, name.endsWith(".yaml") ? ".yaml" : ".yml"),
-        path,
-        recipe,
-      };
-    });
+    .map((name) => ({
+      id: basename(name, name.endsWith(".yaml") ? ".yaml" : ".yml"),
+      name,
+      path: join(capturesDir, name),
+    }));
+}
+
+export function listRecipeFiles(projectRoot: string): Array<{ id: string; path: string; recipe: CaptureRecipe }> {
+  return recipeFileNames(projectRoot).map(({ id, name, path }) => ({
+    id,
+    path,
+    recipe: loadRecipeFile(path, `captures/${name}`),
+  }));
 }
 
 // build / pdf / capture は unified・Playwright を連鎖 import して重いため、
@@ -609,11 +626,15 @@ export async function runProjectCapture(
     assertSafeName(recipeId, "レシピID");
   }
   const { runAllCaptures } = await import("./capture.js");
-  const recipes = listRecipeFiles(projectRoot);
-  const selected = recipeId ? recipes.filter((item) => item.id === recipeId) : recipes;
-  if (recipeId && selected.length === 0) {
+  // レシピID指定時は、そのレシピだけを読み込む(他のレシピが壊れていても撮影できる)
+  const files = recipeFileNames(projectRoot).filter((item) => !recipeId || item.id === recipeId);
+  if (recipeId && files.length === 0) {
     throw new Error(`レシピが見つかりません: ${recipeId}`);
   }
+  const selected = files.map(({ id, name, path }) => ({
+    id,
+    recipe: loadRecipeFile(path, `captures/${name}`),
+  }));
   const results = await runAllCaptures(
     projectRoot,
     selected.map((item) => ({ recipeId: item.id, recipe: item.recipe })),

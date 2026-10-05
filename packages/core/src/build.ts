@@ -25,7 +25,7 @@ import { collectImageSources } from "./annotation-objects.js";
 import { readProjectTheme } from "./project.js";
 import { annotationFilePath, resolveInside } from "./safe-name.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
-import { parseAnnotation } from "./schema.js";
+import { parseAnnotationText } from "./schema.js";
 import { annotationThemeCss, THEME_CSS, THEME_FONT_LINKS_HTML } from "./theme.js";
 import { applyMosaicsToImage } from "./mosaic.js";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
@@ -91,8 +91,7 @@ function loadAnnotation(projectRoot: string, annotationId: string) {
   if (!existsSync(annotationPath)) {
     throw new Error(`annotation file not found: ${annotationId}`);
   }
-  const json = JSON.parse(readFileSync(annotationPath, "utf8"));
-  return parseAnnotation(json);
+  return parseAnnotationText(readFileSync(annotationPath, "utf8"), `annotations/${annotationId}.json`);
 }
 
 function resolveNaturalSizes(

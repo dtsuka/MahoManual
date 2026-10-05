@@ -241,6 +241,25 @@ export function parseAnnotation(json: unknown): AnnotationFile {
   return result.data;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// 注釈ファイルの本文(JSON文字列)を検査する。エラーには fileLabel(例: annotations/1-1.json)を付ける(SPEC §8)
+export function parseAnnotationText(text: string, fileLabel: string): AnnotationFile {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${fileLabel}: JSONとして読み込めません: ${errorMessage(error)}`);
+  }
+  try {
+    return parseAnnotation(json);
+  } catch (error) {
+    throw new Error(`${fileLabel}: ${errorMessage(error)}`);
+  }
+}
+
 const recipeStepSchema = z.union([
   z.object({ waitFor: z.string().min(1) }),
   z.object({ click: z.string().min(1) }),
@@ -323,4 +342,13 @@ export function parseRecipe(yamlText: string): CaptureRecipe {
     throw new Error(formatIssues(result.error.issues));
   }
   return result.data;
+}
+
+// レシピファイルの本文(YAML文字列)を検査する。エラーには fileLabel(例: captures/1-1.yaml)を付ける(SPEC §8)
+export function parseRecipeText(yamlText: string, fileLabel: string): CaptureRecipe {
+  try {
+    return parseRecipe(yamlText);
+  } catch (error) {
+    throw new Error(`${fileLabel}: ${errorMessage(error)}`);
+  }
 }
