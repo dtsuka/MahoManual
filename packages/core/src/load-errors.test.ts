@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildProject } from "./build.js";
 import { listRecipeFiles, readAnnotationFile, runProjectCapture, setCrop } from "./project.js";
 
-// demo.png は 200×100 px
+// demo.png は 356×197 px
 const fixtureImage = join(import.meta.dirname, "../tests/fixtures/projects/demo/img/demo.png");
 const roots: string[] = [];
 
@@ -41,8 +41,8 @@ describe("setCrop", () => {
     const root = createProject();
     const before = readFileSync(join(root, "annotations/a1.json"), "utf8");
 
-    expect(() => setCrop(root, "a1", "img", { x: 0, y: 0, w: 201, h: 100 })).toThrow(/img\/raw\/a\.png/);
-    expect(() => setCrop(root, "a1", "img", { x: 150, y: 50, w: 100, h: 10 })).toThrow();
+    expect(() => setCrop(root, "a1", "img", { x: 0, y: 0, w: 357, h: 197 })).toThrow(/img\/raw\/a\.png/);
+    expect(() => setCrop(root, "a1", "img", { x: 300, y: 150, w: 100, h: 10 })).toThrow();
     expect(() => setCrop(root, "a1", "img", { x: -1, y: 0, w: 10, h: 10 })).toThrow();
     expect(readFileSync(join(root, "annotations/a1.json"), "utf8")).toBe(before);
   });
