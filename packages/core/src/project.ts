@@ -13,7 +13,11 @@ import { basename, dirname, extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { AnnotationFile, AnnotationObject } from "./schema.js";
 import type { AnnotationTheme } from "./theme.js";
-import { parseAnnotationDefaults, type AnnotationDefaults } from "./annotation-defaults.js";
+import {
+  parseAnnotationDefaults,
+  validateAnnotationDefaults,
+  type AnnotationDefaults,
+} from "./annotation-defaults.js";
 import { expandCanvas, type CanvasMargin } from "./expand-canvas.js";
 import { ensureMap, hasMap, pruneEmptyMap, updateProjectYaml } from "./project-yaml.js";
 import {
@@ -204,8 +208,10 @@ export function readAnnotationDefaults(projectRoot: string): AnnotationDefaults 
 
 export function writeAnnotationDefaults(
   projectRoot: string,
-  defaults: AnnotationDefaults,
+  input: AnnotationDefaults,
 ): AnnotationDefaults {
+  // 未知の種類・キーや範囲外の値を project.yaml へ書かないよう、書き込む前に検査する
+  const defaults = validateAnnotationDefaults(input);
   updateProjectYaml(projectRoot, (doc) => {
     const hasValues = Object.keys(defaults).length > 0;
     if (hasValues) {
