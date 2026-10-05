@@ -34,6 +34,25 @@ export function mergeAnnotationEdits(
   local: AnnotationFile,
   remote: AnnotationFile,
 ): MergeAnnotationEditsResult {
+  // キャンバス寸法が変わると、その側の全オブジェクトの%座標は新しいキャンバス基準になる。
+  // 片側がキャンバスを変え、もう片側がオブジェクトを変えた場合、両者の%座標は基準が異なるため
+  // オブジェクト単位では合成できない。文書全体の競合として扱い、どちらか一方の版を選ばせる
+  const canvasLocalChanged = stableStringify(local.canvas) !== stableStringify(base.canvas);
+  const canvasRemoteChanged = stableStringify(remote.canvas) !== stableStringify(base.canvas);
+  const localObjectsChanged = stableStringify(local.objects) !== stableStringify(base.objects);
+  const remoteObjectsChanged = stableStringify(remote.objects) !== stableStringify(base.objects);
+  const canvasConflict =
+    (canvasLocalChanged && canvasRemoteChanged && stableStringify(local.canvas) !== stableStringify(remote.canvas)) ||
+    (canvasLocalChanged && !canvasRemoteChanged && remoteObjectsChanged) ||
+    (canvasRemoteChanged && !canvasLocalChanged && localObjectsChanged);
+  if (canvasConflict) {
+    return {
+      merged: { version: 1, canvas: local.canvas, objects: [...local.objects] },
+      conflicts: [{ id: "(canvas)", reason: "canvas_conflict" }],
+      autoMerged: false,
+    };
+  }
+
   const conflicts: ObjectConflict[] = [];
   const baseMap = objectsById(base.objects);
   const localMap = objectsById(local.objects);
@@ -51,12 +70,11 @@ export function mergeAnnotationEdits(
     if (!localObj && !remoteObj) {
       continue;
     }
+    // 片側で削除され、もう片側では変更されていない → 削除を採用する
     if (!localObj && remoteObj && !remoteChanged) {
-      mergedObjects.set(id, remoteObj);
       continue;
     }
     if (!remoteObj && localObj && !localChanged) {
-      mergedObjects.set(id, localObj);
       continue;
     }
     if (!localObj && remoteObj && remoteChanged) {
@@ -110,15 +128,7 @@ export function mergeAnnotationEdits(
     });
   }
 
-  let mergedCanvas = local.canvas;
-  const canvasLocalChanged = stableStringify(local.canvas) !== stableStringify(base.canvas);
-  const canvasRemoteChanged = stableStringify(remote.canvas) !== stableStringify(base.canvas);
-  if (canvasLocalChanged && canvasRemoteChanged && stableStringify(local.canvas) !== stableStringify(remote.canvas)) {
-    conflicts.push({ id: "(canvas)", reason: "canvas_conflict" });
-    mergedCanvas = base.canvas;
-  } else if (canvasRemoteChanged && !canvasLocalChanged) {
-    mergedCanvas = remote.canvas;
-  }
+  const mergedCanvas = canvasRemoteChanged && !canvasLocalChanged ? remote.canvas : local.canvas;
 
   const orderSource = conflicts.some((conflict) => conflict.reason === "order_conflict")
     ? base.objects
@@ -156,6 +166,12 @@ export function resolveConflicts(
     remote: AnnotationFile;
   },
 ): AnnotationFile {
+  // キャンバスの競合は文書全体の競合(mergeAnnotationEdits 参照)。選んだ側の版をそのまま使う
+  const canvasChoice = resolutions["(canvas)"];
+  if (canvasChoice) {
+    const chosen = canvasChoice === "remote" ? context.remote : context.local;
+    return { version: 1, canvas: chosen.canvas, objects: [...chosen.objects] };
+  }
   const localMap = objectsById(context.local.objects);
   const remoteMap = objectsById(context.remote.objects);
   const resolvedMap = new Map(merged.objects.map((obj) => [obj.id, obj]));
@@ -183,11 +199,5 @@ export function resolveConflicts(
       .filter((obj): obj is AnnotationObject => obj !== undefined),
     ...[...resolvedMap.values()].filter((obj) => !orderIds.includes(obj.id)),
   ];
-  const canvasChoice = resolutions["(canvas)"];
-  const canvas = canvasChoice === "remote"
-    ? context.remote.canvas
-    : canvasChoice === "local"
-      ? context.local.canvas
-      : merged.canvas;
-  return { version: 1, canvas, objects };
+  return { version: 1, canvas: merged.canvas, objects };
 }
