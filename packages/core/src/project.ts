@@ -5,6 +5,7 @@ import {
   renameSync,
   readdirSync,
   readFileSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +23,7 @@ import {
   type CaptureRecipe,
 } from "./schema.js";
 import { applyDefaultImageLocks } from "./annotation-objects.js";
+import { renameAnnotatedImageSrc } from "./annotated-image-fences.js";
 import { annotationFilePath, assertSafeName, resolveProjectRoot } from "./safe-name.js";
 
 export function renumberBadges(annotation: AnnotationFile): AnnotationFile {
@@ -306,6 +308,53 @@ export function writeAnnotationFile(projectRoot: string, id: string, annotation:
   writeFileSync(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
 }
 
+// 同じフォルダの一時ファイルに書いてから rename で置き換える(途中で失敗しても元のファイルが半端にならない)
+let atomicWriteCounter = 0;
+function writeTextFileAtomic(path: string, text: string): void {
+  atomicWriteCounter += 1;
+  const temp = join(dirname(path), `.${basename(path)}.${process.pid}.${atomicWriteCounter}.tmp`);
+  try {
+    writeFileSync(temp, text, "utf8");
+    renameSync(temp, path);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+// 注釈ファイル(exceptId 以外)が参照している画像の src 一覧。
+// 壊れた JSON は内容が分からないため、文字列として含まれているかで判定する
+function imageSourcesUsedByOtherAnnotations(projectRoot: string, exceptId: string): (src: string) => boolean {
+  const annotationsDir = join(projectRoot, "annotations");
+  const sources = new Set<string>();
+  const rawTexts: string[] = [];
+  if (existsSync(annotationsDir)) {
+    for (const name of readdirSync(annotationsDir)) {
+      if (!name.endsWith(".json") || basename(name, ".json") === exceptId) {
+        continue;
+      }
+      const text = readFileSync(join(annotationsDir, name), "utf8");
+      try {
+        const json = JSON.parse(text) as { objects?: unknown };
+        for (const obj of Array.isArray(json.objects) ? json.objects : []) {
+          const src = (obj as { src?: unknown } | null)?.src;
+          if (typeof src === "string") {
+            sources.add(src);
+          }
+        }
+      } catch {
+        rawTexts.push(text);
+      }
+    }
+  }
+  return (src) => sources.has(src) || rawTexts.some((text) => text.includes(src));
+}
+
+/**
+ * 注釈IDを変更する。annotations/<id>.json と manual.md の annotated-image フェンスの src を書き換え、
+ * この注釈だけが使う画像(img/raw/<id>.* と img/<id>.*)を新しいIDの名前へ移す。
+ * 他の注釈ファイルや manual.md が直接参照している画像は移さない(参照が切れるため)
+ */
 export function renameAnnotationId(
   projectRoot: string,
   currentId: string,
@@ -326,12 +375,22 @@ export function renameAnnotationId(
   }
 
   const annotation = readAnnotationFile(projectRoot, currentId);
+  const manualPath = join(projectRoot, "manual.md");
+  const manual = existsSync(manualPath) ? readFileSync(manualPath, "utf8") : null;
+  const usedElsewhere = imageSourcesUsedByOtherAnnotations(projectRoot, currentId);
+  const isShared = (src: string) => usedElsewhere(src) || (manual?.includes(src) ?? false);
+
   const imageRenames = new Map<string, string>();
+  const addRename = (src: string, destination: string) => {
+    if (!isShared(src)) {
+      imageRenames.set(src, destination);
+    }
+  };
   for (const obj of annotation.objects) {
     if (obj.type !== "image" || basename(obj.src, extname(obj.src)) !== currentId) {
       continue;
     }
-    imageRenames.set(obj.src, join(dirname(obj.src), `${nextId}${extname(obj.src)}`));
+    addRename(obj.src, `${dirname(obj.src)}/${nextId}${extname(obj.src)}`);
   }
   for (const directory of ["img/raw", "img"]) {
     const absoluteDirectory = join(projectRoot, directory);
@@ -340,41 +399,51 @@ export function renameAnnotationId(
     }
     for (const name of readdirSync(absoluteDirectory)) {
       if (basename(name, extname(name)) === currentId) {
-        imageRenames.set(join(directory, name), join(directory, `${nextId}${extname(name)}`));
+        addRename(`${directory}/${name}`, `${directory}/${nextId}${extname(name)}`);
       }
     }
   }
-  for (const destination of imageRenames.values()) {
+  for (const [source, destination] of imageRenames) {
+    if (!existsSync(join(projectRoot, source))) {
+      imageRenames.delete(source);
+      continue;
+    }
     if (existsSync(join(projectRoot, destination))) {
       throw new Error(`画像ファイルが既に存在します: ${destination}`);
     }
   }
 
-  const updated: AnnotationFile = {
+  const updated = parseAnnotation({
     ...annotation,
     objects: annotation.objects.map((obj) =>
       obj.type === "image" && imageRenames.has(obj.src)
         ? { ...obj, src: imageRenames.get(obj.src)! }
         : obj,
     ),
-  };
-  writeAnnotationFile(projectRoot, nextId, updated);
-  for (const [source, destination] of imageRenames) {
-    renameSync(join(projectRoot, source), join(projectRoot, destination));
-  }
+  });
+  const nextManual = manual === null ? null : renameAnnotatedImageSrc(manual, currentId, nextId);
 
-  const manualPath = join(projectRoot, "manual.md");
-  const manual = readFileSync(manualPath, "utf8");
-  const escapedId = currentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const nextManual = manual.replace(
-    /```annotated-image[^\n]*\n[\s\S]*?```/g,
-    (block) => block.replace(
-      new RegExp(`^(\\s*src:\\s*)([\"']?)${escapedId}\\2(\\s*)$`, "gm"),
-      `$1$2${nextId}$2$3`,
-    ),
-  );
-  if (nextManual !== manual) {
-    writeFileSync(manualPath, nextManual, "utf8");
+  // 途中で失敗した場合は、それまでの変更を元に戻す
+  const movedImages: Array<[string, string]> = [];
+  let wroteNext = false;
+  try {
+    writeTextFileAtomic(nextPath, `${JSON.stringify(updated, null, 2)}\n`);
+    wroteNext = true;
+    for (const [source, destination] of imageRenames) {
+      renameSync(join(projectRoot, source), join(projectRoot, destination));
+      movedImages.push([source, destination]);
+    }
+    if (nextManual !== null && nextManual !== manual) {
+      writeTextFileAtomic(manualPath, nextManual);
+    }
+  } catch (error) {
+    for (const [source, destination] of movedImages.reverse()) {
+      renameSync(join(projectRoot, destination), join(projectRoot, source));
+    }
+    if (wroteNext) {
+      rmSync(nextPath, { force: true });
+    }
+    throw error;
   }
   unlinkSync(currentPath);
   return updated;
