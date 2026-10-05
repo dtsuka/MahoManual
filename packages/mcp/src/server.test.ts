@@ -163,11 +163,23 @@ describe("MahoManual MCP server", () => {
           project: "demo",
           id: "demo",
           objectId: "img-main",
-          crop: { x: 0, y: 0, w: 640, h: 480 },
+          crop: { x: 0, y: 0, w: 300, h: 150 },
         },
       });
       expect(cropped.isError).not.toBe(true);
-      expect(textContent(cropped)).toContain('"w": 640');
+      expect(textContent(cropped)).toContain('"w": 300');
+
+      // 画像(356×197)の範囲外のcropは保存せずエラーを返す
+      const outOfBounds = await client.callTool({
+        name: "set_crop",
+        arguments: {
+          project: "demo",
+          id: "demo",
+          objectId: "img-main",
+          crop: { x: 0, y: 0, w: 640, h: 480 },
+        },
+      });
+      expect(outOfBounds.isError).toBe(true);
 
       const renumbered = await client.callTool({
         name: "renumber_badges",
