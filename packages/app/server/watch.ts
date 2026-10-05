@@ -2,8 +2,8 @@ import type { FSWatcher } from "chokidar";
 import chokidar from "chokidar";
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { projectRoot } from "./paths.js";
 
+// 監視はプロジェクトのフォルダ(絶対パス)単位で共有する
 const watchers = new Map<string, FSWatcher>();
 const subscribers = new Map<string, Set<(event: WatchEvent) => void>>();
 
@@ -12,43 +12,46 @@ export interface WatchEvent {
   path: string;
 }
 
-function getSubscribers(project: string): Set<(event: WatchEvent) => void> {
-  let set = subscribers.get(project);
+function getSubscribers(root: string): Set<(event: WatchEvent) => void> {
+  let set = subscribers.get(root);
   if (!set) {
     set = new Set();
-    subscribers.set(project, set);
+    subscribers.set(root, set);
   }
   return set;
 }
 
-function ensureWatcher(project: string): FSWatcher {
-  const existing = watchers.get(project);
+function ensureWatcher(root: string): FSWatcher {
+  const existing = watchers.get(root);
   if (existing) {
     return existing;
   }
 
-  const watcher = chokidar.watch(projectRoot(project), {
+  const watcher = chokidar.watch(root, {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     ignored: [/(^|[/\\])\../, /[/\\]dist[/\\]/, /[/\\]\.auth[/\\]/],
   });
 
   watcher.on("all", (eventName, path) => {
-    const root = projectRoot(project);
     const relative = path.startsWith(root) ? path.slice(root.length + 1) : path;
     const type = eventName === "add" ? "add" : eventName === "unlink" ? "unlink" : "change";
     const payload: WatchEvent = { type, path: relative.replaceAll("\\", "/") };
-    for (const listener of getSubscribers(project)) {
+    for (const listener of getSubscribers(root)) {
       listener(payload);
     }
   });
 
-  watchers.set(project, watcher);
+  watchers.set(root, watcher);
   return watcher;
 }
 
-export function createWatchHandler(project: string) {
-  ensureWatcher(project);
+/**
+ * プロジェクトのファイル変更を SSE で通知する。
+ * root は呼び出し側で検査済み(存在するプロジェクトのフォルダ)であること
+ */
+export function createWatchHandler(project: string, root: string) {
+  ensureWatcher(root);
   return (c: Context) =>
     streamSSE(c, async (stream) => {
       const listener = (event: WatchEvent) => {
@@ -57,7 +60,7 @@ export function createWatchHandler(project: string) {
           data: JSON.stringify(event),
         });
       };
-      const set = getSubscribers(project);
+      const set = getSubscribers(root);
       set.add(listener);
 
       await stream.writeSSE({
@@ -69,10 +72,10 @@ export function createWatchHandler(project: string) {
         stream.onAbort(() => {
           set.delete(listener);
           if (set.size === 0) {
-            const watcher = watchers.get(project);
+            const watcher = watchers.get(root);
             void watcher?.close();
-            watchers.delete(project);
-            subscribers.delete(project);
+            watchers.delete(root);
+            subscribers.delete(root);
           }
           resolve();
         });

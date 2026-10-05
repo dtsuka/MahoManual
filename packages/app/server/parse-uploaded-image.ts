@@ -4,50 +4,38 @@ export type ParsedUploadedImage =
   | { ok: true; buffer: Buffer; width: number; height: number }
   | { ok: false; error: string };
 
-export interface ParseUploadedImageOptions {
-  width?: number;
-  height?: number;
-  fallback?: { width: number; height: number };
-  strictMime?: boolean;
-}
+// data URI で宣言できる形式と、デコード結果として受け付ける形式(image-size の type)
+const DATA_URI_PREFIX_RE = /^data:image\/(png|jpe?g|webp|gif);base64,/i;
+const ALLOWED_TYPES = new Set(["png", "jpg", "webp", "gif"]);
 
-const LOOSE_DATA_URI_RE = /^data:image\/\w+;base64,/;
-const STRICT_DATA_URI_RE = /^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/s;
-
-// アップロードされた data URI をデコードし、幅・高さを解決する。
-// POST /images はプレフィックスを緩く剥がし未指定サイズを fallback で補うのに対し、
-// 注釈画像系のルートは MIME を厳密に検証しサイズ未検出をエラーにする
-export function parseUploadedImage(
-  data: string | undefined,
-  options: ParseUploadedImageOptions = {},
-): ParsedUploadedImage {
-  const { width, height, fallback, strictMime = false } = options;
-
-  if (strictMime) {
-    const match = data?.match(STRICT_DATA_URI_RE);
-    if (!match) {
-      return { ok: false, error: "画像データが不正です" };
-    }
-    const buffer = Buffer.from(match[2]!, "base64");
-    const detected = imageSize(buffer);
-    const resolvedWidth = width ?? detected.width;
-    const resolvedHeight = height ?? detected.height;
-    if (!resolvedWidth || !resolvedHeight) {
-      return { ok: false, error: "画像サイズを取得できません" };
-    }
-    return { ok: true, buffer, width: resolvedWidth, height: resolvedHeight };
+/**
+ * アップロードされた data URI(PNG / JPEG / WebP / GIF)をデコードし、画像の実サイズを返す。
+ * クライアントが送る width / height は使わない(画像ファイルの実ピクセルを正とする。SPEC §4.1)
+ */
+export function parseUploadedImage(data: unknown): ParsedUploadedImage {
+  if (typeof data !== "string") {
+    return { ok: false, error: "画像データ(data URI)を文字列で指定してください" };
   }
-
-  const buffer = Buffer.from((data ?? "").replace(LOOSE_DATA_URI_RE, ""), "base64");
-  let resolvedWidth = width;
-  let resolvedHeight = height;
-  if (!resolvedWidth || !resolvedHeight) {
-    const detected = imageSize(buffer);
-    resolvedWidth = detected.width ?? fallback?.width;
-    resolvedHeight = detected.height ?? fallback?.height;
+  const prefix = data.match(DATA_URI_PREFIX_RE);
+  if (!prefix) {
+    return { ok: false, error: "画像データが不正です(PNG / JPEG / WebP / GIF の data URI のみ受け付けます)" };
   }
-  if (!resolvedWidth || !resolvedHeight) {
+  const buffer = Buffer.from(data.slice(prefix[0].length), "base64");
+  if (buffer.length === 0) {
+    return { ok: false, error: "画像データが空です" };
+  }
+  let detected: ReturnType<typeof imageSize>;
+  try {
+    detected = imageSize(buffer);
+  } catch {
+    return { ok: false, error: "画像として読み込めません" };
+  }
+  if (!detected.type || !ALLOWED_TYPES.has(detected.type)) {
+    return { ok: false, error: "PNG / JPEG / WebP / GIF 以外の画像は取り込めません" };
+  }
+  const { width, height } = detected;
+  if (!width || !height) {
     return { ok: false, error: "画像サイズを取得できません" };
   }
-  return { ok: true, buffer, width: resolvedWidth, height: resolvedHeight };
+  return { ok: true, buffer, width, height };
 }

@@ -26,11 +26,13 @@ export {
 } from "./annotation-objects.js";
 export { createObjectId, nextBadgeNumber } from "./annotation-ids.js";
 export {
+  annotationDefaultsSchema,
   applyObjectStyle,
   copyObjectStyle,
   extractObjectStyle,
   parseAnnotationDefaults,
   resolveCreationDefaults,
+  validateAnnotationDefaults,
   type AnnotationDefaults,
   type ObjectStylePatch,
 } from "./annotation-defaults.js";
@@ -148,3 +150,6 @@ export {
   resolveInside,
   resolveProjectRoot,
 } from "./safe-name.js";
+export { ImageOperationError, importPastedImage, replaceImageObject, type ImageOperationErrorReason } from "./image-replace.js";
+export { updateProjectTheme, type ProjectThemeUpdate } from "./project-theme.js";
+export { writeAnnotationFileAtomic, writeFileAtomic } from "./atomic-write.js";
