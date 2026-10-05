@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { imageSize } from "image-size";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -232,6 +232,123 @@ output: "cap-clip"
       rmSync(projectRoot, { recursive: true, force: true });
     }
   }, 30000);
+});
+
+describe("runCapture: positions when the page scrolls or has fractional sizes", () => {
+  function writePage(projectRoot: string, name: string, html: string): string {
+    const path = join(projectRoot, name);
+    writeFileSync(path, `<!doctype html><html><body style="margin:0">${html}</body></html>`, "utf8");
+    return pathToFileURL(path).href;
+  }
+
+  it("places annotations correctly when the selector target is below the fold", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-capture-scroll-sel-"));
+    try {
+      writeProjectYaml(projectRoot, baseUrl);
+      const pageUrl = writePage(projectRoot, "page.html", `
+<div style="height:2000px"></div>
+<div id="panel" style="width:400px;height:300px;background:#eee;position:relative">
+  <input id="field" style="position:absolute;left:100px;top:50px;width:200px;height:30px;box-sizing:border-box;border:0">
+</div>
+<div style="height:2000px"></div>`);
+      const result = await runCapture(projectRoot, parseRecipe(`
+url: /
+screenshot:
+  target: "#panel"
+output: "scroll-sel"
+annotate:
+  - type: frame
+    selector: "#field"
+    padding: 0
+`), { recipeId: "scroll-sel", pageUrl });
+
+      expect(result.annotation.canvas).toEqual({ width: 400, height: 300 });
+      const frame = result.annotation.objects.find((o) => o.type === "frame");
+      expect(frame?.rect.x).toBeCloseTo(25, 6);
+      expect(frame?.rect.y).toBeCloseTo((50 / 300) * 100, 6);
+      expect(frame?.rect.w).toBeCloseTo(50, 6);
+      expect(frame?.rect.h).toBeCloseTo(10, 6);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("places annotations correctly on a fullPage capture after a click step scrolls the page", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-capture-scroll-full-"));
+    try {
+      writeProjectYaml(projectRoot, baseUrl);
+      const pageUrl = writePage(projectRoot, "page.html", `
+<div style="height:2000px"></div>
+<button id="btn" style="position:absolute;left:100px;top:2000px;width:100px;height:40px">b</button>
+<div style="height:2000px"></div>`);
+      const result = await runCapture(projectRoot, parseRecipe(`
+url: /
+steps:
+  - click: "#btn"
+screenshot:
+  target: fullPage
+output: "scroll-full"
+annotate:
+  - type: frame
+    selector: "#btn"
+    padding: 0
+`), { recipeId: "scroll-full", pageUrl });
+
+      const { canvas } = result.annotation;
+      const frame = result.annotation.objects.find((o) => o.type === "frame");
+      expect(((frame?.rect.x ?? 0) / 100) * canvas.width).toBeCloseTo(100, 3);
+      expect(((frame?.rect.y ?? 0) / 100) * canvas.height).toBeCloseTo(2000, 3);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the real PNG size for crop and the real clip for % positions with fractional element sizes", async () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), "mahomanual-capture-frac-"));
+    try {
+      writeProjectYaml(projectRoot, baseUrl);
+      const pageUrl = writePage(
+        projectRoot,
+        "page.html",
+        `<div id="t" style="position:absolute;left:10.3px;top:7.7px;width:300.25px;height:120.75px;background:red"></div>`,
+      );
+      const result = await runCapture(projectRoot, parseRecipe(`
+url: /
+screenshot:
+  target: "#t"
+output: "frac"
+annotate:
+  - type: frame
+    selector: "#t"
+    padding: 0
+`), { recipeId: "frac", pageUrl });
+
+      const size = imageSize(readFileSync(result.rawImagePath));
+      const { canvas } = result.annotation;
+      const image = result.annotation.objects.find((o) => o.type === "image");
+      expect(image?.crop).toEqual({ x: 0, y: 0, w: size.width, h: size.height });
+      // canvas は撮影に使った領域(CSS px)。PNG は deviceScaleFactor 2 の実ピクセル
+      expect(canvas.width * 2).toBe(size.width);
+      expect(canvas.height * 2).toBe(size.height);
+
+      // 枠は画像の中で要素がある位置(CSS px)を指す
+      const frame = result.annotation.objects.find((o) => o.type === "frame");
+      const left = ((frame?.rect.x ?? 0) / 100) * canvas.width;
+      const top = ((frame?.rect.y ?? 0) / 100) * canvas.height;
+      const width = ((frame?.rect.w ?? 0) / 100) * canvas.width;
+      const height = ((frame?.rect.h ?? 0) / 100) * canvas.height;
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(left).toBeLessThan(1);
+      expect(top).toBeLessThan(1);
+      expect(width).toBeCloseTo(300.25, 3);
+      expect(height).toBeCloseTo(120.75, 3);
+      expect(left + width).toBeLessThanOrEqual(canvas.width + 1e-6);
+      expect(top + height).toBeLessThanOrEqual(canvas.height + 1e-6);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 function writeProjectYaml(projectRoot: string, baseUrl: string): void {
