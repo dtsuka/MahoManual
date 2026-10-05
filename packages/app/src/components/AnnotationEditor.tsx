@@ -89,11 +89,11 @@ export function AnnotationEditor({
   onSaved,
   hostMarkdownDirty,
 }: AnnotationEditorProps) {
+  const annotationDocument = useAnnotationDocument();
   const {
     annotation,
     annotationRef,
     dirty,
-    dirtyRef,
     canUndo,
     canRedo,
     applyLocalChange,
@@ -103,11 +103,7 @@ export function AnnotationEditor({
     nudgeLinePoints,
     undo: undoDocument,
     redo: redoDocument,
-    replaceDocument,
-    markSaved,
-    getSavedBase,
-    isSameAsCurrent,
-  } = useAnnotationDocument();
+  } = annotationDocument;
   const [naturalSizes, setNaturalSizes] = useState<Record<string, { w: number; h: number }>>({});
   const [theme, setTheme] = useState<AnnotationTheme>({});
   const [annotationDefaults, setAnnotationDefaults] = useState<AnnotationDefaults>({});
@@ -299,12 +295,7 @@ export function AnnotationEditor({
   const sync = useAnnotationSync({
     project,
     annotationId,
-    annotationRef,
-    dirtyRef,
-    replaceDocument,
-    markSaved,
-    getSavedBase,
-    isSameAsCurrent,
+    document: annotationDocument,
     onBack,
     onNavigateToAnnotation,
     onSaved,
@@ -316,10 +307,16 @@ export function AnnotationEditor({
       setSoloId(null);
     },
     onPayloadApplied: (payload) => {
-      setNaturalSizes(payload.naturalSizes);
-      setTheme(payload.theme ?? {});
-      setAnnotationDefaults(payload.defaults ?? {});
+      setNaturalSizes((current) => ({ ...current, ...payload.naturalSizes }));
+      // 画像追加・置換の応答には theme / defaults が無いことがあるため、無ければ直前の値を保つ
+      if (payload.theme) {
+        setTheme(payload.theme);
+      }
+      if (payload.defaults) {
+        setAnnotationDefaults(payload.defaults);
+      }
     },
+    onLoadError: setError,
     onError: setError,
     onStatus: showStatus,
   });
@@ -522,7 +519,6 @@ export function AnnotationEditor({
       return;
     }
     const objectId = selected.id;
-    const wasUnlocked = isEditable(selected);
     try {
       const replacement = await readImageFile(file);
       const payload = await replaceAnnotationImage(
@@ -533,15 +529,8 @@ export function AnnotationEditor({
         replacement.width,
         replacement.height,
       );
-      sync.applyPayload({ ...payload, theme });
-      if (wasUnlocked) {
-        applyLocalChange((current) => ({
-          ...current,
-          objects: current.objects.map((obj) =>
-            obj.id === objectId && obj.type === "image" ? { ...obj, locked: false } : obj,
-          ),
-        }));
-      }
+      // 未保存の編集は残し、置換した画像とキャンバスの変更だけを合流させる
+      sync.applyServerImageChange(payload, objectId);
       setSelectedIds([objectId]);
       showStatus("画像を置換しました");
     } catch (err) {
@@ -561,7 +550,8 @@ export function AnnotationEditor({
         image.width,
         image.height,
       );
-      sync.applyPayload({ ...payload, theme });
+      // 未保存の編集は残し、追加した画像だけを合流させる
+      sync.applyServerImageChange(payload, objectId);
       setSelectedIds([objectId]);
       showStatus("画像を追加しました");
     } catch (err) {

@@ -1,13 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isEditable, isLineObject } from "@mahomanual/core/annotation-objects";
 import type { AnnotationFile } from "@mahomanual/core/schema";
 import { translateObjects } from "./annotation-operations.js";
+import { canonicalJson } from "./canonical-json.js";
 import { translateSelectedPoints } from "./line-point-selection.js";
 
 const MAX_HISTORY = 100;
 
 function annotationJson(value: AnnotationFile): string {
-  return JSON.stringify(value);
+  return canonicalJson(value);
 }
 
 function sameAnnotation(a: AnnotationFile, b: AnnotationFile): boolean {
@@ -52,11 +53,37 @@ export function useAnnotationDocument() {
     bumpHistory();
   }, [bumpHistory]);
 
+  /** 統合待ちの矢印キー移動を破棄する(タイマーも止める) */
+  const cancelArrowCoalesce = useCallback(() => {
+    if (arrowCoalesceRef.current.timer) {
+      clearTimeout(arrowCoalesceRef.current.timer);
+    }
+    arrowCoalesceRef.current = {};
+  }, []);
+
+  /** 統合待ちの矢印キー移動を1件の履歴として確定する */
+  const commitArrowCoalesce = useCallback(() => {
+    const start = arrowCoalesceRef.current.start;
+    const current = annotationRef.current;
+    cancelArrowCoalesce();
+    if (!start || !current || sameAnnotation(start, current)) {
+      return;
+    }
+    pushPast(start);
+  }, [pushPast, cancelArrowCoalesce]);
+
+  useEffect(() => cancelArrowCoalesce, [cancelArrowCoalesce]);
+
   const replaceDocument = useCallback((next: AnnotationFile, options?: {
     savedSnapshot?: AnnotationFile;
     dirty?: boolean;
     clearHistory?: boolean;
   }) => {
+    if (options?.clearHistory !== false) {
+      cancelArrowCoalesce();
+    } else {
+      commitArrowCoalesce();
+    }
     annotationRef.current = next;
     setAnnotation(next);
     if (options?.savedSnapshot) {
@@ -72,9 +99,11 @@ export function useAnnotationDocument() {
     } else {
       syncDirty(next);
     }
-  }, [bumpHistory, syncDirty]);
+  }, [bumpHistory, syncDirty, cancelArrowCoalesce, commitArrowCoalesce]);
 
   const applyLocalChange = useCallback((updater: (current: AnnotationFile) => AnnotationFile) => {
+    // 統合待ちの矢印キー移動は、この変更とは別の履歴として先に確定する
+    commitArrowCoalesce();
     const current = annotationRef.current;
     if (!current) {
       return;
@@ -87,7 +116,7 @@ export function useAnnotationDocument() {
     annotationRef.current = next;
     setAnnotation(next);
     syncDirty(next);
-  }, [pushPast, syncDirty]);
+  }, [pushPast, syncDirty, commitArrowCoalesce]);
 
   const applyTransientChange = useCallback((updater: (current: AnnotationFile) => AnnotationFile) => {
     const current = annotationRef.current;
@@ -106,17 +135,6 @@ export function useAnnotationDocument() {
       return;
     }
     pushPast(start);
-  }, [pushPast]);
-
-  const commitArrowCoalesce = useCallback(() => {
-    const start = arrowCoalesceRef.current.start;
-    const current = annotationRef.current;
-    if (!start || !current || sameAnnotation(start, current)) {
-      arrowCoalesceRef.current = {};
-      return;
-    }
-    pushPast(start);
-    arrowCoalesceRef.current = {};
   }, [pushPast]);
 
   const nudgeWithCoalesce = useCallback((
@@ -174,6 +192,7 @@ export function useAnnotationDocument() {
   }, [bumpHistory, syncDirty]);
 
   const undo = useCallback((): AnnotationFile | null => {
+    commitArrowCoalesce();
     const current = annotationRef.current;
     const previous = historyRef.current.past.at(-1);
     if (!current || !previous) {
@@ -185,9 +204,10 @@ export function useAnnotationDocument() {
     };
     restoreHistoryAnnotation(previous);
     return previous;
-  }, [restoreHistoryAnnotation]);
+  }, [restoreHistoryAnnotation, commitArrowCoalesce]);
 
   const redo = useCallback((): AnnotationFile | null => {
+    commitArrowCoalesce();
     const current = annotationRef.current;
     const next = historyRef.current.future[0];
     if (!current || !next) {
@@ -199,14 +219,35 @@ export function useAnnotationDocument() {
     };
     restoreHistoryAnnotation(next);
     return next;
-  }, [restoreHistoryAnnotation]);
+  }, [restoreHistoryAnnotation, commitArrowCoalesce]);
 
-  const markSaved = useCallback((saved: AnnotationFile) => {
-    annotationRef.current = saved;
+  /**
+   * 保存完了を反映する。sent は送信した内容。
+   * 保存中に編集が続いていれば手元はそのまま残し、保存スナップショットだけを更新する。
+   * 送信内容のままなら、サーバーで正規化された saved へ置き換える。
+   */
+  const markSaved = useCallback((saved: AnnotationFile, sent?: AnnotationFile) => {
     savedAnnotationJsonRef.current = annotationJson(saved);
-    setAnnotation(saved);
-    dirtyRef.current = false;
-    setDirty(false);
+    const current = annotationRef.current;
+    if (!sent || (current && (current === sent || sameAnnotation(current, sent)))) {
+      annotationRef.current = saved;
+      setAnnotation(saved);
+    }
+    if (annotationRef.current) {
+      syncDirty(annotationRef.current);
+    }
+  }, [syncDirty]);
+
+  /** サーバー側で保存済みになった内容を保存スナップショットにする(手元は変えない) */
+  const rebaseSaved = useCallback((snapshot: AnnotationFile) => {
+    savedAnnotationJsonRef.current = annotationJson(snapshot);
+    if (annotationRef.current) {
+      syncDirty(annotationRef.current);
+    }
+  }, [syncDirty]);
+
+  const isSavedBase = useCallback((candidate: AnnotationFile): boolean => {
+    return annotationJson(candidate) === savedAnnotationJsonRef.current;
   }, []);
 
   const getSavedBase = useCallback((): AnnotationFile => {
@@ -235,7 +276,9 @@ export function useAnnotationDocument() {
     redo,
     replaceDocument,
     markSaved,
+    rebaseSaved,
     getSavedBase,
+    isSavedBase,
     isSameAsCurrent,
   };
 }
