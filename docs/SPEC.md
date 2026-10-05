@@ -425,9 +425,9 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 1. `.auth/state.json` があればstorageStateとして読み込み、Chromium起動(`deviceScaleFactor: 2` で高解像度撮影)
 2. URLへ遷移 → steps実行 → スクショを `img/raw/<output>.png` に保存
-3. 撮影領域(fullPage=ページ全体 / selector・clip=その矩形)を基準に、各annotate対象の `boundingBox()`(CSS px)を%へ変換:
+3. 撮影の直前に、撮影領域(fullPage=ページ全体 / selector=その要素の矩形 / clip=撮影時点の表示領域を基準にした矩形)と各annotate対象の `boundingBox()`(CSS px)を同じ時点で測り、スクロール量(`window.scrollX/Y`)を足してページ全体を基準にした座標に揃える。selector指定時は先に対象要素を表示領域へスクロールしてから測る。撮影領域は外側の整数pxへ広げ、ページの範囲内に収めてから、その領域をページ全体基準で撮影する。各対象は実際に撮影した領域を基準に%へ変換する:
    `x% = (box.x - region.x) / region.width * 100`
-4. `annotations/<output>.json` を生成/マージ(§9.4)。canvasは撮影領域のCSS px寸法。imageオブジェクトのcropは実ピクセル(CSS pxの2倍)で全領域を指定。`screenshot.margin` 指定時は生成結果に `expandCanvas`(§4.5)を適用してからマージする(canvas=領域+余白、rect・注釈%座標は余白込みで再計算。スクショ自体は領域のみで余白画素を含まない)
+4. `annotations/<output>.json` を生成/マージ(§9.4)。canvasは実際に撮影した領域のCSS px寸法(PNGの実ピクセル寸法÷2)。imageオブジェクトのcropは撮影後のPNGファイルから読み取った実ピクセル寸法で全領域を指定。`screenshot.margin` 指定時は生成結果に `expandCanvas`(§4.5)を適用してからマージする(canvas=領域+余白、rect・注釈%座標は余白込みで再計算。スクショ自体は領域のみで余白画素を含まない)
 5. 表示用 `img/<output>.png` は raw のコピー(GUIでクロップ変更してもrawが原本)
 
 ### 9.3 注釈の自動配置規則

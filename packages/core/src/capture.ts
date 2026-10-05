@@ -6,6 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { imageSize } from "image-size";
 import { chromium, type Page } from "playwright";
 import { parse as parseYaml } from "yaml";
 import { badgePointFromBox, frameRectFromBox, type Region } from "./capture-math.js";
@@ -84,51 +85,100 @@ async function runStep(page: Page, step: RecipeStep): Promise<void> {
   return _exhaustive;
 }
 
-async function resolveRegion(page: Page, recipe: CaptureRecipe): Promise<Region> {
+interface PageBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface CaptureMeasurement {
+  // 撮影に使う領域(ドキュメント座標・CSS px・整数)
+  clip: Region;
+  // 各 annotate 対象の矩形(ドキュメント座標・CSS px)。見つからなければ null
+  boxes: Array<PageBox | null>;
+}
+
+// 撮影前に、撮影領域と全 annotate 対象を同じ時点・同じ座標系(ドキュメント座標)で測る。
+// boundingBox() は viewport 基準なので window.scrollX/Y を足してドキュメント座標にする。
+// 測ってから撮影までページを操作しないため、撮影時のスクロールで位置がずれない
+async function measureCapture(
+  page: Page,
+  recipe: CaptureRecipe,
+  annotateItems: AnnotateItem[],
+): Promise<CaptureMeasurement> {
   const target = recipe.screenshot.target;
+  if (typeof target === "string" && target !== "fullPage") {
+    await page.locator(target).first().scrollIntoViewIfNeeded();
+  }
+
+  const state = await page.evaluate(() => ({
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+  }));
+  const toDocument = (box: PageBox | null): PageBox | null =>
+    box ? { ...box, x: box.x + state.scrollX, y: box.y + state.scrollY } : null;
+
+  let region: Region;
   if (target === "fullPage") {
     // body の boundingBox は margin 分ズレるため、ドキュメント全体を基準にする
-    // (fullPage スクリーンショットが写す範囲と一致させる)
-    const size = await page.evaluate(() => ({
-      w: document.documentElement.scrollWidth,
-      h: document.documentElement.scrollHeight,
-    }));
-    return { x: 0, y: 0, w: size.w, h: size.h };
-  }
-  if (typeof target === "string") {
-    const box = await page.locator(target).first().boundingBox();
+    region = { x: 0, y: 0, w: state.width, h: state.height };
+  } else if (typeof target === "string") {
+    const box = toDocument(await page.locator(target).first().boundingBox());
     if (!box) {
       throw new Error(`unable to resolve screenshot region for selector: ${target}`);
     }
-    return { x: box.x, y: box.y, w: box.width, h: box.height };
+    region = { x: box.x, y: box.y, w: box.width, h: box.height };
+  } else {
+    // clip は撮影時点の viewport 基準の矩形として扱う
+    region = { x: target.x + state.scrollX, y: target.y + state.scrollY, w: target.w, h: target.h };
   }
-  return { x: target.x, y: target.y, w: target.w, h: target.h };
+
+  const boxes = await Promise.all(
+    annotateItems.map(async (item) => toDocument(await page.locator(item.selector).first().boundingBox())),
+  );
+  return { clip: enclosingClip(region, state), boxes };
 }
 
-// 撮影画像が region 領域そのものになるよう target 別に撮り分ける。
-// これにより crop {0,0,region*2} と注釈の%座標(region 基準)が常に画像と一致する
-async function takeScreenshot(page: Page, recipe: CaptureRecipe, path: string): Promise<void> {
-  const target = recipe.screenshot.target;
-  if (target === "fullPage") {
-    await page.screenshot({ path, fullPage: true });
-    return;
+// Playwright は小数の撮影領域を外側の整数 px へ広げて撮るため、先に同じ規則で整数化し、
+// ドキュメントの範囲内に収める。これを撮影と%座標計算の両方に使う
+function enclosingClip(region: Region, documentSize: { width: number; height: number }): Region {
+  const x = Math.max(0, Math.floor(region.x + 1e-3));
+  const y = Math.max(0, Math.floor(region.y + 1e-3));
+  const right = Math.min(documentSize.width, Math.ceil(region.x + region.w - 1e-3));
+  const bottom = Math.min(documentSize.height, Math.ceil(region.y + region.h - 1e-3));
+  if (right <= x || bottom <= y) {
+    throw new Error("撮影領域がページの外にあります");
   }
-  if (typeof target === "string") {
-    await page.locator(target).first().screenshot({ path });
-    return;
-  }
+  return { x, y, w: right - x, h: bottom - y };
+}
+
+// ドキュメント座標の clip で撮る(fullPage 指定によりスクロール位置に関係なく撮れる)
+async function takeScreenshot(page: Page, clip: Region, path: string): Promise<void> {
   await page.screenshot({
     path,
-    clip: { x: target.x, y: target.y, width: target.w, height: target.h },
+    fullPage: true,
+    clip: { x: clip.x, y: clip.y, width: clip.w, height: clip.h },
   });
+}
+
+function readPngSize(path: string): { w: number; h: number } {
+  const size = imageSize(readFileSync(path));
+  if (!size.width || !size.height) {
+    throw new Error(`撮影画像のサイズを読み取れません: ${path}`);
+  }
+  return { w: size.width, h: size.height };
 }
 
 function buildAnnotationObjects(
   recipeId: string,
   output: string,
   region: Region,
+  pngSize: { w: number; h: number },
   annotateItems: AnnotateItem[],
-  boxes: Array<{ item: AnnotateItem; box: { x: number; y: number; width: number; height: number } | null }>,
+  boxes: Array<PageBox | null>,
 ): AnnotationObject[] {
   const objects: AnnotationObject[] = [
     {
@@ -139,26 +189,22 @@ function buildAnnotationObjects(
       locked: true,
       src: `img/raw/${output}.png`,
       rect: { x: 0, y: 0, w: 100, h: 100 },
-      crop: {
-        x: 0,
-        y: 0,
-        w: Math.round(region.w * DEVICE_SCALE),
-        h: Math.round(region.h * DEVICE_SCALE),
-      },
+      // crop は画像ファイルの実ピクセル(SPEC §4.1)。撮影後のPNGから読む
+      crop: { x: 0, y: 0, w: pngSize.w, h: pngSize.h },
     },
   ];
 
   let badgeNumber = 1;
   annotateItems.forEach((item, index) => {
     const found = boxes[index];
-    if (!found?.box) {
+    if (!found) {
       return;
     }
     const box = {
-      x: found.box.x,
-      y: found.box.y,
-      w: found.box.width,
-      h: found.box.height,
+      x: found.x,
+      y: found.y,
+      w: found.width,
+      h: found.height,
     };
 
     if (item.type === "badge") {
@@ -224,22 +270,24 @@ export async function runCapture(
       }
     }
 
-    const region = await resolveRegion(page, recipe);
-    await takeScreenshot(page, recipe, rawImagePath);
+    const annotateItems = recipe.annotate ?? [];
+    const { clip, boxes } = await measureCapture(page, recipe, annotateItems);
+    await takeScreenshot(page, clip, rawImagePath);
     copyFileSync(rawImagePath, displayImagePath);
 
-    const annotateItems = recipe.annotate ?? [];
-    const boxes = await Promise.all(
-      annotateItems.map(async (item) => ({
-        item,
-        box: await page.locator(item.selector).first().boundingBox(),
-      })),
-    );
+    // 実際に撮れた範囲(ページ端で切り詰められた場合を含む)を PNG の実サイズから求める
+    const pngSize = readPngSize(rawImagePath);
+    const region: Region = {
+      x: clip.x,
+      y: clip.y,
+      w: pngSize.w / DEVICE_SCALE,
+      h: pngSize.h / DEVICE_SCALE,
+    };
 
     const regionCaptured: AnnotationFile = {
       version: 1,
-      canvas: { width: Math.round(region.w), height: Math.round(region.h) },
-      objects: buildAnnotationObjects(recipeId, output, region, annotateItems, boxes),
+      canvas: { width: region.w, height: region.h },
+      objects: buildAnnotationObjects(recipeId, output, region, pngSize, annotateItems, boxes),
     };
     // SPEC §9.2: margin指定時はキャンバス余白を適用してからマージする
     // (スクショPNGは領域のみ。余白はレイアウトとして表現される)
