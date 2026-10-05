@@ -385,12 +385,14 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 |---|---|
 | `manual new <name>` | `projects/<name>/` を§3構造で雛形生成(manual.mdテンプレート付き) |
 | `manual build <project> [--single-file] [-o <dir>]` | 納品HTML生成。既定出力 `dist/` |
-| `manual pdf <project> [-o <file>]` | build後にPDF生成。既定 `dist/manual.pdf` |
-| `manual login <project> --url <URL>` | headedブラウザを開く。人間がログイン後ブラウザを閉じると `.auth/state.json` にstorageState保存 |
-| `manual capture <project> [<recipeId>] [--all]` | 撮影レシピ実行(§9)。recipeId省略+`--all`で全レシピ |
-| `manual renumber <project> <annotationId>` | badgeの `n` を配列順で1から振り直し |
+| `manual pdf <project> [-o <file>]` | build後にPDF生成。既定 `dist/manual.pdf`。`-o` を指定してもHTMLはプロジェクトの `dist/` に生成し、指定先にはPDFだけを書き出す(指定先フォルダの他のファイルは変更しない) |
+| `manual login <project> --url <URL>` | headedブラウザを開く。人間がログイン後ブラウザを閉じると `.auth/state.json` にstorageState保存。保存はページの読み込みごと・一定間隔ごと・ページを閉じたときに行う。すべてのページを閉じるか、ブラウザを終了すると待機を終える。一度も保存できなかった場合は失敗(終了コード1)にする |
+| `manual capture <project> [<recipeId>] [--all]` | 撮影レシピ実行(§9)。recipeId省略+`--all`で全レシピ。recipeIdと`--all`の同時指定はエラー |
+| `manual renumber <project> <annotationId>` | badgeの `n` を配列順で1から振り直し(core の `renumberBadgesFile` と同じ処理)、注釈IDとbadgeの数を表示 |
 
-- `<project>` はパスまたは `projects/` 配下の名前
+- `<project>` はパス、または `projects/` 配下の名前(名前は§3.1の文字のみ)。CLIは利用者が手元で実行するため、パス指定を受け付ける。注釈ID・レシピIDは§3.1の検査を受ける
+- 相対パス(`<project>`・`-o`)は実行時のフォルダを基準に解決する。ルートの `pnpm manual` 経由で実行した場合はリポジトリのルートを基準にする
+- `projects/` の場所は環境変数 `MAHOMANUAL_PROJECTS_DIR` で変更できる(既定はリポジトリの `projects/`)
 - 終了コード: 成功0 / 失敗1(zodバリデーションエラーは対象ファイル名と全issueを日本語で表示)
 
 ## 9. 撮影レシピ仕様(captures/*.yaml)
@@ -442,7 +444,8 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 1. `source: "recipe"` かつ `recipeRef` が当該レシピのオブジェクト → **新しい撮影結果で置き換え**(レシピから消えたindexは削除)
 2. `source: "manual"` のオブジェクト → **位置・内容そのまま保持**
-3. 既存ファイルがなければ新規作成
+3. キャンバス余白(§4.5)の保持: 既存ファイルと撮影結果の両方に当該レシピの撮影画像(`recipeRef: "<レシピID>#image"`)がある場合、既存ファイルでの画像のまわりの余白(上下左右のpx)が撮影結果の余白より大きい辺は、その差を `expandCanvas` で撮影結果に足す(結果の余白は辺ごとに「前回の余白」と「レシピの `screenshot.margin`」の大きい方)。残すオブジェクト(手動注釈・他レシピ由来)は、撮影画像の左上からの位置(px)が変わらないように%座標を計算し直す。撮影画像の大きさが変わっても、手動注釈は画像の左上からの距離を保つ
+4. 既存ファイルがなければ新規作成
 
 → 「CMS更新後に `manual capture --all` で全スクショ+レシピ由来の注釈を一括再生成、手動調整分は温存」を実現する。
 
@@ -454,13 +457,17 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 
 `@modelcontextprotocol/sdk` のstdioサーバー。サーバー名 `MahoManual`。全ツールはcore関数の薄いラッパーで、エラー時はzodのissueを含む日本語メッセージを返す。
 
+- 引数 `project` は `projects/` 配下のプロジェクト名(フォルダ名)だけを受け付ける。パス(`..` や絶対パスを含む)は受け付けない。名前に使える文字は§3.1と同じ。MCPの引数はAIが組み立てるため、プロジェクトのフォルダの外を読み書きできないようにする
+- `projects/` の場所は環境変数 `MAHOMANUAL_PROJECTS_DIR` で変更できる(既定はリポジトリの `projects/`)
+- 引数 `id`(注釈ID)・`recipeId` は§3.1の検査を受ける
+
 | ツール | 引数 | 動作 |
 |---|---|---|
 | `list_manuals` | なし | projects/ 配下の一覧(name, title, ページ・画像数) |
 | `read_manual` | project | manual.md本文とannotations/capturesの一覧 |
 | `read_annotation` | project, id | 注釈JSONの取得 |
 | `add_annotation` | project, id, object | オブジェクト追加(スキーマ検証) |
-| `update_annotation` | project, id, objectId, patch | オブジェクト部分更新 |
+| `update_annotation` | project, id, objectId, patch | オブジェクト部分更新。patch に `id` / `type` を含めるとエラー(変更するときは削除して追加し直す) |
 | `remove_annotation` | project, id, objectId | オブジェクト削除 |
 | `set_crop` | project, id, objectId, crop | imageオブジェクトのcrop変更 |
 | `expand_canvas` | project, id, margin | キャンバス余白の追加・削除(§4.5。canvas拡張+全オブジェクトの%座標再計算) |
@@ -469,12 +476,14 @@ annotate:                       # 任意。上から順にbadgeは自動採番(1
 | `export_pdf` | project | PDF生成、出力パスを返す |
 | `run_capture` | project, recipeId?(省略で全件) | レシピ実行、結果サマリを返す |
 
+起動ファイルは `packages/mcp/bin/mahomanual-mcp.mjs`。ビルドは不要で、tsx で `src/index.ts` をそのまま実行する(`pnpm install` 済みであること)。
+
 クライアント設定例(`.mcp.json` / Claude Desktop):
 
 ```json
 { "mcpServers": { "MahoManual": {
     "command": "node",
-    "args": ["<絶対パス>/packages/mcp/dist/index.js"] } } }
+    "args": ["<絶対パス>/packages/mcp/bin/mahomanual-mcp.mjs"] } } }
 ```
 
 ## 11. GUI仕様(packages/app、Phase 4〜5)

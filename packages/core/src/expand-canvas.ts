@@ -20,33 +20,30 @@ interface RectPct extends PointPct {
   h: number;
 }
 
-export function expandCanvas(annotation: AnnotationFile, margin: CanvasMargin): AnnotationFile {
-  const { top = 0, right = 0, bottom = 0, left = 0 } = margin;
-  for (const [key, value] of Object.entries({ top, right, bottom, left })) {
-    if (!Number.isFinite(value)) {
-      throw new Error(`margin.${key} must be a finite number`);
-    }
-  }
+export interface CanvasSize {
+  width: number;
+  height: number;
+}
 
-  const oldWidth = annotation.canvas.width;
-  const oldHeight = annotation.canvas.height;
-  const newWidth = oldWidth + left + right;
-  const newHeight = oldHeight + top + bottom;
-  if (newWidth <= 0 || newHeight <= 0) {
-    throw new Error(`canvas size must stay positive after applying margin: ${newWidth}×${newHeight}`);
-  }
-
+// オブジェクトの%座標を、canvas `from` から canvas `to` へ移す。
+// `from` 上の位置(px)に offset(px)を足した位置が `to` 上の位置になる(crop・size・fontSize等のpx値は不変)
+export function remapObjects(
+  objects: readonly AnnotationObject[],
+  from: CanvasSize,
+  to: CanvasSize,
+  offset: { x: number; y: number },
+): AnnotationObject[] {
   const mapPoint = (point: PointPct): PointPct => ({
-    x: (((point.x / 100) * oldWidth + left) / newWidth) * 100,
-    y: (((point.y / 100) * oldHeight + top) / newHeight) * 100,
+    x: (((point.x / 100) * from.width + offset.x) / to.width) * 100,
+    y: (((point.y / 100) * from.height + offset.y) / to.height) * 100,
   });
   const mapRect = (rect: RectPct): RectPct => ({
     ...mapPoint(rect),
-    w: (rect.w * oldWidth) / newWidth,
-    h: (rect.h * oldHeight) / newHeight,
+    w: (rect.w * from.width) / to.width,
+    h: (rect.h * from.height) / to.height,
   });
 
-  const objects = annotation.objects.map((obj): AnnotationObject => {
+  return objects.map((obj): AnnotationObject => {
     switch (obj.type) {
       case "image":
       case "frame":
@@ -67,10 +64,28 @@ export function expandCanvas(annotation: AnnotationFile, margin: CanvasMargin): 
       }
     }
   });
+}
 
+export function expandCanvas(annotation: AnnotationFile, margin: CanvasMargin): AnnotationFile {
+  const { top = 0, right = 0, bottom = 0, left = 0 } = margin;
+  for (const [key, value] of Object.entries({ top, right, bottom, left })) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`margin.${key} must be a finite number`);
+    }
+  }
+
+  const oldWidth = annotation.canvas.width;
+  const oldHeight = annotation.canvas.height;
+  const newWidth = oldWidth + left + right;
+  const newHeight = oldHeight + top + bottom;
+  if (newWidth <= 0 || newHeight <= 0) {
+    throw new Error(`canvas size must stay positive after applying margin: ${newWidth}×${newHeight}`);
+  }
+
+  const canvas = { width: newWidth, height: newHeight };
   return {
     ...annotation,
-    canvas: { width: newWidth, height: newHeight },
-    objects,
+    canvas,
+    objects: remapObjects(annotation.objects, annotation.canvas, canvas, { x: left, y: top }),
   };
 }
