@@ -173,14 +173,14 @@ function buildArrowMarkerAttrs(
   const attrs: string[] = [];
 
   if (heads === "start" || heads === "both") {
-    const startId = `mm-arrow-${objectId}-start`;
+    const startId = escapeHtml(`mm-arrow-${objectId}-start`);
     defs.push(
       `<marker id="${startId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto-start-reverse"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
     );
     attrs.push(`marker-start="url(#${startId})"`);
   }
   if (heads === "end" || heads === "both") {
-    const endId = `mm-arrow-${objectId}`;
+    const endId = escapeHtml(`mm-arrow-${objectId}`);
     defs.push(
       `<marker id="${endId}" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z"${markerFill}/></marker>`,
     );

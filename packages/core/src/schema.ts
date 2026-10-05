@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import { isSafeName, isSafeRelativePath } from "./safe-name.js";
 
 // SPEC §8: バリデーションエラーは全 issue を日本語で表示する。
 // formatIssues が「パス: メッセージ」形式で連結するため、メッセージ本体を日本語化する
@@ -62,8 +63,21 @@ const cropSchema = z.object({
   h: z.number().gt(0),
 });
 
+// SPEC §3.1: ID はファイル名・HTML属性にそのまま使うため使用文字を制限する
+const safeNameSchema = z
+  .string()
+  .refine(isSafeName, "ID には文字・数字・-・_ のみ使用できます");
+
+// SPEC §4.2: 画像はプロジェクトルートからの相対パス(絶対パス・..・\ は不可)
+const relativePathSchema = z
+  .string()
+  .refine(
+    isSafeRelativePath,
+    "src はプロジェクトルートからの相対パスで指定してください(絶対パス・..・\\・. で始まる名前は不可)",
+  );
+
 const baseSchema = z.object({
-  id: z.string().min(1),
+  id: safeNameSchema,
   source: z.enum(["manual", "recipe"]),
   recipeRef: z.string().optional(),
   locked: z.boolean().optional(),
@@ -71,7 +85,7 @@ const baseSchema = z.object({
 
 const imageObjectSchema = baseSchema.extend({
   type: z.literal("image"),
-  src: z.string().min(1),
+  src: relativePathSchema,
   rect: rectSchema,
   crop: cropSchema.optional(),
 });
@@ -294,7 +308,7 @@ const captureRecipeSchema = z.object({
     target: screenshotTargetSchema,
     margin: screenshotMarginSchema.optional(),
   }),
-  output: z.string().min(1),
+  output: safeNameSchema,
   annotate: z.array(annotateItemSchema).optional(),
 });
 

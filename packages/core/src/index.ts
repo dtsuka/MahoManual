@@ -140,3 +140,11 @@ export {
 } from "./schema.js";
 export { renderFigure, type RenderFenceOptions, type RenderOptions } from "./render.js";
 export { DEFAULT_CURSOR_COLOR, THEME_CSS } from "./theme.js";
+export {
+  annotationFilePath,
+  assertSafeName,
+  isSafeName,
+  isSafeRelativePath,
+  resolveInside,
+  resolveProjectRoot,
+} from "./safe-name.js";

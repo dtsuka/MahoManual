@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { imageSize } from "image-size";
 import { chromium } from "playwright";
 import { renderFigure } from "./render.js";
+import { isSafeRelativePath } from "./safe-name.js";
 import type { AnnotationFile } from "./schema.js";
 import { THEME_FIGURE_CSS, THEME_FONT_LINKS_HTML } from "./theme.js";
 import { applyMosaicsToImage } from "./mosaic.js";
@@ -18,6 +19,9 @@ export async function renderAnnotationPng(
   const naturalSizes: Record<string, { w: number; h: number }> = {};
   const imageSources: Record<string, string> = {};
   for (const image of images) {
+    if (!isSafeRelativePath(image.src)) {
+      throw new Error(`画像の src はプロジェクトルートからの相対パスで指定してください: ${image.src}`);
+    }
     const bytes = readFileSync(join(projectRoot, image.src));
     const size = imageSize(bytes);
     if (!size.width || !size.height) {

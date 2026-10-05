@@ -4,6 +4,7 @@ import {
   buildPreviewHtml,
   collectImageSources,
   getNaturalSizes,
+  isSafeName,
   parseAnnotation,
   renderAnnotationPng,
   renderManualHtmlDownload,
@@ -38,10 +39,6 @@ import { parseUploadedImage } from "./parse-uploaded-image.js";
 import { createWatchHandler } from "./watch.js";
 
 import type { AnnotationFile } from "@mahomanual/core";
-
-function isSafeName(name: string): boolean {
-  return name.length > 0 && !name.includes("/") && !name.includes("\\") && !name.includes("..");
-}
 
 function resolveProject(name: string): string | null {
   if (!isSafeName(name)) {

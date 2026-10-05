@@ -11,6 +11,7 @@ import { parse as parseYaml } from "yaml";
 import { badgePointFromBox, frameRectFromBox, type Region } from "./capture-math.js";
 import { expandCanvas } from "./expand-canvas.js";
 import { mergeAnnotations } from "./merge-annotations.js";
+import { assertSafeName } from "./safe-name.js";
 import {
   parseAnnotation,
   type AnnotateItem,
@@ -192,8 +193,8 @@ export async function runCapture(
   recipe: CaptureRecipe,
   options: RunCaptureOptions,
 ): Promise<RunCaptureResult> {
-  const recipeId = options.recipeId;
-  const output = recipe.output;
+  const recipeId = assertSafeName(options.recipeId, "レシピID");
+  const output = assertSafeName(recipe.output, "出力ID");
   const url = resolveRecipeUrl(projectRoot, recipe, options.pageUrl);
   const viewport = recipe.viewport ?? { width: 1280, height: 900 };
   const storageStatePath =

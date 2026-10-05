@@ -71,6 +71,15 @@ output:                             # GUIからダウンロードする納品フ
   pdf: "操作マニュアル.pdf"
 ```
 
+### 3.1 IDに使える文字
+
+プロジェクトID(フォルダ名)・注釈ID(`annotations/<id>.json` のファイル名)・オブジェクトID・レシピID(`captures/<id>.yaml` のファイル名)・レシピの `output` には、次の文字だけを使える。
+
+- 文字(日本語・英字など)と数字
+- `-`(ハイフン)と `_`(アンダースコア)
+
+`.` `/` `\` 引用符・山括弧・空白・記号は使えない。これらを含むIDは、スキーマの検査と core のパス関数(`annotationPath` など)でエラーになる。IDはファイルパスとHTMLの属性値にそのまま使うため、プロジェクトのフォルダの外を読み書きすることや、HTMLへの意図しない埋め込みを防ぐための制限である。検査関数は core の `isSafeName` / `assertSafeName` で、core の関数を通るCLI・MCP・GUIの操作はすべてこの検査を受ける。
+
 ## 4. データモデル(注釈JSON)
 
 `annotations/<id>.json`。zodスキーマは `packages/core/src/schema.ts` に定義する。
@@ -101,7 +110,7 @@ interface AnnotationFile {
 
 // 全オブジェクト共通
 interface Base {
-  id: string;                       // ファイル内で一意(重複はバリデーションエラー)
+  id: string;                       // ファイル内で一意(重複はバリデーションエラー)。使える文字は§3.1
   type: "image" | "badge" | "text" | "cursor" | "frame" | "mosaic" | "line" | "arrow";
   source: "manual" | "recipe";      // recipe由来は再撮影で更新される(§9.4)
   recipeRef?: string;               // source:"recipe" のとき "<レシピID>#<index>"
@@ -110,7 +119,7 @@ interface Base {
 
 interface ImageObj extends Base {   // キャンバスに複数配置可(2カラム合成等)
   type: "image";
-  src: string;                      // プロジェクトルート相対(例 "img/raw/facility-add.png")
+  src: string;                      // プロジェクトルート相対(例 "img/raw/facility-add.png")。絶対パス・".."・"\\"・"." で始まる名前は不可
   rect: Rect;                       // キャンバス上の配置(%)
   crop?: { x: number; y: number; w: number; h: number };  // 省略時は画像全体。x,y >= 0(余白は§4.5)
 }
@@ -360,6 +369,7 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 ### build(納品HTML)
 
 - 入力: プロジェクトフォルダ → 出力: `dist/manual.html` + `dist/img/`。注釈付き画像は `dist/img/cropped/` に実クロップして出力し、クロップ外の画素を納品物へ含めない。通常Markdownの画像はそのままコピーする
+- 画像の読み込み元はプロジェクトのフォルダの中、書き込み先は出力フォルダの中に限る。`..` などで外を指すパスはエラーにする
 - 完全なスタンドアロンHTML(`<!doctype html>`、`<title>` は最初のh1、テーマCSSは `<style>` 埋め込み)
 - `--single-file`: 画像をbase64 data URIでインライン化した単一HTML(imgフォルダ不要で納品可能)
 

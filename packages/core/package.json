@@ -22,7 +22,8 @@
     "./crop-math": "./src/crop-math.ts",
     "./object-geometry": "./src/object-geometry.ts",
     "./annotation-defaults": "./src/annotation-defaults.ts",
-    "./merge-annotation-edits": "./src/merge-annotation-edits.ts"
+    "./merge-annotation-edits": "./src/merge-annotation-edits.ts",
+    "./safe-name": "./src/safe-name.ts"
   },
   "scripts": {
     "test": "vitest run"

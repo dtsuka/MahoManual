@@ -22,6 +22,7 @@ import { visit } from "unist-util-visit";
 import { parse as parseYaml } from "yaml";
 import { collectImageSources } from "./annotation-objects.js";
 import { readProjectTheme } from "./project.js";
+import { annotationFilePath, resolveInside } from "./safe-name.js";
 import { escapeHtml, renderFigure, type RenderFenceOptions } from "./render.js";
 import { parseAnnotation } from "./schema.js";
 import { annotationThemeCss, THEME_CSS, THEME_FONT_LINKS_HTML } from "./theme.js";
@@ -67,7 +68,7 @@ const IMG_SRC_RE = /src="(img\/[^"]+)"/g;
 const TOC_MARKER = "<!-- toc -->";
 
 function loadAnnotation(projectRoot: string, annotationId: string) {
-  const annotationPath = join(projectRoot, "annotations", `${annotationId}.json`);
+  const annotationPath = annotationFilePath(projectRoot, annotationId);
   if (!existsSync(annotationPath)) {
     throw new Error(`annotation file not found: ${annotationId}`);
   }
@@ -87,7 +88,7 @@ function resolveNaturalSizes(
       sizes[src] = cached;
       continue;
     }
-    const absolutePath = join(projectRoot, src);
+    const absolutePath = resolveInside(projectRoot, src);
     if (!existsSync(absolutePath)) {
       throw new Error(`image file not found: ${src}`);
     }
@@ -105,11 +106,11 @@ function resolveNaturalSizes(
 function copyImages(projectRoot: string, outputDir: string, srcPaths: string[]): void {
   mkdirSync(join(outputDir, "img"), { recursive: true });
   for (const src of srcPaths) {
-    const sourcePath = join(projectRoot, src);
+    const sourcePath = resolveInside(projectRoot, src);
     if (!existsSync(sourcePath)) {
       throw new Error(`画像ファイルが見つかりません: ${src}`);
     }
-    const destPath = join(outputDir, src);
+    const destPath = resolveInside(outputDir, src);
     mkdirSync(dirname(destPath), { recursive: true });
     copyFileSync(sourcePath, destPath);
   }
@@ -125,10 +126,10 @@ async function writeCroppedImages(
   const uniqueJobs = new Map(jobs.map((job) => [job.output, job]));
   await Promise.all(
     [...uniqueJobs.values()].map(async ({ source, output, crop, annotation, image }) => {
-      const destinationPath = join(outputDir, output);
+      const destinationPath = resolveInside(outputDir, output);
       mkdirSync(dirname(destinationPath), { recursive: true });
       const mosaicked = await applyMosaicsToImage(
-        readFileSync(join(projectRoot, source)),
+        readFileSync(resolveInside(projectRoot, source)),
         annotation,
         image,
       );
@@ -148,7 +149,7 @@ function removeStaleAnnotatedSources(
   const copiedImages = new Set(outputImages);
   for (const source of new Set(jobs.map((job) => job.source))) {
     if (!copiedImages.has(source)) {
-      rmSync(join(outputDir, source), { force: true });
+      rmSync(resolveInside(outputDir, source), { force: true });
     }
   }
 }
@@ -224,7 +225,7 @@ function renderAnnotatedImageFence(
   };
   let html = renderFigure(renderAnnotation, { naturalSizes: renderNaturalSizes, fence: renderFence });
   if (options.dataAnnotationId) {
-    html = html.replace("<figure ", `<figure data-mm-annotation="${fence.src}" `);
+    html = html.replace("<figure ", `<figure data-mm-annotation="${escapeHtml(fence.src)}" `);
   }
   return html;
 }
@@ -350,7 +351,7 @@ async function processMarkdown(
 
 function inlineImagesAsDataUri(html: string, outputDir: string): string {
   return html.replace(IMG_SRC_RE, (_match, srcPath: string) => {
-    const absolutePath = join(outputDir, srcPath);
+    const absolutePath = resolveInside(outputDir, srcPath);
     const buffer = readFileSync(absolutePath);
     const ext = srcPath.split(".").pop()?.toLowerCase() ?? "png";
     const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;

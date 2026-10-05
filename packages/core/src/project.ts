@@ -22,6 +22,7 @@ import {
   type CaptureRecipe,
 } from "./schema.js";
 import { applyDefaultImageLocks } from "./annotation-objects.js";
+import { annotationFilePath, assertSafeName, resolveProjectRoot } from "./safe-name.js";
 
 export function renumberBadges(annotation: AnnotationFile): AnnotationFile {
   let counter = 1;
@@ -52,8 +53,9 @@ export interface ProjectOutputFilenames {
   pdf: string;
 }
 
+// 注釈IDを検査してから annotations/<id>.json のパスを返す(SPEC §3.1)
 function annotationPath(projectRoot: string, id: string): string {
-  return join(projectRoot, "annotations", `${id}.json`);
+  return annotationFilePath(projectRoot, id);
 }
 
 export function createManualProject(
@@ -61,10 +63,7 @@ export function createManualProject(
   name: string,
   title = name,
 ): string {
-  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
-    throw new Error("不正なプロジェクトIDです");
-  }
-  const projectRoot = join(projectsRoot, name);
+  const projectRoot = resolveProjectRoot(projectsRoot, name);
   if (existsSync(projectRoot)) {
     throw new Error(`プロジェクトは既に存在します: ${name}`);
   }
@@ -301,9 +300,10 @@ export function readAnnotationFile(projectRoot: string, id: string): AnnotationF
 }
 
 export function writeAnnotationFile(projectRoot: string, id: string, annotation: AnnotationFile): void {
+  const path = annotationPath(projectRoot, id);
   const parsed = parseAnnotation(annotation);
   mkdirSync(join(projectRoot, "annotations"), { recursive: true });
-  writeFileSync(annotationPath(projectRoot, id), `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  writeFileSync(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
 }
 
 export function renameAnnotationId(
@@ -311,6 +311,8 @@ export function renameAnnotationId(
   currentId: string,
   nextId: string,
 ): AnnotationFile {
+  assertSafeName(currentId, "注釈ID");
+  assertSafeName(nextId, "注釈ID");
   if (currentId === nextId) {
     return readAnnotationFile(projectRoot, currentId);
   }
@@ -534,6 +536,9 @@ export async function runProjectCapture(
   projectRoot: string,
   recipeId?: string,
 ): Promise<Array<{ recipeId: string; output: string }>> {
+  if (recipeId !== undefined) {
+    assertSafeName(recipeId, "レシピID");
+  }
   const { runAllCaptures } = await import("./capture.js");
   const recipes = listRecipeFiles(projectRoot);
   const selected = recipeId ? recipes.filter((item) => item.id === recipeId) : recipes;
@@ -581,6 +586,8 @@ export function addPastedImageObject(
   buffer: Buffer,
   natural: { width: number; height: number },
 ): AnnotationFile {
+  assertSafeName(annotationId, "注釈ID");
+  assertSafeName(objectId, "オブジェクトID");
   if (natural.width <= 0 || natural.height <= 0) {
     throw new Error("画像サイズは1px以上である必要があります");
   }
@@ -640,6 +647,7 @@ export function savePastedImage(
   buffer: Buffer,
   canvas: { width: number; height: number },
 ): { imagePath: string; annotation: AnnotationFile } {
+  assertSafeName(id, "注釈ID");
   const rawDir = join(projectRoot, "img", "raw");
   mkdirSync(rawDir, { recursive: true });
   const imagePath = join(rawDir, `${id}.png`);
