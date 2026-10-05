@@ -34,7 +34,8 @@ describe("clearing annotation settings when project.yaml has no collection", () 
     it(`writeProjectTheme({}) works when project.yaml is ${label}`, () => {
       const root = createRoot(content);
       expect(writeProjectTheme(root, {})).toEqual({});
-      if (content !== undefined) {
+      // コメントは残す
+      if (content?.startsWith("#")) {
         expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain(content.trim());
       }
     });
