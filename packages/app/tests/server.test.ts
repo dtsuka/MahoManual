@@ -1,55 +1,20 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { createApp } from "../server/app.js";
 import { closeAllWatchers } from "../server/watch.js";
-import { projectsDir, repoRoot } from "../server/paths.js";
+import { createTempProjectsDir, makePng, setupTestProject } from "./server-fixtures.js";
 
-const app = createApp();
+// リポジトリの projects/ には書き込まず、一時フォルダをプロジェクト置き場にする
+const projectsDir = createTempProjectsDir();
+const app = createApp({ projectsDir });
 const testProject = "app-test";
-const testProjectRoot = join(projectsDir, testProject);
-
-function setupTestProject() {
-  mkdirSync(join(testProjectRoot, "annotations"), { recursive: true });
-  mkdirSync(join(testProjectRoot, "img", "raw"), { recursive: true });
-  writeFileSync(
-    join(testProjectRoot, "manual.md"),
-    "# Test Manual\n\n## Section\n\n```annotated-image\nsrc: test-1\n```\n",
-    "utf8",
-  );
-  const exampleImage = join(repoRoot, "packages/core/tests/fixtures/projects/demo/img/demo.png");
-  copyFileSync(exampleImage, join(testProjectRoot, "img/raw/test-1.png"));
-  copyFileSync(exampleImage, join(testProjectRoot, "img/test-1.png"));
-  writeFileSync(
-    join(testProjectRoot, "annotations/test-1.json"),
-    JSON.stringify(
-      {
-        version: 1,
-        canvas: { width: 800, height: 600 },
-        objects: [
-          {
-            id: "img-main",
-            type: "image",
-            source: "manual",
-            src: "img/raw/test-1.png",
-            rect: { x: 0, y: 0, w: 100, h: 100 },
-          },
-        ],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-}
-
-setupTestProject();
+const testProjectRoot = setupTestProject(projectsDir, testProject);
 
 describe("Hono API", () => {
   afterAll(async () => {
     await closeAllWatchers();
-    // テスト用プロジェクトをリポジトリに残さない
-    rmSync(testProjectRoot, { recursive: true, force: true });
+    rmSync(projectsDir, { recursive: true, force: true });
   });
 
   it("GET /api/projects lists manuals", async () => {
@@ -356,8 +321,7 @@ describe("Hono API", () => {
   });
 
   it("POST /api/projects/:project/annotations/:id/images adds another image", async () => {
-    const pngBase64 =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const pngBase64 = makePng(400, 200).toString("base64");
     const before = JSON.parse(
       readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8"),
     ) as { canvas: { width: number; height: number }; objects: Array<{ id: string }> };
@@ -400,11 +364,12 @@ describe("Hono API", () => {
   });
 
   it("PUT /api/projects/:project/annotations/:id/images/:objectId replaces image and preserves annotations", async () => {
-    const pngBase64 =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const pngBase64 = makePng(320, 200).toString("base64");
     const before = JSON.parse(
       readFileSync(join(testProjectRoot, "annotations/test-1.json"), "utf8"),
-    ) as { objects: Array<{ id: string }>; canvas: { width: number; height: number } };
+    ) as { objects: Array<{ id: string; locked?: boolean }>; canvas: { width: number; height: number } };
+    // ロック中の画像は差し替えできないため、ベース画像のロックを外しておく(SPEC §11)
+    before.objects = before.objects.map((obj) => (obj.id === "img-main" ? { ...obj, locked: false } : obj));
     before.objects.push({
       id: "keep-badge",
       type: "badge",

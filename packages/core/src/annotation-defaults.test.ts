@@ -3,7 +3,9 @@ import {
   applyObjectStyle,
   copyObjectStyle,
   extractObjectStyle,
+  parseAnnotationDefaults,
   resolveCreationDefaults,
+  validateAnnotationDefaults,
 } from "./annotation-defaults.js";
 
 describe("resolveCreationDefaults", () => {
@@ -113,5 +115,55 @@ describe("applyObjectStyle", () => {
       size: 28,
       icon: "pointer",
     });
+  });
+});
+
+describe("validateAnnotationDefaults", () => {
+  it("accepts valid defaults for each object type", () => {
+    const defaults = {
+      badge: { color: "#E91E8C", size: 22, fontSize: 14 },
+      text: { textAlign: "left", verticalAlign: "top", padding: 0, borderWidth: 0, background: "#ffffff" },
+      cursor: { icon: "pointer", size: 28 },
+      frame: { strokeWidth: 2, radius: 4 },
+      line: { color: "#000", strokeWidth: 1 },
+      arrow: { arrowHeads: "both" },
+      mosaic: { blockSize: 12 },
+    };
+    expect(validateAnnotationDefaults(defaults)).toEqual(defaults);
+  });
+
+  it("rejects unknown object types, unknown fields and wrong value types", () => {
+    for (const value of [
+      null,
+      [],
+      "badge",
+      { bogus: { color: "#ffffff" } },
+      { badge: { size: "huge" } },
+      { badge: { color: 42 } },
+      { badge: { color: "pink" } },
+      { badge: { strokeWidth: 2 } },
+      { text: { textAlign: "justify" } },
+      { cursor: { icon: "hand" } },
+      { frame: { strokeWidth: 0 } },
+      { mosaic: { blockSize: 1 } },
+      { image: {} },
+    ]) {
+      expect(() => validateAnnotationDefaults(value), JSON.stringify(value)).toThrow();
+    }
+  });
+});
+
+describe("parseAnnotationDefaults", () => {
+  it("keeps valid fields and drops invalid ones when reading project.yaml", () => {
+    expect(
+      parseAnnotationDefaults({
+        badge: { color: "#123456", size: "huge" },
+        text: "not an object",
+        bogus: { color: "#ffffff" },
+        frame: { strokeWidth: 3, unknown: true },
+      }),
+    ).toEqual({ badge: { color: "#123456" }, frame: { strokeWidth: 3 } });
+    expect(parseAnnotationDefaults(null)).toEqual({});
+    expect(parseAnnotationDefaults([1, 2])).toEqual({});
   });
 });
