@@ -3,6 +3,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { minimalSetup } from "codemirror";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   annotationThemeCss,
   scopeCss,
@@ -16,7 +17,6 @@ import {
   fetchPreview,
   pasteImage,
   renumberAllAnnotations,
-  saveManual,
   subscribeProjectWatch,
 } from "../lib/api.js";
 import { readAsDataUrl, readImageSize } from "../lib/image-data.js";
@@ -30,6 +30,7 @@ import {
   livePreview,
 } from "../lib/live-preview.js";
 import { useAnnotationModalHost } from "../lib/use-annotation-modal-host.js";
+import { useManualDocument } from "../lib/use-manual-document.js";
 import { BackToProjectButton } from "./BackToProjectButton.js";
 import { AnnotationEditor } from "./AnnotationEditor.js";
 import { AnnotationEditorModal } from "./AnnotationEditorModal.js";
@@ -60,7 +61,6 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [status, setStatus] = useState("");
-  const [dirty, setDirty] = useState(false);
   const [annotations, setAnnotations] = useState<string[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState("");
   const [newImageId, setNewImageId] = useState("");
@@ -78,8 +78,19 @@ export function ManualEditor({ project }: ManualEditorProps) {
   const editorHostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const markdownRef = useRef<string | null>(null);
-  const dirtyRef = useRef(false);
+  const navigate = useNavigate();
+  const {
+    markdownRef,
+    dirtyRef,
+    dirty,
+    saveError,
+    clearSaveError,
+    resetTo,
+    updateText,
+    save,
+    classifyExternal,
+    confirmLeave,
+  } = useManualDocument(project);
   const applyingExternalRef = useRef(false);
   const previewSeqRef = useRef(0);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,11 +103,6 @@ export function ManualEditor({ project }: ManualEditorProps) {
     if (manual.annotations.length > 0 && !manual.annotations.includes(selectedAnnotationId)) {
       setSelectedAnnotationId(manual.annotations[0] ?? "");
     }
-  };
-
-  const markDirty = (value: boolean) => {
-    dirtyRef.current = value;
-    setDirty(value);
   };
 
   // キーストローク毎の API 連打と応答順序の逆転を防ぐ
@@ -137,12 +143,11 @@ export function ManualEditor({ project }: ManualEditorProps) {
       changes: { from: 0, to: viewRef.current.state.doc.length, insert: body },
     });
     applyingExternalRef.current = false;
-    markdownRef.current = body;
+    resetTo(body);
     setMarkdownText(body);
-    markDirty(false);
     setExternalBody(null);
     schedulePreview(body, true);
-  }, [schedulePreview]);
+  }, [schedulePreview, resetTo]);
 
   const {
     modalAnnotationId,
@@ -165,7 +170,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
   useEffect(() => {
     void fetchProjectOutput(project).then(setOutputFilenames);
     void fetchManual(project).then((manual) => {
-      markdownRef.current = manual.body;
+      resetTo(manual.body);
       setMarkdownText(manual.body);
       setAnnotations(manual.annotations);
       setSelectedAnnotationId(manual.annotations[0] ?? "");
@@ -176,7 +181,7 @@ export function ManualEditor({ project }: ManualEditorProps) {
         clearTimeout(previewTimerRef.current);
       }
     };
-  }, [project, schedulePreview]);
+  }, [project, schedulePreview, resetTo]);
 
   useEffect(() => {
     if (!editorHostRef.current || markdownText === null) {
@@ -195,9 +200,10 @@ export function ManualEditor({ project }: ManualEditorProps) {
               return;
             }
             const value = update.state.doc.toString();
-            markdownRef.current = value;
-            if (!applyingExternalRef.current) {
-              markDirty(true);
+            if (applyingExternalRef.current) {
+              markdownRef.current = value;
+            } else {
+              updateText(value);
             }
             schedulePreview(value);
           }),
@@ -233,29 +239,27 @@ export function ManualEditor({ project }: ManualEditorProps) {
         return;
       }
       void fetchManual(project).then((manual) => {
-        // 自分の保存によるエコーは無視する
-        if (manual.body === markdownRef.current) {
+        // 自分の保存によるエコー(保存した本文・手元と同じ本文)は無視する
+        const change = classifyExternal(manual.body);
+        if (change === "ignore") {
           return;
         }
-        if (dirtyRef.current) {
+        if (change === "conflict") {
           setExternalBody(manual.body);
           return;
         }
         applyExternal(manual.body);
-      });
+      }).catch(() => {});
     });
-  }, [applyExternal, project]);
+  }, [applyExternal, classifyExternal, project]);
 
   const handleSave = useCallback(async () => {
-    const value = markdownRef.current;
-    if (value === null) {
+    if (!(await save())) {
       return;
     }
-    await saveManual(project, value);
-    markDirty(false);
     setStatus("manual.md を保存しました");
     setTimeout(() => setStatus(""), 2000);
-  }, [project]);
+  }, [save]);
 
   // 注釈モーダル表示中は注釈エディタ側の ⌘S に任せる
   useEffect(() => {
@@ -342,7 +346,14 @@ export function ManualEditor({ project }: ManualEditorProps) {
     <>
     <div ref={mainContentRef} className="flex h-screen flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-        <BackToProjectButton project={project} />
+        <BackToProjectButton
+          project={project}
+          onClick={() => {
+            if (confirmLeave()) {
+              navigate(`/projects/${encodeURIComponent(project)}`);
+            }
+          }}
+        />
         <div className="flex min-w-0 items-baseline gap-1.5">
           <h1 className="truncate text-[15px] font-semibold tracking-tight">{project}</h1>
           <span className="shrink-0 text-slate-300">/</span>
@@ -489,6 +500,16 @@ export function ManualEditor({ project }: ManualEditorProps) {
           {status ? (
             <div className="pointer-events-auto">
               <Banner kind="success">{status}</Banner>
+            </div>
+          ) : null}
+          {saveError ? (
+            <div className="pointer-events-auto">
+              <Banner kind="danger" testId="manual-save-error" role="alert">
+                <span className="min-w-0 flex-1">保存に失敗しました: {saveError}</span>
+                <Button size="sm" variant="ghost" onClick={clearSaveError}>
+                  閉じる
+                </Button>
+              </Banner>
             </div>
           ) : null}
           {warning ? (
