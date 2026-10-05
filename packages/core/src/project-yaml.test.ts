@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readAnnotationDefaults, writeAnnotationDefaults, writeProjectTheme } from "./project.js";
+import { readAnnotationDefaults, readProjectTitle, writeAnnotationDefaults, writeProjectTheme, writeProjectTitle } from "./project.js";
 import type { AnnotationDefaults } from "./annotation-defaults.js";
 
 const roots: string[] = [];
@@ -27,6 +27,7 @@ describe("clearing annotation settings when project.yaml has no collection", () 
     ["missing", undefined],
     ["empty", ""],
     ["comments only", "# メモだけ\n"],
+    ["null", "null\n"],
   ];
 
   for (const [label, content] of cases) {
@@ -36,6 +37,16 @@ describe("clearing annotation settings when project.yaml has no collection", () 
       if (content !== undefined) {
         expect(readFileSync(join(root, "project.yaml"), "utf8")).toContain(content.trim());
       }
+    });
+
+    it(`clearing does not write "null" and later writes still work when project.yaml is ${label}`, () => {
+      const root = createRoot(content);
+      writeProjectTheme(root, {});
+      if (existsSync(join(root, "project.yaml"))) {
+        expect(readFileSync(join(root, "project.yaml"), "utf8")).not.toMatch(/^null$/m);
+      }
+      writeProjectTitle(root, "新しい題名", "fallback");
+      expect(readProjectTitle(root, "fallback")).toBe("新しい題名");
     });
 
     it(`writeAnnotationDefaults({}) works when project.yaml is ${label}`, () => {
