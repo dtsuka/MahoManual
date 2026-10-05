@@ -336,10 +336,10 @@ Markdownテキストを正本として維持したまま、CodeMirror 6のDecora
 
 ### 13-3. CLI・MCP
 
-- [ ] test: ビルドしたMCPサーバーが起動して `initialize` に応答する
-- [ ] test: `manual pdf -o` が出力先フォルダの他のファイルを変更しない / 相対パスが実行時のフォルダ基準で解決される / `renumber` が core と同じ結果になる
-- [ ] test: MCP `update_annotation` で `id` / `type` を変更しようとするとエラーを返す / テストがリポジトリ内の実データに書き込まない
-- [ ] 実装: 上記の修正
+- [x] test: ビルドしたMCPサーバーが起動して `initialize` に応答する
+- [x] test: `manual pdf -o` が出力先フォルダの他のファイルを変更しない / 相対パスが実行時のフォルダ基準で解決される / `renumber` が core と同じ結果になる
+- [x] test: MCP `update_annotation` で `id` / `type` を変更しようとするとエラーを返す / テストがリポジトリ内の実データに書き込まない
+- [x] 実装: 上記の修正
 
 ### 13-4. GUIサーバー
 

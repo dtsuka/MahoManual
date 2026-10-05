@@ -1,29 +1,41 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { createManualProject as createCoreManualProject } from "@mahomanual/core/project";
+import { isSafeName } from "@mahomanual/core/safe-name";
 
 // core / playwright は import 連鎖が重いため、top-level では読み込まず
 // 各コマンドの実行時に動的 import する(`manual new` 等の起動を軽く保つ)
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
+// プロジェクト名を置くフォルダ。既定はリポジトリの projects/。
+// 環境変数 MAHOMANUAL_PROJECTS_DIR で変更できる(テストや別の場所での運用向け)
+export function getProjectsDir(): string {
+  const fromEnv = process.env.MAHOMANUAL_PROJECTS_DIR;
+  return fromEnv ? resolve(fromEnv) : join(repoRoot, "projects");
+}
+
+// <project> は実行時のフォルダからのパス、または projects/ 配下のプロジェクト名。
+// CLI は利用者が手元で実行するためパス指定を受け付ける。名前として探すのは安全な名前(SPEC §3.1)の場合だけ
 export function resolveProjectPath(input: string): string {
   const direct = resolve(input);
   if (existsSync(join(direct, "manual.md"))) {
     return direct;
   }
-  const underProjects = join(repoRoot, "projects", input);
-  if (existsSync(join(underProjects, "manual.md"))) {
-    return underProjects;
+  if (isSafeName(input)) {
+    const underProjects = join(getProjectsDir(), input);
+    if (existsSync(join(underProjects, "manual.md"))) {
+      return underProjects;
+    }
   }
   throw new Error(`プロジェクトが見つかりません: ${input}`);
 }
 
 export function createManualProject(name: string): string {
-  return createCoreManualProject(join(repoRoot, "projects"), name, name);
+  return createCoreManualProject(getProjectsDir(), name, name);
 }
 
 async function runBuild(projectInput: string, options: { output?: string; singleFile?: boolean }) {
@@ -35,28 +47,24 @@ async function runBuild(projectInput: string, options: { output?: string; single
 }
 
 async function runPdf(projectInput: string, options: { output?: string }) {
-  const { buildProject } = await import("@mahomanual/core/build");
-  const { exportPdf } = await import("@mahomanual/core/pdf");
+  const { exportManualPdf } = await import("@mahomanual/core/project");
   const projectRoot = resolveProjectPath(projectInput);
-  const outputPath = options.output ? resolve(options.output) : join(projectRoot, "dist", "manual.pdf");
-  const distDir = dirname(outputPath);
-  mkdirSync(distDir, { recursive: true });
-  await buildProject(projectRoot, { outputDir: distDir });
-  await exportPdf(distDir, { outputPath });
-  console.log(`PDF: ${outputPath}`);
+  // -o 指定時も HTML はプロジェクトの dist/ に生成し、PDF だけを指定先に書き出す
+  // (指定先のフォルダにある manual.html や img/ を上書き・削除しない)
+  const outputPath = options.output ? resolve(options.output) : undefined;
+  if (outputPath) {
+    mkdirSync(dirname(outputPath), { recursive: true });
+  }
+  const pdfPath = await exportManualPdf(projectRoot, outputPath);
+  console.log(`PDF: ${pdfPath}`);
 }
 
 async function runRenumber(projectInput: string, annotationId: string) {
-  const { parseAnnotation } = await import("@mahomanual/core/schema");
-  const { renumberBadges } = await import("@mahomanual/core/project");
+  const { renumberBadgesFile } = await import("@mahomanual/core/project");
   const projectRoot = resolveProjectPath(projectInput);
-  const annotationPath = join(projectRoot, "annotations", `${annotationId}.json`);
-  if (!existsSync(annotationPath)) {
-    throw new Error(`注釈ファイルが見つかりません: ${annotationId}`);
-  }
-  const annotation = parseAnnotation(JSON.parse(readFileSync(annotationPath, "utf8")));
-  const renumbered = renumberBadges(annotation);
-  writeFileSync(annotationPath, `${JSON.stringify(renumbered, null, 2)}\n`, "utf8");
+  const result = renumberBadgesFile(projectRoot, annotationId);
+  const badges = result.objects.filter((obj) => obj.type === "badge").length;
+  console.log(`Renumbered: ${annotationId} (badge ${badges} 個)`);
 }
 
 async function runCaptureCommand(
@@ -64,6 +72,9 @@ async function runCaptureCommand(
   recipeId: string | undefined,
   options: { all?: boolean },
 ) {
+  if (options.all && recipeId) {
+    throw new Error("recipeId と --all は同時に指定できません。どちらか一方を指定してください");
+  }
   const { runProjectCapture } = await import("@mahomanual/core/project");
   const projectRoot = resolveProjectPath(projectInput);
   if (options.all) {
@@ -82,30 +93,32 @@ async function runCaptureCommand(
 
 async function runLogin(projectInput: string, url: string) {
   const { chromium } = await import("playwright");
+  const { waitForLoginAndSaveState } = await import("./login.js");
   const projectRoot = resolveProjectPath(projectInput);
-  const authDir = join(projectRoot, ".auth");
-  mkdirSync(authDir, { recursive: true });
-  const statePath = join(authDir, "state.json");
+  const statePath = join(projectRoot, ".auth", "state.json");
 
   console.log("ブラウザが開きます。ログイン完了後、ブラウザを閉じると storageState が保存されます。");
   const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto(url);
-
-  // ウィンドウごと閉じられると close イベント後の storageState 取得が
-  // ブラウザ切断と競合して失敗しうるため、開いている間は定期保存しておく
-  const saveState = async () => {
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const waiting = waitForLoginAndSaveState(context, statePath);
     try {
-      await context.storageState({ path: statePath });
-    } catch {
-      // ブラウザが閉じられた直後は取得できないことがある(直前の保存が残る)
+      await page.goto(url);
+    } catch (error) {
+      // 読み込み中に利用者がページを閉じた場合はそのまま終了を待つ
+      if (!page.isClosed()) {
+        throw error;
+      }
     }
-  };
-  const timer = setInterval(() => void saveState(), 2000);
-  await new Promise<void>((resolveClosed) => browser.on("disconnected", () => resolveClosed()));
-  clearInterval(timer);
-  console.log(`Saved: ${statePath}`);
+    const saved = await waiting;
+    if (!saved) {
+      throw new Error(`storageState を保存できませんでした: ${statePath}`);
+    }
+    console.log(`Saved: ${statePath}`);
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
 }
 
 export function createProgram(): Command {

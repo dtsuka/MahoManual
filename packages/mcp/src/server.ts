@@ -20,11 +20,13 @@ import { defaultRepoRoot, getProjectsDir, resolveProjectPath } from "./paths.js"
 
 export interface MahoManualServerOptions {
   repoRoot?: string;
+  // プロジェクトを置くフォルダ。省略時は <repoRoot>/projects
+  projectsDir?: string;
 }
 
 export function createMahoManualServer(options: MahoManualServerOptions = {}): McpServer {
   const repoRoot = options.repoRoot ?? defaultRepoRoot;
-  const projectsDir = getProjectsDir(repoRoot);
+  const projectsDir = options.projectsDir ?? getProjectsDir(repoRoot);
 
   const server = new McpServer({
     name: "MahoManual",
@@ -46,7 +48,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "manual.md 本文と annotations / captures の一覧を返します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
       },
     },
     async ({ project }) =>
@@ -61,7 +63,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "注釈 JSON を取得します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
       },
     },
@@ -77,7 +79,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "注釈オブジェクトを追加します（スキーマ検証あり）",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
         object: z.record(z.unknown()).describe("追加する注釈オブジェクト"),
       },
@@ -92,9 +94,10 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
   server.registerTool(
     "update_annotation",
     {
-      description: "注釈オブジェクトを部分更新します",
+      description:
+        "注釈オブジェクトを部分更新します。patch で id と type は変更できません(種類を変えるときは削除して追加し直します)",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
         objectId: z.string().describe("オブジェクト ID"),
         patch: z.record(z.unknown()).describe("更新するフィールド"),
@@ -102,6 +105,12 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     },
     async ({ project, id, objectId, patch }) =>
       runTool(() => {
+        const locked = ["id", "type"].filter((key) => Object.hasOwn(patch, key));
+        if (locked.length > 0) {
+          throw new Error(
+            `patch で ${locked.join(" / ")} は変更できません。id・type を変えるときは remove_annotation で削除し、add_annotation で追加し直してください`,
+          );
+        }
         const projectRoot = resolveProjectPath(projectsDir, project);
         return updateAnnotationObject(projectRoot, id, objectId, patch as Partial<AnnotationObject>);
       }),
@@ -112,7 +121,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "注釈オブジェクトを削除します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
         objectId: z.string().describe("オブジェクト ID"),
       },
@@ -129,7 +138,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "image オブジェクトの crop を変更します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
         objectId: z.string().describe("image オブジェクト ID"),
         crop: z
@@ -155,7 +164,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
       description:
         "キャンバス余白を追加/削除します(SPEC §4.5)。canvasを拡張し全オブジェクトの%座標を再計算して見た目位置を維持します。画像の端の外側に注釈を置きたいときに使います",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
         margin: z
           .object({
@@ -179,7 +188,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "badge の採番を配列順に振り直します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         id: z.string().describe("注釈 ID"),
       },
     },
@@ -195,7 +204,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "納品 HTML を生成し、出力パスを返します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         singleFile: z.boolean().optional().describe("画像を base64 インライン化する"),
       },
     },
@@ -212,7 +221,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "PDF を生成し、出力パスを返します",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
       },
     },
     async ({ project }) =>
@@ -228,7 +237,7 @@ export function createMahoManualServer(options: MahoManualServerOptions = {}): M
     {
       description: "撮影レシピを実行します（recipeId 省略時は全件）",
       inputSchema: {
-        project: z.string().describe("プロジェクト名またはパス"),
+        project: z.string().describe("projects/ 配下のプロジェクト名"),
         recipeId: z.string().optional().describe("レシピ ID"),
       },
     },
