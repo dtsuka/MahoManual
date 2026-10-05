@@ -1,3 +1,4 @@
+import { snapThresholdPct } from "@mahomanual/core/object-geometry";
 import { snapAngle, type PointPct } from "./geometry.js";
 
 // オブジェクト生成・ドラッグ操作で共有する定数とユーティリティ。
@@ -9,11 +10,26 @@ export const roundCreationPct = (value: number): number => Math.round(value * 2)
 export const SNAP_THRESHOLD_PCT = 0.7;
 export const SNAP_RELEASE_PCT = 1.5;
 
+/**
+ * スマートガイドの吸着距離(画面6px)を%に換算する。
+ * %はキャンバスの設計幅に対する値なので、画面上の figure 幅ではなく canvas.width を使う
+ * (表示倍率は snapThresholdPct 側で反映する)。
+ */
+export function snapThresholdForCanvas(
+  zoomPercent: number,
+  canvas: { width: number; height: number },
+  thresholdScreenPx = 6,
+): number {
+  return snapThresholdPct(zoomPercent, canvas.width, thresholdScreenPx);
+}
+
 export interface ResolveLineDraftPointOptions {
   /** Shift 押下中は直前の点を基準に 45° 刻みへスナップする */
   shiftKey: boolean;
   /** クリック確定時は true。ホバープレビューは false のまま滑らかに追従させる */
   round?: boolean;
+  /** 角度を見た目どおりに揃えるためのキャンバス寸法(px) */
+  canvas?: { width: number; height: number };
 }
 
 /**
@@ -26,7 +42,7 @@ export function resolveLineDraftPoint(
   options: ResolveLineDraftPointOptions,
 ): PointPct {
   const snapped =
-    options.shiftKey && previous ? snapAngle(point, previous) : point;
+    options.shiftKey && previous ? snapAngle(point, previous, options.canvas) : point;
   if (options.round === false) {
     return snapped;
   }

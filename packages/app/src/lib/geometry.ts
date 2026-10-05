@@ -93,19 +93,27 @@ function resizeRectKeepAspect(rect: RectPct, dir: string, dx: number, dy: number
 }
 
 // anchor から見た角度を 45° 刻みにスナップする(距離は保存)。
-// Shift ドラッグで水平・垂直・斜め45°の線を引きやすくするための補助
-export function snapAngle(point: PointPct, anchor: PointPct): PointPct {
-  const dx = point.x - anchor.x;
-  const dy = point.y - anchor.y;
+// Shift ドラッグで水平・垂直・斜め45°の線を引きやすくするための補助。
+// 点は%座標だが、角度は見た目どおりになるようキャンバスpxへ換算して求める
+// (canvas 省略時は正方形キャンバスとして扱う)
+export function snapAngle(
+  point: PointPct,
+  anchor: PointPct,
+  canvas: { width: number; height: number } = { width: 100, height: 100 },
+): PointPct {
+  const scaleX = canvas.width / 100;
+  const scaleY = canvas.height / 100;
+  const dx = (point.x - anchor.x) * scaleX;
+  const dy = (point.y - anchor.y) * scaleY;
   const distance = Math.hypot(dx, dy);
-  if (distance === 0) {
+  if (distance === 0 || scaleX <= 0 || scaleY <= 0) {
     return { ...point };
   }
   const step = Math.PI / 4;
   const angle = Math.round(Math.atan2(dy, dx) / step) * step;
   return {
-    x: anchor.x + Math.cos(angle) * distance,
-    y: anchor.y + Math.sin(angle) * distance,
+    x: anchor.x + (Math.cos(angle) * distance) / scaleX,
+    y: anchor.y + (Math.sin(angle) * distance) / scaleY,
   };
 }
 

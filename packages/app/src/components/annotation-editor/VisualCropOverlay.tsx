@@ -7,6 +7,7 @@ import {
   type PixelSize,
 } from "@mahomanual/core/crop-math";
 import type { AnnotationObject } from "@mahomanual/core/schema";
+import { usePointerTracking, type WindowPointerHandlers } from "../../lib/pointer-tracking.js";
 import { FRAME_HANDLES } from "./helpers.js";
 
 interface VisualCropOverlayProps {
@@ -78,6 +79,7 @@ function beginCropPointerDrag(
   natural: PixelSize,
   applyDelta: (crop0: PixelRect, dx: number, dy: number) => PixelRect,
   onCropChange: (crop: PixelRect) => void,
+  trackPointer: (handlers: WindowPointerHandlers) => () => void,
 ) {
   event.preventDefault();
   event.stopPropagation();
@@ -92,12 +94,12 @@ function beginCropPointerDrag(
     const currentPx = clientToSourcePixels(moveEvent.clientX, moveEvent.clientY, box, imageRect, canvas, natural);
     onCropChange(applyDelta(crop0, currentPx.x - startPx.x, currentPx.y - startPx.y));
   };
-  const onUp = () => {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-  };
-  window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
+  // pointerup で確定、pointercancel では開始時の範囲へ戻す。アンマウント時は呼び出し側で外す
+  trackPointer({
+    onMove,
+    onEnd: () => {},
+    onCancel: () => onCropChange(crop0),
+  });
 }
 
 export function VisualCropOverlay({
@@ -107,6 +109,7 @@ export function VisualCropOverlay({
   crop,
   onCropChange,
 }: VisualCropOverlayProps) {
+  const trackPointer = usePointerTracking();
   const imageRect = image.rect;
   const cropStyle = cropToOverlayStyle(imageRect, crop, natural);
   const fullStyle = fullImageOverlayStyle(imageRect);
@@ -141,6 +144,7 @@ export function VisualCropOverlay({
               h: crop0.h,
             }, natural),
             onCropChange,
+            trackPointer,
           );
         }}
       >
@@ -168,6 +172,7 @@ export function VisualCropOverlay({
                   natural,
                 ),
                 onCropChange,
+                trackPointer,
               );
             }}
           />

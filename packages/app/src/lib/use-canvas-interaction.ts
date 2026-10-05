@@ -3,7 +3,6 @@ import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "reac
 import type {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
-  WheelEvent as ReactWheelEvent,
 } from "react";
 import {
   editableRect,
@@ -23,14 +22,17 @@ import {
   type RectPct,
   type StickySnapState,
 } from "./geometry.js";
-import { objectsInRect, snapThresholdPct } from "./annotation-operations.js";
+import { objectsInRect } from "./annotation-operations.js";
 import { stepZoom } from "./annotation-viewport.js";
 import {
   resolveLineDraftPoint,
   roundCreationPct,
+  snapThresholdForCanvas,
   SNAP_THRESHOLD_PCT,
   SNAP_RELEASE_PCT,
 } from "./creation-geometry.js";
+import { usePointerTracking } from "./pointer-tracking.js";
+import { useCtrlWheelZoom } from "./use-ctrl-wheel-zoom.js";
 import {
   resolvePointPointerDownSelection,
   snapDraggedLinePoint,
@@ -73,6 +75,8 @@ interface UseCanvasInteractionOptions {
   setIsPanning: Dispatch<SetStateAction<boolean>>;
   setViewportZoom: (nextZoom: number, mode: "fit" | "manual", anchor?: { clientX: number; clientY: number }) => void;
   annotationRef: MutableRefObject<AnnotationFile | null>;
+  /** キャンバス(canvasViewportRef の要素)が描画済みか。ネイティブのホイールリスナーを付ける契機 */
+  canvasReady: boolean;
   applyLocalChange: (updater: (current: AnnotationFile) => AnnotationFile) => void;
   visualCropActive: boolean;
   onOpenVisualCrop: (imageId: string) => void;
@@ -99,6 +103,7 @@ export function useCanvasInteraction({
   setIsPanning,
   setViewportZoom,
   annotationRef,
+  canvasReady,
   applyLocalChange,
   visualCropActive,
   onOpenVisualCrop,
@@ -120,6 +125,8 @@ export function useCanvasInteraction({
   const lastPointerClientRef = useRef<{ x: number; y: number } | null>(null);
   const selectedPointIndicesRef = useRef(selectedPointIndices);
   selectedPointIndicesRef.current = selectedPointIndices;
+  // ドラッグ中のウィンドウリスナーは pointercancel・アンマウントでも外す
+  const trackPointer = usePointerTracking();
 
   useEffect(() => {
     setSelectedPointIndices([]);
@@ -166,8 +173,9 @@ export function useCanvasInteraction({
     return resolveLineDraftPoint(point, lineDraft.points[lineDraft.points.length - 1], {
       shiftKey,
       round: false,
+      canvas: annotationRef.current?.canvas,
     });
-  }, [activeTool, lineDraft, pctFromClient]);
+  }, [activeTool, lineDraft, pctFromClient, annotationRef]);
 
   useEffect(() => {
     if (!lineDraft || lineDraft.points.length === 0) {
@@ -191,7 +199,8 @@ export function useCanvasInteraction({
     };
   }, [lineDraft, resolveHoverPoint]);
 
-  // ドラッグの共通処理: 3px 未満はクリック(moved=false)として扱う
+  // ドラッグの共通処理: 3px 未満はクリック(moved=false)として扱う。
+  // pointercancel では確定せず、ドラッグ中のプレビューを消して取り消す
   const startPointerDrag = useCallback((
     start: { clientX: number; clientY: number },
     handlers: {
@@ -201,21 +210,25 @@ export function useCanvasInteraction({
   ) => {
     const startClient = { x: start.clientX, y: start.clientY };
     let moved = false;
-    const onPointerMove = (event: PointerEvent) => {
-      if (!moved && Math.hypot(event.clientX - startClient.x, event.clientY - startClient.y) < 3) {
-        return;
-      }
-      moved = true;
-      handlers.onMove(pctFromClient(event.clientX, event.clientY), event);
-    };
-    const onPointerUp = (event: PointerEvent) => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      handlers.onEnd(pctFromClient(event.clientX, event.clientY), moved, event);
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  }, [pctFromClient]);
+    trackPointer({
+      onMove: (event) => {
+        if (!moved && Math.hypot(event.clientX - startClient.x, event.clientY - startClient.y) < 3) {
+          return;
+        }
+        moved = true;
+        handlers.onMove(pctFromClient(event.clientX, event.clientY), event);
+      },
+      onEnd: (event) => {
+        handlers.onEnd(pctFromClient(event.clientX, event.clientY), moved, event);
+      },
+      onCancel: () => {
+        setInteractionObjects(null);
+        setSnapGuides([]);
+        setMarqueeDraft(null);
+        setRectDraft(null);
+      },
+    });
+  }, [pctFromClient, trackPointer]);
 
   const normalizeDraftRect = useCallback((start: PointPct, end: PointPct): RectPct => ({
     x: roundCreationPct(Math.min(start.x, end.x)),
@@ -224,14 +237,14 @@ export function useCanvasInteraction({
     h: roundCreationPct(Math.abs(end.y - start.y)),
   }), []);
 
+  // %はキャンバスの設計幅基準。画面上の figure 幅を渡すと表示倍率を二重に掛けてしまう
   const getSnapThreshold = useCallback(() => {
-    const figure = figureRef.current?.querySelector("figure");
-    const box = figure?.getBoundingClientRect();
-    if (!box) {
+    const canvas = annotationRef.current?.canvas;
+    if (!canvas) {
       return SNAP_THRESHOLD_PCT;
     }
-    return snapThresholdPct(zoom, box.width, 6);
-  }, [figureRef, zoom]);
+    return snapThresholdForCanvas(zoom, canvas);
+  }, [annotationRef, zoom]);
 
   const finishLineDraft = useCallback(() => {
     const current = annotationRef.current;
@@ -308,7 +321,10 @@ export function useCanvasInteraction({
       setLineDraft((current) => {
         const continuing = current?.type === activeTool ? current : null;
         const previous = continuing?.points[continuing.points.length - 1];
-        const nextPoint = resolveLineDraftPoint(point, previous, { shiftKey: event.shiftKey });
+        const nextPoint = resolveLineDraftPoint(point, previous, {
+          shiftKey: event.shiftKey,
+          canvas: annotationRef.current?.canvas,
+        });
         return continuing
           ? { ...continuing, points: [...continuing.points, nextPoint] }
           : { type: activeTool, points: [nextPoint] };
@@ -374,14 +390,12 @@ export function useCanvasInteraction({
     }
   }, [activeTool, selectedIds, resolveHoverPoint]);
 
-  const handleCanvasWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-    if (!event.metaKey && !event.ctrlKey) {
-      return;
-    }
-    event.preventDefault();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    setViewportZoom(stepZoom(zoom, direction), "manual", event);
-  }, [zoom, setViewportZoom]);
+  // Ctrl/⌘+ホイールのズーム。ページ全体の拡大を止めるため非passiveのネイティブリスナーで受ける
+  useCtrlWheelZoom(
+    canvasViewportRef,
+    (direction, anchor) => setViewportZoom(stepZoom(zoom, direction), "manual", anchor),
+    canvasReady,
+  );
 
   const handleViewportPointerDownCapture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const viewport = canvasViewportRef.current;
@@ -401,14 +415,12 @@ export function useCanvasInteraction({
       viewport.scrollLeft = start.scrollLeft - (moveEvent.clientX - start.clientX);
       viewport.scrollTop = start.scrollTop - (moveEvent.clientY - start.clientY);
     };
-    const end = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", end);
-      setIsPanning(false);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-  }, [canvasViewportRef, spaceHeldRef, setIsPanning]);
+    trackPointer({
+      onMove: move,
+      onEnd: () => setIsPanning(false),
+      onCancel: () => setIsPanning(false),
+    });
+  }, [canvasViewportRef, spaceHeldRef, setIsPanning, trackPointer]);
 
   const handleRectCreationPointerDown = useCallback((event: ReactPointerEvent, type: RectCreationTool) => {
     event.preventDefault();
@@ -710,6 +722,7 @@ export function useCanvasInteraction({
           primaryStart: primary0,
           points: points0,
           dragIndices,
+          canvas: current.canvas,
         });
       }
       if (dragIndices.length !== 1) {
@@ -774,7 +787,6 @@ export function useCanvasInteraction({
     handleCanvasClick,
     handleCanvasDoubleClick,
     handleCanvasPointerMove,
-    handleCanvasWheel,
     handleViewportPointerDownCapture,
     handleFigurePointerDown,
     beginRectResize,

@@ -71,6 +71,8 @@ export function snapDraggedLinePoint(
     primaryStart: PointPct;
     points: readonly PointPct[];
     dragIndices: readonly number[];
+    /** 角度を見た目どおりに揃えるためのキャンバス寸法(px) */
+    canvas?: { width: number; height: number };
   },
 ): PointPct {
   if (!options.shiftKey) {
@@ -80,9 +82,9 @@ export function snapDraggedLinePoint(
     const anchor =
       options.points[options.primaryIndex - 1]
       ?? options.points[options.primaryIndex + 1];
-    return anchor ? snapAngle(point, anchor) : point;
+    return anchor ? snapAngle(point, anchor, options.canvas) : point;
   }
-  return snapAngle(point, options.primaryStart);
+  return snapAngle(point, options.primaryStart, options.canvas);
 }
 
 /** 選択中の点を同じ dx/dy(%) だけ平行移動する */

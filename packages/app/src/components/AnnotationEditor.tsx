@@ -154,6 +154,7 @@ export function AnnotationEditor({
     setIsPanning: viewport.setIsPanning,
     setViewportZoom: viewport.setViewportZoom,
     annotationRef,
+    canvasReady: annotation !== null,
     applyLocalChange,
     visualCropActive: visualCrop.active,
     onOpenVisualCrop: visualCrop.open,
@@ -768,7 +769,6 @@ export function AnnotationEditor({
           data-zoom-mode={viewport.zoomMode}
           className="editor-canvas relative flex-1 overflow-auto"
           style={{ cursor: viewport.isPanning ? "grabbing" : viewport.isSpaceHeld ? "grab" : undefined }}
-          onWheel={canvasInteraction.handleCanvasWheel}
           onPointerDownCapture={canvasInteraction.handleViewportPointerDownCapture}
         >
           {cropEditSession ? (
