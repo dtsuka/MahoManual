@@ -137,6 +137,25 @@ test("manual editor: Cmd/Ctrl+S saves from the markdown editor", async ({ page }
   }
 });
 
+test("manual editor: back button asks before leaving with unsaved edits", async ({ page }) => {
+  const manualPath = join(process.cwd(), "../../projects/example/manual.md");
+  const before = readFileSync(manualPath, "utf8");
+
+  await page.goto(`/projects/${testProject}/manual`);
+  await page.locator(".cm-content").click();
+  await page.keyboard.type("未保存の入力");
+  await expect(page.getByText("未保存")).toBeVisible();
+
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await page.getByTestId("back-to-project").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${testProject}/manual`));
+
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByTestId("back-to-project").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${testProject}$`));
+  expect(readFileSync(manualPath, "utf8")).toBe(before);
+});
+
 test("manual editor: insert TOC marker at cursor", async ({ page }) => {
   await page.goto(`/projects/${testProject}/manual`);
   await page.locator(".cm-content").click();
