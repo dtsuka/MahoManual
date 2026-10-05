@@ -3,10 +3,11 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { imageSize } from "image-size";
 import sharp from "sharp";
 import type { Code, Heading, Html, Root as MdastRoot } from "mdast";
@@ -419,6 +420,46 @@ function imageDataUri(outputDir: string, srcPath: string): string {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
+// プロジェクトの元データを置くフォルダ(ビルドの出力先にしてはいけない)
+const SOURCE_FOLDERS = ["img", "annotations", "captures", ".auth"];
+
+// シンボリックリンクを解決した絶対パス。まだ無いフォルダは、存在する親までを解決して残りをつなぐ
+function realPathOf(path: string): string {
+  const absolute = resolve(path);
+  const rest: string[] = [];
+  let current = absolute;
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...rest.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) {
+        return absolute;
+      }
+      rest.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+function isSameOrInside(child: string, parent: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+// 出力先がプロジェクトのフォルダ自体・それを含むフォルダ・元データのフォルダだと、
+// 出力時の上書きや古い画像の削除で元のスクショを消してしまうため拒否する
+function assertOutputDirOutsideSources(projectRoot: string, outputDir: string): void {
+  const project = realPathOf(projectRoot);
+  const output = realPathOf(outputDir);
+  const overlapsSource = SOURCE_FOLDERS.some((folder) => isSameOrInside(output, join(project, folder)));
+  if (isSameOrInside(project, output) || overlapsSource) {
+    throw new Error(
+      `出力先にプロジェクトのフォルダ自体・それを含むフォルダ・元データのフォルダ(${SOURCE_FOLDERS.join(", ")})は指定できません: ${outputDir}`,
+    );
+  }
+}
+
 export async function buildProject(projectRoot: string, options: BuildOptions = {}): Promise<BuildResult> {
   const manualPath = join(projectRoot, "manual.md");
   if (!existsSync(manualPath)) {
@@ -427,6 +468,7 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
 
   const sourceMarkdown = readFileSync(manualPath, "utf8");
   const outputDir = options.outputDir ?? join(projectRoot, "dist");
+  assertOutputDirOutsideSources(projectRoot, outputDir);
   mkdirSync(outputDir, { recursive: true });
 
   const { renderHtml, title, images, croppedImages } = await processMarkdown(projectRoot, sourceMarkdown, {

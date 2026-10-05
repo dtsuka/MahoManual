@@ -370,6 +370,7 @@ hr { margin: 60px 0; border: 0; border-bottom: 1px solid #666; }
 
 - 入力: プロジェクトフォルダ → 出力: `dist/manual.html` + `dist/img/`。注釈付き画像は `dist/img/cropped/` に実クロップして出力し、クロップ外の画素を納品物へ含めない。通常Markdownの画像はそのままコピーする
 - 画像の読み込み元はプロジェクトのフォルダの中、書き込み先は出力フォルダの中に限る。`..` などで外を指すパスはエラーにする
+- 出力先にプロジェクトのフォルダ自体、プロジェクトのフォルダを含むフォルダ、元データのフォルダ(`img/`・`annotations/`・`captures/`・`.auth/` とその中)は指定できない(エラーにする)。出力時の上書きや古い画像の削除で元のスクショを消さないため。`dist/` などプロジェクト内の別フォルダは指定できる
 - 納品・プレビューの対象にする画像は、HTMLに変換した後の `<img>` 要素の `src` から集める(コードブロックやインラインコードに書かれた `<img src="...">` という文字列は対象にしない)。`img/` 以下を指す `src` は `./` や `..` を解決し、URLエスケープを戻した正規化済みのパス(例: `img/画面.png`)に書き換える。URL・data URI・`/` で始まるパスはそのまま残す
 - 完全なスタンドアロンHTML(`<!doctype html>`、`<title>` は最初のh1、テーマCSSは `<style>` 埋め込み)
 - `--single-file`: 画像をbase64 data URIでインライン化した単一HTML(imgフォルダ不要で納品可能)。MIMEタイプは拡張子から決める(png→`image/png`、jpg/jpeg→`image/jpeg`、svg→`image/svg+xml`、gif・webp・avif・bmp・ico も対応、それ以外は `application/octet-stream`)
