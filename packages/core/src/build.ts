@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { imageSize } from "image-size";
 import sharp from "sharp";
 import type { Code, Heading, Html, Root as MdastRoot } from "mdast";
@@ -64,7 +64,25 @@ interface CroppedImageJob {
   image: Extract<AnnotationObject, { type: "image" }>;
 }
 
-const IMG_SRC_RE = /src="(img\/[^"]+)"/g;
+// 単一ファイル出力の data URI に使う拡張子ごとの MIME タイプ
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+};
+
+// hast の要素ノード(必要な部分だけ)
+interface HastElement {
+  type: "element";
+  tagName: string;
+  properties?: Record<string, unknown>;
+}
 const TOC_MARKER = "<!-- toc -->";
 
 function loadAnnotation(projectRoot: string, annotationId: string) {
@@ -287,10 +305,48 @@ interface ProcessMarkdownOptions {
 }
 
 interface ProcessMarkdownResult {
-  html: string;
   title: string;
   images: string[];
   croppedImages: CroppedImageJob[];
+  // 本文HTMLを返す。rewriteImageSrc を渡すとプロジェクト内画像の <img src> をその戻り値に置き換える
+  renderHtml: (rewriteImageSrc?: (src: string) => string) => string;
+}
+
+// <img src> の値を、プロジェクトのフォルダを基準にした正規化済みパスにする。
+// img/ 以下を指すもの以外(URL・data URI・ページ内リンクなど)は null。プロジェクトの外を指す場合はエラー
+function projectImagePath(src: string): string | null {
+  if (src.length === 0 || src.startsWith("/") || src.startsWith("#") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(src)) {
+    return null;
+  }
+  const path = src.replace(/[?#].*$/, "");
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    // 不正なエスケープはそのまま扱う
+  }
+  const normalized = resolveInside("", decoded);
+  return normalized.startsWith("img/") ? normalized : null;
+}
+
+// rehype の木から <img> 要素を集め、src を正規化済みパスへ書き換える。
+// HTML文字列を正規表現で探さないため、コードブロック内の `<img src=...>` という文字列は対象にならない
+function collectImageElements(found: Array<{ node: HastElement; src: string }>) {
+  return (tree: unknown) => {
+    visit(tree as Parameters<typeof visit>[0], "element", (node) => {
+      const element = node as unknown as HastElement;
+      const src = element.properties?.src;
+      if (element.tagName !== "img" || typeof src !== "string") {
+        return;
+      }
+      const path = projectImagePath(src);
+      if (path === null) {
+        return;
+      }
+      element.properties = { ...element.properties, src: path };
+      found.push({ node: element, src: path });
+    });
+  };
 }
 
 // annotated-image フェンスを mdast の code ノードとして検出して figure HTML に置換する。
@@ -333,6 +389,7 @@ async function processMarkdown(
   const out: { title?: string } = {};
   const sizeCache: NaturalSizeCache = new Map();
   const croppedImages: CroppedImageJob[] = [];
+  const imageElements: Array<{ node: HastElement; src: string }> = [];
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -341,23 +398,25 @@ async function processMarkdown(
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(rehypeSlug)
-    .use(rehypeStringify);
+    .use(() => collectImageElements(imageElements));
 
-  const result = await processor.process(markdown);
-  const html = String(result);
-  const images = [...new Set([...html.matchAll(IMG_SRC_RE)].map((match) => match[1] as string))];
-  return { html, title: out.title ?? "Manual", images, croppedImages };
+  const tree = await processor.run(processor.parse(markdown));
+  const images = [...new Set(imageElements.map((item) => item.src))];
+  const renderHtml = (rewriteImageSrc?: (src: string) => string): string => {
+    for (const { node, src } of imageElements) {
+      node.properties = { ...node.properties, src: rewriteImageSrc ? rewriteImageSrc(src) : src };
+    }
+    const stringifier = unified().use(rehypeStringify);
+    return stringifier.stringify(tree as Parameters<typeof stringifier.stringify>[0]);
+  };
+  return { title: out.title ?? "Manual", images, croppedImages, renderHtml };
 }
 
-function inlineImagesAsDataUri(html: string, outputDir: string): string {
-  return html.replace(IMG_SRC_RE, (_match, srcPath: string) => {
-    const absolutePath = resolveInside(outputDir, srcPath);
-    const buffer = readFileSync(absolutePath);
-    const ext = srcPath.split(".").pop()?.toLowerCase() ?? "png";
-    const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
-    const base64 = buffer.toString("base64");
-    return `src="data:${mime};base64,${base64}"`;
-  });
+function imageDataUri(outputDir: string, srcPath: string): string {
+  const buffer = readFileSync(resolveInside(outputDir, srcPath));
+  const ext = extname(srcPath).slice(1).toLowerCase();
+  const mime = IMAGE_MIME_TYPES[ext] ?? "application/octet-stream";
+  return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
 export async function buildProject(projectRoot: string, options: BuildOptions = {}): Promise<BuildResult> {
@@ -370,7 +429,7 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
   const outputDir = options.outputDir ?? join(projectRoot, "dist");
   mkdirSync(outputDir, { recursive: true });
 
-  const { html: bodyHtml, title, images, croppedImages } = await processMarkdown(projectRoot, sourceMarkdown, {
+  const { renderHtml, title, images, croppedImages } = await processMarkdown(projectRoot, sourceMarkdown, {
     cropImages: true,
   });
 
@@ -391,10 +450,9 @@ export async function buildProject(projectRoot: string, options: BuildOptions = 
   copyImages(projectRoot, outputDir, copiedImages);
   removeStaleAnnotatedSources(outputDir, croppedImages, copiedImages);
 
-  let finalBodyHtml = bodyHtml;
-  if (options.singleFile) {
-    finalBodyHtml = inlineImagesAsDataUri(bodyHtml, outputDir);
-  }
+  const finalBodyHtml = options.singleFile
+    ? renderHtml((src) => imageDataUri(outputDir, src))
+    : renderHtml();
 
   const themeCss = annotationThemeCss(readProjectTheme(projectRoot));
   const html = `<!doctype html>
@@ -429,11 +487,6 @@ export async function buildPreviewHtml(
   markdown: string,
   options: PreviewOptions = {},
 ): Promise<string> {
-  const { html } = await processMarkdown(projectRoot, markdown, { dataAnnotationId: true });
-  if (!options.rewriteImageSrc) {
-    return html;
-  }
-  return html.replace(IMG_SRC_RE, (_match, srcPath: string) => {
-    return `src="${options.rewriteImageSrc!(srcPath)}"`;
-  });
+  const { renderHtml } = await processMarkdown(projectRoot, markdown, { dataAnnotationId: true });
+  return renderHtml(options.rewriteImageSrc);
 }
